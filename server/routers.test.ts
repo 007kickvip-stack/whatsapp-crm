@@ -204,7 +204,9 @@ describe("Order Management", () => {
     expect(result).toHaveProperty("total");
   });
 
-  it("staff can update order", async () => {
+  it("staff can update own order", async () => {
+    const { getOrderById } = await import("./db");
+    (getOrderById as ReturnType<typeof vi.fn>).mockResolvedValueOnce({ id: 1, staffId: 2 });
     const ctx = createStaffContext();
     const caller = appRouter.createCaller(ctx);
     const result = await caller.orders.update({
@@ -214,11 +216,29 @@ describe("Order Management", () => {
     expect(result).toEqual({ success: true });
   });
 
-  it("staff can delete order", async () => {
+  it("staff cannot update other's order", async () => {
+    const { getOrderById } = await import("./db");
+    (getOrderById as ReturnType<typeof vi.fn>).mockResolvedValueOnce({ id: 1, staffId: 999 });
+    const ctx = createStaffContext();
+    const caller = appRouter.createCaller(ctx);
+    await expect(caller.orders.update({ id: 1, orderStatus: "已发货" })).rejects.toThrow("您只能编辑自己的订单");
+  });
+
+  it("staff can delete own order", async () => {
+    const { getOrderById } = await import("./db");
+    (getOrderById as ReturnType<typeof vi.fn>).mockResolvedValueOnce({ id: 1, staffId: 2 });
     const ctx = createStaffContext();
     const caller = appRouter.createCaller(ctx);
     const result = await caller.orders.delete({ id: 1 });
     expect(result).toEqual({ success: true });
+  });
+
+  it("staff cannot delete other's order", async () => {
+    const { getOrderById } = await import("./db");
+    (getOrderById as ReturnType<typeof vi.fn>).mockResolvedValueOnce({ id: 1, staffId: 999 });
+    const ctx = createStaffContext();
+    const caller = appRouter.createCaller(ctx);
+    await expect(caller.orders.delete({ id: 1 })).rejects.toThrow("您只能删除自己的订单");
   });
 
   it("unauthenticated user cannot create order", async () => {

@@ -174,7 +174,15 @@ export const appRouter = router({
       });
     }),
 
-    getById: protectedProcedure.input(z.object({ id: z.number() })).query(({ input }) => getOrderWithItems(input.id)),
+    getById: protectedProcedure.input(z.object({ id: z.number() })).query(async ({ input, ctx }) => {
+      const order = await getOrderWithItems(input.id);
+      if (!order) return undefined;
+      // 客服只能查看自己的订单
+      if (ctx.user.role !== 'admin' && order.staffId !== ctx.user.id) {
+        throw new TRPCError({ code: 'FORBIDDEN', message: '您只能查看自己的订单' });
+      }
+      return order;
+    }),
 
     create: protectedProcedure.input(z.object({
       orderDate: z.string().optional(),
@@ -207,7 +215,14 @@ export const appRouter = router({
       orderStatus: z.string().optional(),
       paymentStatus: z.string().optional(),
       remarks: z.string().optional(),
-    })).mutation(async ({ input }) => {
+    })).mutation(async ({ input, ctx }) => {
+      // 客服只能编辑自己的订单
+      if (ctx.user.role !== 'admin') {
+        const order = await getOrderById(input.id);
+        if (!order || order.staffId !== ctx.user.id) {
+          throw new TRPCError({ code: 'FORBIDDEN', message: '您只能编辑自己的订单' });
+        }
+      }
       const { id, orderDate, ...data } = input;
       await updateOrder(id, {
         ...data,
@@ -216,7 +231,14 @@ export const appRouter = router({
       return { success: true };
     }),
 
-    delete: protectedProcedure.input(z.object({ id: z.number() })).mutation(async ({ input }) => {
+    delete: protectedProcedure.input(z.object({ id: z.number() })).mutation(async ({ input, ctx }) => {
+      // 客服只能删除自己的订单
+      if (ctx.user.role !== 'admin') {
+        const order = await getOrderById(input.id);
+        if (!order || order.staffId !== ctx.user.id) {
+          throw new TRPCError({ code: 'FORBIDDEN', message: '您只能删除自己的订单' });
+        }
+      }
       await deleteOrder(input.id);
       return { success: true };
     }),
@@ -364,7 +386,7 @@ export const appRouter = router({
       const staffId = isAdmin ? undefined : ctx.user.id;
       const [orderStats, customerStats, statusDist, paymentDist] = await Promise.all([
         getOrderStats(staffId),
-        getCustomerStats(),
+        getCustomerStats(staffId),
         getOrderStatusDistribution(staffId),
         getPaymentStatusDistribution(staffId),
       ]);

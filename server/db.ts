@@ -431,15 +431,16 @@ export async function getRecentOrders(limit: number = 10, staffId?: number) {
   return db.select().from(orders).where(whereClause).orderBy(desc(orders.createdAt)).limit(limit);
 }
 
-export async function getCustomerStats() {
+export async function getCustomerStats(createdById?: number) {
   const db = await getDb();
   if (!db) return { total: 0, byType: [] };
+  const whereClause = createdById ? eq(customers.createdById, createdById) : undefined;
   const [countResult, typeResult] = await Promise.all([
-    db.select({ count: sql<number>`count(*)` }).from(customers),
+    db.select({ count: sql<number>`count(*)` }).from(customers).where(whereClause),
     db.select({
       type: customers.customerType,
       count: sql<number>`count(*)`,
-    }).from(customers).groupBy(customers.customerType),
+    }).from(customers).where(whereClause).groupBy(customers.customerType),
   ]);
   return { total: countResult[0]?.count ?? 0, byType: typeResult };
 }
