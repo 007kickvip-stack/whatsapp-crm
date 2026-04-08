@@ -29,6 +29,13 @@
       "when": 1775644401572,
       "tag": "0003_magical_mastermind",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "5",
+      "when": 1775646494162,
+      "tag": "0004_magenta_adam_warlock",
+      "breakpoints": true
     }
   ]
 }

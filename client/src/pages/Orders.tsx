@@ -74,12 +74,22 @@ const emptyOrderForm: OrderForm = {
   customerWhatsapp: "",
   customerType: "新零售",
   orderNumber: "",
-  orderStatus: "待处理",
+  orderStatus: "已报货，待发货",
   paymentStatus: "未付款",
   remarks: "",
 };
 
-const ORDER_STATUSES = ["待处理", "已发货", "已签收", "已完成", "已取消"];
+const ORDER_STATUSES = [
+  "已报货，待发货",
+  "待定",
+  "缺货",
+  "已发送qc视频，待确认",
+  "已发送qc视频，已确认",
+  "已发货",
+  "单号已发给顾客",
+  "顾客已收货",
+  "已退款",
+];
 const PAYMENT_STATUSES = ["未付款", "待付款", "已付款", "部分付款"];
 
 function fmtNum(val: string | number | null | undefined): string {
@@ -96,11 +106,15 @@ function fmtPct(val: string | number | null | undefined): string {
 
 function statusColor(status: string | null): string {
   switch (status) {
-    case "已完成": return "bg-emerald-50 text-emerald-700 border-emerald-200";
-    case "已发货": return "bg-blue-50 text-blue-700 border-blue-200";
-    case "已签收": return "bg-teal-50 text-teal-700 border-teal-200";
-    case "待处理": return "bg-amber-50 text-amber-700 border-amber-200";
-    case "已取消": return "bg-red-50 text-red-700 border-red-200";
+    case "已报货，待发货": return "bg-orange-100 text-orange-800 border-orange-300";
+    case "待定": return "bg-yellow-100 text-yellow-800 border-yellow-300";
+    case "缺货": return "bg-yellow-200 text-yellow-900 border-yellow-400";
+    case "已发送qc视频，待确认": return "bg-green-100 text-green-800 border-green-300";
+    case "已发送qc视频，已确认": return "bg-green-200 text-green-900 border-green-400";
+    case "已发货": return "bg-emerald-400 text-white border-emerald-500";
+    case "单号已发给顾客": return "bg-purple-100 text-purple-800 border-purple-300";
+    case "顾客已收货": return "bg-blue-100 text-blue-800 border-blue-300";
+    case "已退款": return "bg-red-100 text-red-800 border-red-300";
     default: return "bg-gray-50 text-gray-700 border-gray-200";
   }
 }
@@ -977,14 +991,14 @@ export default function OrdersPage() {
         <td className="py-1 px-1 border-r border-gray-100 text-center text-[11px]">
           {hasItem ? (
             <EditableCell
-              value={row.itemStatus || row.orderStatus || "待处理"}
+              value={row.itemStatus || row.orderStatus || "已报货，待发货"}
               type="select"
               selectOptions={ORDER_STATUSES}
               onSave={(v) => saveItemField(row.itemId!, row.orderId, "itemStatus", v)}
             />
           ) : row.isFirstRow ? (
             <EditableCell
-              value={row.orderStatus || "待处理"}
+              value={row.orderStatus || "已报货，待发货"}
               type="select"
               selectOptions={ORDER_STATUSES}
               onSave={(v) => saveOrderField(row.orderId, "orderStatus", v)}

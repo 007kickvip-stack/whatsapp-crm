@@ -1,0 +1,1 @@
+ALTER TABLE `orders` MODIFY COLUMN `orderStatus` varchar(64) DEFAULT '已报货，待发货';

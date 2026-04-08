@@ -56,7 +56,7 @@ export const orders = mysqlTable("orders", {
   customerId: int("customerId"),
   customerType: varchar("customerType", { length: 32 }),
   orderNumber: varchar("orderNumber", { length: 128 }).notNull(),
-  orderStatus: varchar("orderStatus", { length: 64 }).default("待处理"),
+  orderStatus: varchar("orderStatus", { length: 64 }).default("已报货，待发货"),
   paymentStatus: varchar("paymentStatus", { length: 64 }).default("未付款"),
   remarks: text("remarks"),
   // 汇总金额（所有子项合计）

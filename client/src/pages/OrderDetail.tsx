@@ -248,9 +248,18 @@ export default function OrderDetailPage() {
             {order.customerWhatsapp} · {order.staffName || "未分配"}
           </p>
         </div>
-        <Badge variant="secondary" className="text-sm">
-          {order.orderStatus || "待处理"}
-        </Badge>
+        <span className={`inline-block px-2 py-0.5 rounded text-sm font-medium border ${
+            order.orderStatus === "已报货，待发货" ? "bg-orange-100 text-orange-800 border-orange-300" :
+            order.orderStatus === "待定" ? "bg-yellow-100 text-yellow-800 border-yellow-300" :
+            order.orderStatus === "缺货" ? "bg-yellow-200 text-yellow-900 border-yellow-400" :
+            order.orderStatus === "已发送qc视频，待确认" ? "bg-green-100 text-green-800 border-green-300" :
+            order.orderStatus === "已发送qc视频，已确认" ? "bg-green-200 text-green-900 border-green-400" :
+            order.orderStatus === "已发货" ? "bg-emerald-400 text-white border-emerald-500" :
+            order.orderStatus === "单号已发给顾客" ? "bg-purple-100 text-purple-800 border-purple-300" :
+            order.orderStatus === "顾客已收货" ? "bg-blue-100 text-blue-800 border-blue-300" :
+            order.orderStatus === "已退款" ? "bg-red-100 text-red-800 border-red-300" :
+            "bg-gray-50 text-gray-700 border-gray-200"
+          }`}>{order.orderStatus || "已报货，待发货"}</span>
         <Badge variant={order.paymentStatus === "已付款" ? "default" : "outline"} className="text-sm">
           {order.paymentStatus || "未付款"}
         </Badge>
