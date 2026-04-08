@@ -3,6 +3,7 @@ import { drizzle } from "drizzle-orm/mysql2";
 import { InsertUser, users, customers, orders, orderItems, InsertCustomer, InsertOrder, InsertOrderItem } from "../drizzle/schema";
 import { ENV } from './_core/env';
 import { nanoid } from 'nanoid';
+import { createHash, randomBytes } from 'crypto';
 
 let _db: ReturnType<typeof drizzle> | null = null;
 
@@ -103,19 +104,57 @@ export async function getUserById(userId: number) {
   return result.length > 0 ? result[0] : undefined;
 }
 
-export async function createUser(data: { name: string; email?: string; role?: "user" | "admin" }) {
+// ==================== Password Helpers ====================
+
+export function hashPassword(password: string): string {
+  const salt = randomBytes(16).toString('hex');
+  const hash = createHash('sha256').update(salt + password).digest('hex');
+  return `${salt}:${hash}`;
+}
+
+export function verifyPassword(password: string, storedHash: string): boolean {
+  const [salt, hash] = storedHash.split(':');
+  if (!salt || !hash) return false;
+  const computed = createHash('sha256').update(salt + password).digest('hex');
+  return computed === hash;
+}
+
+export async function createUser(data: { name: string; email?: string; role?: "user" | "admin"; username?: string; password?: string }) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
   const openId = `manual-${nanoid()}`;
+  const hashedPassword = data.password ? hashPassword(data.password) : null;
   const result = await db.insert(users).values({
     openId,
     name: data.name,
     email: data.email || null,
+    username: data.username || null,
+    password: hashedPassword,
     role: data.role || "user",
-    loginMethod: "manual",
+    loginMethod: "password",
     lastSignedIn: new Date(),
   });
   return { id: result[0].insertId, openId };
+}
+
+export async function getUserByUsername(username: string) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db.select().from(users).where(eq(users.username, username)).limit(1);
+  return result.length > 0 ? result[0] : undefined;
+}
+
+export async function updateUserPassword(userId: number, password: string) {
+  const db = await getDb();
+  if (!db) return;
+  const hashedPassword = hashPassword(password);
+  await db.update(users).set({ password: hashedPassword }).where(eq(users.id, userId));
+}
+
+export async function updateUserUsername(userId: number, username: string) {
+  const db = await getDb();
+  if (!db) return;
+  await db.update(users).set({ username }).where(eq(users.id, userId));
 }
 
 // ==================== Customer Helpers ====================

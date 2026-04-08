@@ -2,15 +2,19 @@ import { COOKIE_NAME } from "@shared/const";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
 import { publicProcedure, protectedProcedure, adminProcedure, router } from "./_core/trpc";
+import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import {
   listUsers, updateUserRole, deleteUser, getUserById, createUser,
+  getUserByUsername, verifyPassword, updateUserPassword, updateUserUsername,
   createCustomer, updateCustomer, deleteCustomer, getCustomerById, getCustomerByWhatsapp, listCustomers,
   createOrder, updateOrder, deleteOrder, getOrderById, getOrderWithItems, listOrders,
   createOrderItem, updateOrderItem, deleteOrderItem, getOrderItemsByOrderId, recalculateOrderTotals,
   getOrderStats, getOrderStatusDistribution, getPaymentStatusDistribution,
   getStaffPerformance, getRecentOrders, getCustomerStats, getDailyOrderTrend,
 } from "./db";
+import { sdk } from "./_core/sdk";
+import { ONE_YEAR_MS } from "@shared/const";
 import { storagePut } from "./storage";
 import { nanoid } from "nanoid";
 
@@ -22,6 +26,27 @@ export const appRouter = router({
       const cookieOptions = getSessionCookieOptions(ctx.req);
       ctx.res.clearCookie(COOKIE_NAME, { ...cookieOptions, maxAge: -1 });
       return { success: true } as const;
+    }),
+    loginWithPassword: publicProcedure.input(z.object({
+      username: z.string().min(1),
+      password: z.string().min(1),
+    })).mutation(async ({ input, ctx }) => {
+      const user = await getUserByUsername(input.username);
+      if (!user || !user.password) {
+        throw new TRPCError({ code: "UNAUTHORIZED", message: "用户名或密码错误" });
+      }
+      const valid = verifyPassword(input.password, user.password);
+      if (!valid) {
+        throw new TRPCError({ code: "UNAUTHORIZED", message: "用户名或密码错误" });
+      }
+      // Create session token and set cookie
+      const sessionToken = await sdk.createSessionToken(user.openId, {
+        name: user.name || "",
+        expiresInMs: ONE_YEAR_MS,
+      });
+      const cookieOptions = getSessionCookieOptions(ctx.req);
+      ctx.res.cookie(COOKIE_NAME, sessionToken, { ...cookieOptions, maxAge: ONE_YEAR_MS });
+      return { success: true, user: { id: user.id, name: user.name, role: user.role } };
     }),
   }),
 
@@ -44,10 +69,33 @@ export const appRouter = router({
     create: adminProcedure.input(z.object({
       name: z.string().min(1),
       email: z.string().optional(),
+      username: z.string().min(2).optional(),
+      password: z.string().min(4).optional(),
       role: z.enum(["user", "admin"]).default("user"),
     })).mutation(async ({ input }) => {
+      if (input.username) {
+        const existing = await getUserByUsername(input.username);
+        if (existing) {
+          throw new TRPCError({ code: "CONFLICT", message: "用户名已存在" });
+        }
+      }
       const result = await createUser(input);
       return result;
+    }),
+
+    setPassword: adminProcedure.input(z.object({
+      userId: z.number(),
+      username: z.string().min(2),
+      password: z.string().min(4),
+    })).mutation(async ({ input }) => {
+      // Check if username is taken by another user
+      const existing = await getUserByUsername(input.username);
+      if (existing && existing.id !== input.userId) {
+        throw new TRPCError({ code: "CONFLICT", message: "用户名已被其他用户使用" });
+      }
+      await updateUserUsername(input.userId, input.username);
+      await updateUserPassword(input.userId, input.password);
+      return { success: true };
     }),
   }),
 

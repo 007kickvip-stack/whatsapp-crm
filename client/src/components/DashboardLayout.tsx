@@ -22,7 +22,6 @@ import {
   SidebarGroup,
   SidebarGroupLabel,
 } from "@/components/ui/sidebar";
-import { getLoginUrl } from "@/const";
 import { useIsMobile } from "@/hooks/useMobile";
 import {
   LayoutDashboard,
@@ -78,37 +77,14 @@ export default function DashboardLayout({
     localStorage.setItem(SIDEBAR_WIDTH_KEY, sidebarWidth.toString());
   }, [sidebarWidth]);
 
-  if (loading) {
-    return <DashboardLayoutSkeleton />;
-  }
+  useEffect(() => {
+    if (!loading && !user) {
+      window.location.href = '/login';
+    }
+  }, [loading, user]);
 
-  if (!user) {
-    return (
-      <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-primary/5 via-background to-accent/10">
-        <div className="flex flex-col items-center gap-8 p-10 max-w-md w-full bg-card rounded-2xl shadow-lg border">
-          <div className="flex flex-col items-center gap-2">
-            <div className="h-16 w-16 rounded-2xl bg-primary/10 flex items-center justify-center mb-2">
-              <MessageSquare className="h-8 w-8 text-primary" />
-            </div>
-            <h1 className="text-2xl font-bold tracking-tight text-center">
-              WhatsApp CRM
-            </h1>
-            <p className="text-sm text-muted-foreground text-center max-w-sm">
-              客户管理与订单系统，请登录以继续使用
-            </p>
-          </div>
-          <Button
-            onClick={() => {
-              window.location.href = getLoginUrl();
-            }}
-            size="lg"
-            className="w-full shadow-md hover:shadow-lg transition-all"
-          >
-            登录系统
-          </Button>
-        </div>
-      </div>
-    );
+  if (loading || !user) {
+    return <DashboardLayoutSkeleton />;
   }
 
   return (

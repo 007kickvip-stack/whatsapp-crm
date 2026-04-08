@@ -10,20 +10,28 @@ import CustomersPage from "./pages/Customers";
 import OrdersPage from "./pages/Orders";
 import OrderDetailPage from "./pages/OrderDetail";
 import UsersPage from "./pages/Users";
+import LoginPage from "./pages/Login";
 
 function Router() {
   return (
-    <DashboardLayout>
-      <Switch>
-        <Route path="/" component={Home} />
-        <Route path="/customers" component={CustomersPage} />
-        <Route path="/orders" component={OrdersPage} />
-        <Route path="/orders/:id" component={OrderDetailPage} />
-        <Route path="/users" component={UsersPage} />
-        <Route path="/404" component={NotFound} />
-        <Route component={NotFound} />
-      </Switch>
-    </DashboardLayout>
+    <Switch>
+      {/* Login page is outside DashboardLayout */}
+      <Route path="/login" component={LoginPage} />
+      {/* All other routes are inside DashboardLayout */}
+      <Route>
+        <DashboardLayout>
+          <Switch>
+            <Route path="/" component={Home} />
+            <Route path="/customers" component={CustomersPage} />
+            <Route path="/orders" component={OrdersPage} />
+            <Route path="/orders/:id" component={OrderDetailPage} />
+            <Route path="/users" component={UsersPage} />
+            <Route path="/404" component={NotFound} />
+            <Route component={NotFound} />
+          </Switch>
+        </DashboardLayout>
+      </Route>
+    </Switch>
   );
 }
 
