@@ -319,7 +319,13 @@ export default function OrderDetailPage() {
             </div>
             <div>
               <p className="text-muted-foreground mb-1">客户属性</p>
-              <Badge variant="secondary">{order.customerType || "-"}</Badge>
+              <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium border ${
+                order.customerType === "新零售" ? "bg-yellow-200 text-yellow-900 border-yellow-300" :
+                order.customerType === "零售复购" ? "bg-yellow-400 text-yellow-900 border-yellow-500" :
+                order.customerType === "定金-新零售" ? "bg-pink-400 text-white border-pink-500" :
+                order.customerType === "定金-零售复购" ? "bg-red-600 text-white border-red-700" :
+                "bg-gray-100 text-gray-700 border-gray-200"
+              }`}>{order.customerType || "-"}</span>
             </div>
             {order.remarks && (
               <div className="col-span-full">

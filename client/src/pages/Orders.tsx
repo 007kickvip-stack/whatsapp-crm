@@ -105,6 +105,16 @@ function statusColor(status: string | null): string {
   }
 }
 
+function customerTypeColor(type: string | null): string {
+  switch (type) {
+    case "新零售": return "bg-yellow-200 text-yellow-900 border-yellow-300";
+    case "零售复购": return "bg-yellow-400 text-yellow-900 border-yellow-500";
+    case "定金-新零售": return "bg-pink-400 text-white border-pink-500";
+    case "定金-零售复购": return "bg-red-600 text-white border-red-700";
+    default: return "bg-gray-100 text-gray-700 border-gray-200";
+  }
+}
+
 function paymentColor(status: string | null): string {
   switch (status) {
     case "已付款": return "bg-emerald-50 text-emerald-700 border-emerald-200";
@@ -132,6 +142,7 @@ function EditableCell({
   className = "",
   placeholder = "",
   selectOptions,
+  selectColorFn,
 }: {
   value: string;
   onSave: (val: string) => void;
@@ -139,6 +150,7 @@ function EditableCell({
   className?: string;
   placeholder?: string;
   selectOptions?: string[];
+  selectColorFn?: (val: string | null) => string;
 }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(value);
@@ -166,6 +178,24 @@ function EditableCell({
   };
 
   if (type === "select" && selectOptions) {
+    if (selectColorFn) {
+      return (
+        <div className="relative group">
+          <span className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-medium border ${selectColorFn(value)} cursor-pointer`}>
+            {value || selectOptions[0]}
+          </span>
+          <select
+            value={value}
+            onChange={(e) => onSave(e.target.value)}
+            className="absolute inset-0 opacity-0 cursor-pointer w-full"
+          >
+            {selectOptions.map((opt) => (
+              <option key={opt} value={opt}>{opt}</option>
+            ))}
+          </select>
+        </div>
+      );
+    }
     return (
       <select
         value={value}
@@ -814,8 +844,9 @@ export default function OrdersPage() {
             <EditableCell
               value={row.customerType || "新零售"}
               type="select"
-              selectOptions={["新零售", "零售复购"]}
+              selectOptions={["新零售", "零售复购", "定金-新零售", "定金-零售复购"]}
               onSave={(v) => saveOrderField(row.orderId, "customerType", v)}
+              selectColorFn={customerTypeColor}
             />
           ) : null}
         </td>
@@ -1367,6 +1398,8 @@ export default function OrdersPage() {
                   <SelectContent>
                     <SelectItem value="新零售">新零售</SelectItem>
                     <SelectItem value="零售复购">零售复购</SelectItem>
+                    <SelectItem value="定金-新零售">定金-新零售</SelectItem>
+                    <SelectItem value="定金-零售复购">定金-零售复购</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
