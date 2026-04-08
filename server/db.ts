@@ -258,7 +258,20 @@ export async function listOrders(params: {
     db.select().from(orders).where(whereClause).orderBy(desc(orders.createdAt)).limit(pageSize).offset(offset),
     db.select({ count: sql<number>`count(*)` }).from(orders).where(whereClause),
   ]);
-  return { data, total: countResult[0]?.count ?? 0 };
+  // Fetch items for all orders in one query
+  const orderIds = data.map(o => o.id);
+  let itemsMap: Record<number, typeof orderItems.$inferSelect[]> = {};
+  if (orderIds.length > 0) {
+    const allItems = await db.select().from(orderItems)
+      .where(sql`${orderItems.orderId} IN (${sql.join(orderIds.map(id => sql`${id}`), sql`, `)})`)
+      .orderBy(orderItems.id);
+    for (const item of allItems) {
+      if (!itemsMap[item.orderId]) itemsMap[item.orderId] = [];
+      itemsMap[item.orderId].push(item);
+    }
+  }
+  const dataWithItems = data.map(o => ({ ...o, items: itemsMap[o.id] || [] }));
+  return { data: dataWithItems, total: countResult[0]?.count ?? 0 };
 }
 
 // ==================== Order Item Helpers ====================

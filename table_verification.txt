@@ -1,0 +1,7 @@
+Excel-style table verification - all 31 columns confirmed visible:
+
+Left section: 操作, 日期, 客服名字, 账号, 客户WhatsApp, 客户属性, 订单编号, 订单图片, Size, 国内单号
+Middle section: 国际跟踪单号, 发出日期, 件数, 货源, 订单状态(待处理), 总金额$($0), 总金额¥(¥0), 售价, 产品成本, 产品毛利润
+Right section: 产品毛利率, 收取运费(¥), 实际运费, 运费利润, 运费利润率, 总利润(0), 利润率(0%), 付款截图, 备注, 付款状态(已付款)
+
+All 31 columns match the Excel template. Table has horizontal scrollbar. Green header. Data row shows correctly.

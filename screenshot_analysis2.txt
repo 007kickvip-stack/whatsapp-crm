@@ -1,0 +1,1 @@
+Screenshot shows dashboard page with 1 order. Need to navigate to Orders page to verify the Excel-style table. TypeScript: 0 errors. Server running.

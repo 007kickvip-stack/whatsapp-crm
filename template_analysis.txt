@@ -1,0 +1,8 @@
+Order Template Analysis:
+- 31 columns in exact order: 日期, 客服名字, 账号, 客户whatsAPP, 客户属性, 订单编号, 订单图片, size, 国内单号, 推荐码数, 联系方式, 国际跟踪单号, 发出日期, 件数, 货源, 订单状态, 总金额$, 总金额¥, 售价, 产品成本, 产品毛利润, 产品毛利率, 收取运费(¥), 实际运费, 运费利润, 运费利润率, 总利润, 利润率, 付款截图, 备注, 付款状态
+- Key display pattern: Each order has a master row (with date, staff, whatsapp, customer type) and sub-rows (only orderNumber, size, tracking, etc.)
+- Sub-rows share the same orderNumber prefix but have different size/tracking/pricing
+- The table is a flat spreadsheet-style view where all 31 columns are visible horizontally
+- Need horizontal scrolling table with all columns visible
+- Sub-items appear as additional rows under the main order row
+- Empty cells in sub-rows for date/staff/whatsapp/customerType indicate they belong to the parent order
