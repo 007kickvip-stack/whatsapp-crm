@@ -131,11 +131,11 @@ function customerTypeColor(type: string | null): string {
 
 function paymentColor(status: string | null): string {
   switch (status) {
-    case "已付款": return "bg-emerald-50 text-emerald-700 border-emerald-200";
-    case "待付款": return "bg-amber-50 text-amber-700 border-amber-200";
-    case "部分付款": return "bg-blue-50 text-blue-700 border-blue-200";
-    case "未付款": return "bg-red-50 text-red-700 border-red-200";
-    default: return "bg-gray-50 text-gray-700 border-gray-200";
+    case "已付款": return "bg-emerald-100 text-emerald-800 border-emerald-300";
+    case "待付款": return "bg-amber-100 text-amber-800 border-amber-300";
+    case "部分付款": return "bg-blue-100 text-blue-800 border-blue-300";
+    case "未付款": return "bg-red-100 text-red-800 border-red-300";
+    default: return "bg-gray-100 text-gray-700 border-gray-200";
   }
 }
 
@@ -994,6 +994,7 @@ export default function OrdersPage() {
               value={row.itemStatus || row.orderStatus || "已报货，待发货"}
               type="select"
               selectOptions={ORDER_STATUSES}
+              selectColorFn={statusColor}
               onSave={(v) => saveItemField(row.itemId!, row.orderId, "itemStatus", v)}
             />
           ) : row.isFirstRow ? (
@@ -1001,6 +1002,7 @@ export default function OrdersPage() {
               value={row.orderStatus || "已报货，待发货"}
               type="select"
               selectOptions={ORDER_STATUSES}
+              selectColorFn={statusColor}
               onSave={(v) => saveOrderField(row.orderId, "orderStatus", v)}
             />
           ) : null}
@@ -1150,6 +1152,7 @@ export default function OrdersPage() {
               value={row.paymentStatus || "未付款"}
               type="select"
               selectOptions={PAYMENT_STATUSES}
+              selectColorFn={paymentColor}
               onSave={(v) => saveItemField(row.itemId!, row.orderId, "paymentStatus", v)}
             />
           ) : row.isFirstRow ? (
@@ -1157,6 +1160,7 @@ export default function OrdersPage() {
               value={row.paymentStatus || "未付款"}
               type="select"
               selectOptions={PAYMENT_STATUSES}
+              selectColorFn={paymentColor}
               onSave={(v) => saveOrderField(row.orderId, "paymentStatus", v)}
             />
           ) : null}
@@ -1241,7 +1245,9 @@ export default function OrdersPage() {
                   <SelectContent>
                     <SelectItem value="all">全部</SelectItem>
                     {ORDER_STATUSES.map((s) => (
-                      <SelectItem key={s} value={s}>{s}</SelectItem>
+                      <SelectItem key={s} value={s}>
+                        <span className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-medium border ${statusColor(s)}`}>{s}</span>
+                      </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
@@ -1255,7 +1261,9 @@ export default function OrdersPage() {
                   <SelectContent>
                     <SelectItem value="all">全部</SelectItem>
                     {PAYMENT_STATUSES.map((s) => (
-                      <SelectItem key={s} value={s}>{s}</SelectItem>
+                      <SelectItem key={s} value={s}>
+                        <span className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-medium border ${paymentColor(s)}`}>{s}</span>
+                      </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
@@ -1435,7 +1443,9 @@ export default function OrdersPage() {
                   </SelectTrigger>
                   <SelectContent>
                     {ORDER_STATUSES.map((s) => (
-                      <SelectItem key={s} value={s}>{s}</SelectItem>
+                      <SelectItem key={s} value={s}>
+                        <span className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-medium border ${statusColor(s)}`}>{s}</span>
+                      </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
@@ -1448,7 +1458,9 @@ export default function OrdersPage() {
                   </SelectTrigger>
                   <SelectContent>
                     {PAYMENT_STATUSES.map((s) => (
-                      <SelectItem key={s} value={s}>{s}</SelectItem>
+                      <SelectItem key={s} value={s}>
+                        <span className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-medium border ${paymentColor(s)}`}>{s}</span>
+                      </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>

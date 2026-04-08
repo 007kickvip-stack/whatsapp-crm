@@ -25,6 +25,13 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
   ArrowLeft,
   Plus,
   Edit,
@@ -38,6 +45,8 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { useLocation, useParams } from "wouter";
+
+const PAYMENT_STATUSES = ["未付款", "待付款", "已付款", "部分付款"];
 
 type ItemForm = {
   orderNumber: string;
@@ -260,9 +269,13 @@ export default function OrderDetailPage() {
             order.orderStatus === "已退款" ? "bg-red-100 text-red-800 border-red-300" :
             "bg-gray-50 text-gray-700 border-gray-200"
           }`}>{order.orderStatus || "已报货，待发货"}</span>
-        <Badge variant={order.paymentStatus === "已付款" ? "default" : "outline"} className="text-sm">
-          {order.paymentStatus || "未付款"}
-        </Badge>
+        <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium border ${
+          order.paymentStatus === "已付款" ? "bg-emerald-100 text-emerald-800 border-emerald-300" :
+          order.paymentStatus === "待付款" ? "bg-amber-100 text-amber-800 border-amber-300" :
+          order.paymentStatus === "部分付款" ? "bg-blue-100 text-blue-800 border-blue-300" :
+          order.paymentStatus === "未付款" ? "bg-red-100 text-red-800 border-red-300" :
+          "bg-gray-100 text-gray-700 border-gray-200"
+        }`}>{order.paymentStatus || "未付款"}</span>
       </div>
 
       {/* Order Summary Cards */}
@@ -664,7 +677,24 @@ export default function OrderDetailPage() {
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
                 <Label className="text-xs">付款状态</Label>
-                <Input value={itemForm.paymentStatus} onChange={(e) => setItemForm({ ...itemForm, paymentStatus: e.target.value })} className="h-9" />
+                <Select value={itemForm.paymentStatus || "未付款"} onValueChange={(v) => setItemForm({ ...itemForm, paymentStatus: v })}>
+                  <SelectTrigger className="h-9">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {PAYMENT_STATUSES.map((s) => (
+                      <SelectItem key={s} value={s}>
+                        <span className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-medium border ${
+                          s === "已付款" ? "bg-emerald-100 text-emerald-800 border-emerald-300" :
+                          s === "待付款" ? "bg-amber-100 text-amber-800 border-amber-300" :
+                          s === "部分付款" ? "bg-blue-100 text-blue-800 border-blue-300" :
+                          s === "未付款" ? "bg-red-100 text-red-800 border-red-300" :
+                          "bg-gray-100 text-gray-700 border-gray-200"
+                        }`}>{s}</span>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
               <div className="space-y-1.5">
                 <Label className="text-xs">备注</Label>

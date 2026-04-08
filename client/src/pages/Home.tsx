@@ -247,6 +247,58 @@ export default function Home() {
         </Card>
       </div>
 
+      {/* Payment Status Distribution */}
+      <div className="grid gap-4 lg:grid-cols-2">
+        <Card className="border-0 shadow-sm">
+          <CardHeader>
+            <CardTitle className="text-base">付款状态分布</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="h-[280px]">
+              {paymentDist.length > 0 ? (
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie
+                      data={paymentDist.map((s) => ({
+                        name: s.status || "未知",
+                        value: s.count,
+                      }))}
+                      cx="50%"
+                      cy="50%"
+                      innerRadius={60}
+                      outerRadius={100}
+                      paddingAngle={3}
+                      dataKey="value"
+                      label={({ name, percent }) =>
+                        `${name} ${(percent * 100).toFixed(0)}%`
+                      }
+                    >
+                      {paymentDist.map((s, index) => (
+                        <Cell
+                          key={`payment-cell-${index}`}
+                          fill={
+                            s.status === "已付款" ? "oklch(0.65 0.15 160)" :
+                            s.status === "待付款" ? "oklch(0.75 0.15 80)" :
+                            s.status === "部分付款" ? "oklch(0.60 0.15 250)" :
+                            s.status === "未付款" ? "oklch(0.60 0.20 25)" :
+                            COLORS[index % COLORS.length]
+                          }
+                        />
+                      ))}
+                    </Pie>
+                    <Tooltip />
+                  </PieChart>
+                </ResponsiveContainer>
+              ) : (
+                <div className="flex items-center justify-center h-full text-muted-foreground text-sm">
+                  暂无数据
+                </div>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
       {/* Staff Performance (Admin Only) */}
       {isAdmin && staffPerformance && staffPerformance.length > 0 && (
         <Card className="border-0 shadow-sm">
@@ -327,6 +379,7 @@ export default function Home() {
                     </th>
                     <th className="text-left py-3 px-2 font-medium">客服</th>
                     <th className="text-left py-3 px-2 font-medium">状态</th>
+                    <th className="text-left py-3 px-2 font-medium">付款</th>
                     <th className="text-right py-3 px-2 font-medium">
                       金额 (CNY)
                     </th>
@@ -365,6 +418,17 @@ export default function Home() {
                           "bg-gray-50 text-gray-700 border-gray-200"
                         }`}>
                           {order.orderStatus || "已报货，待发货"}
+                        </span>
+                      </td>
+                      <td className="py-3 px-2">
+                        <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium border ${
+                          order.paymentStatus === "已付款" ? "bg-emerald-100 text-emerald-800 border-emerald-300" :
+                          order.paymentStatus === "待付款" ? "bg-amber-100 text-amber-800 border-amber-300" :
+                          order.paymentStatus === "部分付款" ? "bg-blue-100 text-blue-800 border-blue-300" :
+                          order.paymentStatus === "未付款" ? "bg-red-100 text-red-800 border-red-300" :
+                          "bg-gray-100 text-gray-700 border-gray-200"
+                        }`}>
+                          {order.paymentStatus || "未付款"}
                         </span>
                       </td>
                       <td className="py-3 px-2 text-right">
