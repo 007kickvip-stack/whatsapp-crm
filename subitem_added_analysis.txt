@@ -1,0 +1,26 @@
+After clicking "add sub-item" button, a new item row appeared with all editable fields:
+
+Row now shows:
+- Order number "zhu 951556" (editable, element 18)
+- Image upload button (element 19, hint "上传图片") - upload icon visible
+- Size field (element 20, placeholder "尺码")
+- Domestic tracking (element 21, placeholder "国内单号")
+- Size recommendation (element 22, placeholder "推荐码数")
+- Contact info (element 23, placeholder "姓名/电话/地址")
+- International tracking (element 24, placeholder "国际单号")
+- Ship date (element 25, placeholder "日期")
+- Quantity "1" (element 26)
+- Source (element 27, placeholder "货源")
+- Order status dropdown (element 28)
+- Amount USD "0.00" (element 29)
+- Amount CNY "0.00" (element 30)
+- Selling price "0.00" (element 31)
+- Product cost "0.00" (element 32)
+- Shipping charged "0.00" (element 33)
+- Shipping actual "0.00" (element 34)
+- Payment screenshot upload button (element 35, hint "上传图片")
+- Remarks (element 36, placeholder "备注")
+- Payment status dropdown (element 37)
+
+ALL fields are now editable inline! Image upload buttons are visible for both order image and payment screenshot.
+The inline editing and image upload features are working correctly.

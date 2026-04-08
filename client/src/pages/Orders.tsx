@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef, useCallback, useEffect } from "react";
 import { trpc } from "@/lib/trpc";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { Card, CardContent } from "@/components/ui/card";
@@ -47,7 +47,11 @@ import {
   ChevronLeft,
   ChevronRight,
   Package,
+  Upload,
+  Check,
+  Loader2,
   Image as ImageIcon,
+  PlusCircle,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useLocation } from "wouter";
@@ -77,21 +81,18 @@ const emptyOrderForm: OrderForm = {
 const ORDER_STATUSES = ["待处理", "已发货", "已签收", "已完成", "已取消"];
 const PAYMENT_STATUSES = ["未付款", "待付款", "已付款", "部分付款"];
 
-// Format number to 2 decimal places, return "-" for 0 or null
 function fmtNum(val: string | number | null | undefined): string {
   const n = Number(val);
   if (!val && val !== 0) return "";
   return n === 0 ? "0" : n.toFixed(2);
 }
 
-// Format percentage
 function fmtPct(val: string | number | null | undefined): string {
   const n = Number(val);
   if (!val && val !== 0) return "";
   return n === 0 ? "0%" : (n * 100).toFixed(1) + "%";
 }
 
-// Status color mapping
 function statusColor(status: string | null): string {
   switch (status) {
     case "已完成": return "bg-emerald-50 text-emerald-700 border-emerald-200";
@@ -113,7 +114,6 @@ function paymentColor(status: string | null): string {
   }
 }
 
-// Profit color
 function profitColor(val: string | number | null | undefined): string {
   const n = Number(val);
   if (n > 0) return "text-emerald-600";
@@ -121,6 +121,184 @@ function profitColor(val: string | number | null | undefined): string {
   return "text-muted-foreground";
 }
 
+// ============================================================
+// Inline editable cell component
+// ============================================================
+function EditableCell({
+  value,
+  onSave,
+  type = "text",
+  className = "",
+  placeholder = "",
+  selectOptions,
+}: {
+  value: string;
+  onSave: (val: string) => void;
+  type?: "text" | "number" | "date" | "select" | "textarea";
+  className?: string;
+  placeholder?: string;
+  selectOptions?: string[];
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(value);
+  const inputRef = useRef<HTMLInputElement | HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    if (editing && inputRef.current) {
+      inputRef.current.focus();
+      if (inputRef.current instanceof HTMLInputElement) {
+        inputRef.current.select();
+      }
+    }
+  }, [editing]);
+
+  const commit = () => {
+    setEditing(false);
+    if (draft !== value) {
+      onSave(draft);
+    }
+  };
+
+  const cancel = () => {
+    setEditing(false);
+    setDraft(value);
+  };
+
+  if (type === "select" && selectOptions) {
+    return (
+      <select
+        value={value}
+        onChange={(e) => onSave(e.target.value)}
+        className="w-full bg-transparent border-0 text-[11px] py-0.5 px-0 focus:ring-1 focus:ring-emerald-400 rounded cursor-pointer"
+      >
+        {selectOptions.map((opt) => (
+          <option key={opt} value={opt}>{opt}</option>
+        ))}
+      </select>
+    );
+  }
+
+  if (!editing) {
+    return (
+      <div
+        onClick={() => { setDraft(value); setEditing(true); }}
+        className={`cursor-text min-h-[22px] px-0.5 py-0.5 rounded hover:bg-emerald-50 transition-colors ${className}`}
+        title="点击编辑"
+      >
+        {value || <span className="text-gray-300 italic text-[10px]">{placeholder || "点击编辑"}</span>}
+      </div>
+    );
+  }
+
+  if (type === "textarea") {
+    return (
+      <textarea
+        ref={inputRef as React.RefObject<HTMLTextAreaElement>}
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={commit}
+        onKeyDown={(e) => {
+          if (e.key === "Escape") cancel();
+        }}
+        rows={2}
+        className="w-full border border-emerald-400 rounded px-1 py-0.5 text-[11px] focus:outline-none focus:ring-1 focus:ring-emerald-400 bg-white"
+      />
+    );
+  }
+
+  return (
+    <input
+      ref={inputRef as React.RefObject<HTMLInputElement>}
+      type={type === "number" ? "number" : type === "date" ? "date" : "text"}
+      step={type === "number" ? "0.01" : undefined}
+      value={draft}
+      onChange={(e) => setDraft(e.target.value)}
+      onBlur={commit}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") commit();
+        if (e.key === "Escape") cancel();
+      }}
+      className="w-full border border-emerald-400 rounded px-1 py-0.5 text-[11px] focus:outline-none focus:ring-1 focus:ring-emerald-400 bg-white"
+      placeholder={placeholder}
+    />
+  );
+}
+
+// ============================================================
+// Image upload cell component
+// ============================================================
+function ImageUploadCell({
+  imageUrl,
+  onUploaded,
+  onPreview,
+  uploadMutation,
+}: {
+  imageUrl: string | null;
+  onUploaded: (url: string) => void;
+  onPreview: (url: string) => void;
+  uploadMutation: any;
+}) {
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  const handleFile = (file: File) => {
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error("文件大小不能超过 5MB");
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = async () => {
+      try {
+        const base64 = (reader.result as string).split(",")[1];
+        const result = await uploadMutation.mutateAsync({
+          base64,
+          filename: file.name,
+          contentType: file.type,
+        });
+        onUploaded(result.url);
+        toast.success("图片上传成功");
+      } catch {
+        toast.error("图片上传失败");
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
+  return (
+    <div className="flex items-center justify-center gap-1">
+      <input
+        ref={fileRef}
+        type="file"
+        accept="image/*"
+        className="hidden"
+        onChange={(e) => {
+          const f = e.target.files?.[0];
+          if (f) handleFile(f);
+          e.target.value = "";
+        }}
+      />
+      {imageUrl ? (
+        <button onClick={() => onPreview(imageUrl)} className="inline-flex">
+          <img src={imageUrl} alt="" className="h-7 w-7 rounded object-cover border border-emerald-200 hover:border-emerald-400 transition-colors" />
+        </button>
+      ) : null}
+      <button
+        onClick={() => fileRef.current?.click()}
+        className="inline-flex items-center justify-center h-6 w-6 rounded border border-dashed border-gray-300 hover:border-emerald-400 hover:bg-emerald-50 transition-colors"
+        title="上传图片"
+      >
+        {uploadMutation.isPending ? (
+          <Loader2 className="h-3 w-3 animate-spin text-emerald-500" />
+        ) : (
+          <Upload className="h-3 w-3 text-gray-400" />
+        )}
+      </button>
+    </div>
+  );
+}
+
+// ============================================================
+// Main component
+// ============================================================
 export default function OrdersPage() {
   const { user } = useAuth();
   const [, setLocation] = useLocation();
@@ -155,6 +333,8 @@ export default function OrdersPage() {
 
   const { data, isLoading } = trpc.orders.list.useQuery(queryInput);
 
+  const uploadMutation = trpc.upload.image.useMutation();
+
   const createMutation = trpc.orders.create.useMutation({
     onSuccess: (result) => {
       toast.success("订单创建成功");
@@ -185,6 +365,47 @@ export default function OrdersPage() {
     },
     onError: (err) => toast.error(err.message),
   });
+
+  // Inline update mutations for order-level and item-level fields
+  const inlineUpdateOrder = trpc.orders.update.useMutation({
+    onSuccess: () => {
+      utils.orders.list.invalidate();
+      toast.success("已保存");
+    },
+    onError: (err) => toast.error(err.message),
+  });
+
+  const inlineUpdateItem = trpc.orderItems.update.useMutation({
+    onSuccess: () => {
+      utils.orders.list.invalidate();
+      toast.success("已保存");
+    },
+    onError: (err) => toast.error(err.message),
+  });
+
+  const createItemMutation = trpc.orderItems.create.useMutation({
+    onSuccess: () => {
+      toast.success("子项已添加");
+      utils.orders.list.invalidate();
+    },
+    onError: (err) => toast.error(err.message),
+  });
+
+  // Save an order-level field inline
+  const saveOrderField = useCallback(
+    (orderId: number, field: string, value: string) => {
+      inlineUpdateOrder.mutate({ id: orderId, [field]: value } as any);
+    },
+    []
+  );
+
+  // Save an item-level field inline
+  const saveItemField = useCallback(
+    (itemId: number, orderId: number, field: string, value: string) => {
+      inlineUpdateItem.mutate({ id: itemId, orderId, [field]: value } as any);
+    },
+    []
+  );
 
   const handleSubmit = () => {
     if (!form.customerWhatsapp.trim()) {
@@ -234,55 +455,50 @@ export default function OrdersPage() {
 
   // Column definitions matching the Excel template exactly
   const columns = [
-    { key: "date", label: "日期", width: "90px", sticky: false },
-    { key: "staffName", label: "客服名字", width: "80px", sticky: false },
-    { key: "account", label: "账号", width: "70px", sticky: false },
-    { key: "whatsapp", label: "客户WhatsApp", width: "140px", sticky: false },
-    { key: "customerType", label: "客户属性", width: "80px", sticky: false },
-    { key: "orderNumber", label: "订单编号", width: "180px", sticky: false },
-    { key: "orderImage", label: "订单图片", width: "70px", sticky: false },
-    { key: "size", label: "Size", width: "70px", sticky: false },
-    { key: "domesticTracking", label: "国内单号", width: "140px", sticky: false },
-    { key: "sizeRec", label: "推荐码数", width: "120px", sticky: false },
-    { key: "contactInfo", label: "联系方式", width: "200px", sticky: false },
-    { key: "intlTracking", label: "国际跟踪单号", width: "140px", sticky: false },
-    { key: "shipDate", label: "发出日期", width: "100px", sticky: false },
-    { key: "quantity", label: "件数", width: "50px", sticky: false },
-    { key: "source", label: "货源", width: "120px", sticky: false },
-    { key: "orderStatus", label: "订单状态", width: "80px", sticky: false },
-    { key: "amountUsd", label: "总金额$", width: "80px", sticky: false },
-    { key: "amountCny", label: "总金额¥", width: "80px", sticky: false },
-    { key: "sellingPrice", label: "售价", width: "80px", sticky: false },
-    { key: "productCost", label: "产品成本", width: "80px", sticky: false },
-    { key: "productProfit", label: "产品毛利润", width: "90px", sticky: false },
-    { key: "productProfitRate", label: "产品毛利率", width: "90px", sticky: false },
-    { key: "shippingCharged", label: "收取运费(¥)", width: "90px", sticky: false },
-    { key: "shippingActual", label: "实际运费", width: "80px", sticky: false },
-    { key: "shippingProfit", label: "运费利润", width: "80px", sticky: false },
-    { key: "shippingProfitRate", label: "运费利润率", width: "80px", sticky: false },
-    { key: "totalProfit", label: "总利润", width: "80px", sticky: false },
-    { key: "profitRate", label: "利润率", width: "70px", sticky: false },
-    { key: "paymentScreenshot", label: "付款截图", width: "70px", sticky: false },
-    { key: "remarks", label: "备注", width: "120px", sticky: false },
-    { key: "paymentStatus", label: "付款状态", width: "80px", sticky: false },
+    { key: "date", label: "日期", width: "90px" },
+    { key: "staffName", label: "客服名字", width: "80px" },
+    { key: "account", label: "账号", width: "70px" },
+    { key: "whatsapp", label: "客户WhatsApp", width: "140px" },
+    { key: "customerType", label: "客户属性", width: "80px" },
+    { key: "orderNumber", label: "订单编号", width: "180px" },
+    { key: "orderImage", label: "订单图片", width: "80px" },
+    { key: "size", label: "Size", width: "70px" },
+    { key: "domesticTracking", label: "国内单号", width: "140px" },
+    { key: "sizeRec", label: "推荐码数", width: "120px" },
+    { key: "contactInfo", label: "联系方式", width: "200px" },
+    { key: "intlTracking", label: "国际跟踪单号", width: "140px" },
+    { key: "shipDate", label: "发出日期", width: "100px" },
+    { key: "quantity", label: "件数", width: "50px" },
+    { key: "source", label: "货源", width: "120px" },
+    { key: "orderStatus", label: "订单状态", width: "80px" },
+    { key: "amountUsd", label: "总金额$", width: "80px" },
+    { key: "amountCny", label: "总金额¥", width: "80px" },
+    { key: "sellingPrice", label: "售价", width: "80px" },
+    { key: "productCost", label: "产品成本", width: "80px" },
+    { key: "productProfit", label: "产品毛利润", width: "90px" },
+    { key: "productProfitRate", label: "产品毛利率", width: "90px" },
+    { key: "shippingCharged", label: "收取运费(¥)", width: "90px" },
+    { key: "shippingActual", label: "实际运费", width: "80px" },
+    { key: "shippingProfit", label: "运费利润", width: "80px" },
+    { key: "shippingProfitRate", label: "运费利润率", width: "80px" },
+    { key: "totalProfit", label: "总利润", width: "80px" },
+    { key: "profitRate", label: "利润率", width: "70px" },
+    { key: "paymentScreenshot", label: "付款截图", width: "80px" },
+    { key: "remarks", label: "备注", width: "120px" },
+    { key: "paymentStatus", label: "付款状态", width: "80px" },
   ];
 
-  // Build flat rows: for each order, if it has items, each item is a row.
-  // The first item row shows order-level fields (date, staff, whatsapp, customerType).
-  // Subsequent item rows show only item-level fields (like the Excel template).
-  // If no items, show one row with order-level fields only.
+  // Build flat rows
   type FlatRow = {
     orderId: number;
     isFirstRow: boolean;
-    itemCount: number; // total items in this order
-    // Order-level fields (only shown on first row)
+    itemCount: number;
     orderDate: string | null;
     staffName: string | null;
     account: string | null;
     customerWhatsapp: string;
     customerType: string | null;
     orderStatus: string | null;
-    // Item-level fields
     itemId?: number;
     orderNumber: string;
     orderImageUrl: string | null;
@@ -292,7 +508,7 @@ export default function OrdersPage() {
     contactInfo: string | null;
     internationalTrackingNo: string | null;
     shipDate: string | null;
-    quantity: number | null;
+    quantity: string | null;
     source: string | null;
     itemStatus: string | null;
     amountUsd: string | null;
@@ -318,12 +534,11 @@ export default function OrdersPage() {
     for (const order of data.data) {
       const items = (order as any).items || [];
       if (items.length === 0) {
-        // Order with no items - show one row
         rows.push({
           orderId: order.id,
           isFirstRow: true,
           itemCount: 0,
-          orderDate: order.orderDate ? new Date(order.orderDate).toLocaleDateString("zh-CN") : null,
+          orderDate: order.orderDate ? new Date(order.orderDate).toISOString().split("T")[0] : null,
           staffName: order.staffName,
           account: order.account,
           customerWhatsapp: order.customerWhatsapp,
@@ -357,13 +572,12 @@ export default function OrdersPage() {
           paymentStatus: order.paymentStatus,
         });
       } else {
-        // Order with items - each item is a row
         items.forEach((item: any, idx: number) => {
           rows.push({
             orderId: order.id,
             isFirstRow: idx === 0,
             itemCount: items.length,
-            orderDate: idx === 0 ? (order.orderDate ? new Date(order.orderDate).toLocaleDateString("zh-CN") : null) : null,
+            orderDate: idx === 0 ? (order.orderDate ? new Date(order.orderDate).toISOString().split("T")[0] : null) : null,
             staffName: idx === 0 ? order.staffName : null,
             account: idx === 0 ? order.account : null,
             customerWhatsapp: idx === 0 ? order.customerWhatsapp : "",
@@ -374,10 +588,10 @@ export default function OrdersPage() {
             size: item.size,
             domesticTrackingNo: item.domesticTrackingNo,
             sizeRecommendation: item.sizeRecommendation,
-            contactInfo: idx === 0 ? item.contactInfo : null,
+            contactInfo: item.contactInfo || (idx === 0 ? null : null),
             internationalTrackingNo: item.internationalTrackingNo,
             shipDate: item.shipDate,
-            quantity: item.quantity,
+            quantity: item.quantity?.toString() || null,
             source: item.source,
             itemStatus: item.itemStatus,
             amountUsd: item.amountUsd,
@@ -395,6 +609,7 @@ export default function OrdersPage() {
             paymentScreenshotUrl: item.paymentScreenshotUrl,
             remarks: item.remarks,
             paymentStatus: item.paymentStatus || (idx === 0 ? order.paymentStatus : null),
+            itemId: item.id,
           });
         });
       }
@@ -402,14 +617,420 @@ export default function OrdersPage() {
     return rows;
   }, [data]);
 
+  // Render a single table row
+  const renderRow = (row: FlatRow, rowIdx: number) => {
+    const isOrderBoundary = row.isFirstRow;
+    const borderTop = isOrderBoundary ? "border-t-2 border-t-emerald-200" : "border-t border-t-gray-100";
+    const bgClass = isOrderBoundary ? "bg-white" : "bg-gray-50/50";
+    const hasItem = !!row.itemId;
+
+    return (
+      <tr
+        key={`${row.orderId}-${row.itemId || "main"}-${rowIdx}`}
+        className={`${borderTop} ${bgClass} hover:bg-emerald-50/40 transition-colors group`}
+      >
+        {/* Action buttons */}
+        <td className="py-1 px-1 text-center border-r border-gray-100 sticky left-0 bg-inherit z-[5]">
+          {row.isFirstRow && (
+            <div className="flex items-center justify-center gap-0.5">
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => setLocation(`/orders/${row.orderId}`)}>
+                    <Eye className="h-3 w-3" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>查看详情</TooltipContent>
+              </Tooltip>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button variant="ghost" size="icon" className="h-6 w-6 text-destructive hover:text-destructive" onClick={() => setDeleteId(row.orderId)}>
+                    <Trash2 className="h-3 w-3" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>删除订单</TooltipContent>
+              </Tooltip>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-6 w-6 text-emerald-600 hover:text-emerald-700"
+                    onClick={() => {
+                      createItemMutation.mutate({
+                        orderId: row.orderId,
+                        orderNumber: row.orderNumber,
+                      });
+                    }}
+                  >
+                    <PlusCircle className="h-3 w-3" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>添加子项</TooltipContent>
+              </Tooltip>
+            </div>
+          )}
+        </td>
+
+        {/* 1. 日期 - order level, editable on first row */}
+        <td className="py-1 px-1 border-r border-gray-100 whitespace-nowrap text-center text-[11px]">
+          {row.isFirstRow ? (
+            <EditableCell
+              value={row.orderDate || ""}
+              type="date"
+              onSave={(v) => saveOrderField(row.orderId, "orderDate", v)}
+              className="font-medium text-gray-700"
+            />
+          ) : null}
+        </td>
+
+        {/* 2. 客服名字 - read only */}
+        <td className="py-1 px-1 border-r border-gray-100 whitespace-nowrap text-center text-[11px]">
+          {row.isFirstRow ? row.staffName || "" : ""}
+        </td>
+
+        {/* 3. 账号 - order level editable */}
+        <td className="py-1 px-1 border-r border-gray-100 whitespace-nowrap text-center text-[11px]">
+          {row.isFirstRow ? (
+            <EditableCell
+              value={row.account || ""}
+              onSave={(v) => saveOrderField(row.orderId, "account", v)}
+              placeholder="账号"
+            />
+          ) : null}
+        </td>
+
+        {/* 4. 客户WhatsApp - order level editable */}
+        <td className="py-1 px-1 border-r border-gray-100 whitespace-nowrap text-[11px]">
+          {row.isFirstRow ? (
+            <EditableCell
+              value={row.customerWhatsapp}
+              onSave={(v) => saveOrderField(row.orderId, "customerWhatsapp", v)}
+              className="font-medium text-emerald-700"
+              placeholder="WhatsApp"
+            />
+          ) : null}
+        </td>
+
+        {/* 5. 客户属性 - order level select */}
+        <td className="py-1 px-1 border-r border-gray-100 whitespace-nowrap text-center text-[11px]">
+          {row.isFirstRow ? (
+            <EditableCell
+              value={row.customerType || "新零售"}
+              type="select"
+              selectOptions={["新零售", "零售复购"]}
+              onSave={(v) => saveOrderField(row.orderId, "customerType", v)}
+            />
+          ) : null}
+        </td>
+
+        {/* 6. 订单编号 - item level editable */}
+        <td className="py-1 px-1 border-r border-gray-100 whitespace-nowrap text-[11px]">
+          {hasItem ? (
+            <EditableCell
+              value={row.orderNumber}
+              onSave={(v) => saveItemField(row.itemId!, row.orderId, "orderNumber", v)}
+              className="font-medium text-primary"
+              placeholder="订单编号"
+            />
+          ) : (
+            <button
+              onClick={() => setLocation(`/orders/${row.orderId}`)}
+              className="text-primary hover:underline text-left font-medium text-[11px]"
+            >
+              {row.orderNumber}
+            </button>
+          )}
+        </td>
+
+        {/* 7. 订单图片 - item level with upload */}
+        <td className="py-1 px-1 border-r border-gray-100 text-center">
+          {hasItem ? (
+            <ImageUploadCell
+              imageUrl={row.orderImageUrl}
+              onUploaded={(url) => saveItemField(row.itemId!, row.orderId, "orderImageUrl", url)}
+              onPreview={setPreviewImage}
+              uploadMutation={uploadMutation}
+            />
+          ) : null}
+        </td>
+
+        {/* 8. Size - item level editable */}
+        <td className="py-1 px-1 border-r border-gray-100 whitespace-nowrap text-center text-[11px]">
+          {hasItem ? (
+            <EditableCell
+              value={row.size || ""}
+              onSave={(v) => saveItemField(row.itemId!, row.orderId, "size", v)}
+              placeholder="尺码"
+              className="font-medium"
+            />
+          ) : null}
+        </td>
+
+        {/* 9. 国内单号 */}
+        <td className="py-1 px-1 border-r border-gray-100 whitespace-nowrap text-[11px]">
+          {hasItem ? (
+            <EditableCell
+              value={row.domesticTrackingNo || ""}
+              onSave={(v) => saveItemField(row.itemId!, row.orderId, "domesticTrackingNo", v)}
+              placeholder="国内单号"
+            />
+          ) : null}
+        </td>
+
+        {/* 10. 推荐码数 */}
+        <td className="py-1 px-1 border-r border-gray-100 whitespace-nowrap text-[11px]">
+          {hasItem ? (
+            <EditableCell
+              value={row.sizeRecommendation || ""}
+              onSave={(v) => saveItemField(row.itemId!, row.orderId, "sizeRecommendation", v)}
+              placeholder="推荐码数"
+            />
+          ) : null}
+        </td>
+
+        {/* 11. 联系方式 */}
+        <td className="py-1 px-1 border-r border-gray-100 text-[11px] max-w-[200px]">
+          {hasItem ? (
+            <EditableCell
+              value={row.contactInfo || ""}
+              type="textarea"
+              onSave={(v) => saveItemField(row.itemId!, row.orderId, "contactInfo", v)}
+              placeholder="姓名/电话/地址"
+            />
+          ) : null}
+        </td>
+
+        {/* 12. 国际跟踪单号 */}
+        <td className="py-1 px-1 border-r border-gray-100 whitespace-nowrap text-[11px]">
+          {hasItem ? (
+            <EditableCell
+              value={row.internationalTrackingNo || ""}
+              onSave={(v) => saveItemField(row.itemId!, row.orderId, "internationalTrackingNo", v)}
+              placeholder="国际单号"
+            />
+          ) : null}
+        </td>
+
+        {/* 13. 发出日期 */}
+        <td className="py-1 px-1 border-r border-gray-100 whitespace-nowrap text-center text-[11px]">
+          {hasItem ? (
+            <EditableCell
+              value={row.shipDate || ""}
+              onSave={(v) => saveItemField(row.itemId!, row.orderId, "shipDate", v)}
+              placeholder="日期"
+            />
+          ) : null}
+        </td>
+
+        {/* 14. 件数 */}
+        <td className="py-1 px-1 border-r border-gray-100 text-center text-[11px]">
+          {hasItem ? (
+            <EditableCell
+              value={row.quantity || ""}
+              type="number"
+              onSave={(v) => saveItemField(row.itemId!, row.orderId, "quantity", v)}
+              placeholder="0"
+            />
+          ) : null}
+        </td>
+
+        {/* 15. 货源 */}
+        <td className="py-1 px-1 border-r border-gray-100 whitespace-nowrap text-[11px]">
+          {hasItem ? (
+            <EditableCell
+              value={row.source || ""}
+              onSave={(v) => saveItemField(row.itemId!, row.orderId, "source", v)}
+              placeholder="货源"
+            />
+          ) : null}
+        </td>
+
+        {/* 16. 订单状态 */}
+        <td className="py-1 px-1 border-r border-gray-100 text-center text-[11px]">
+          {hasItem ? (
+            <EditableCell
+              value={row.itemStatus || row.orderStatus || "待处理"}
+              type="select"
+              selectOptions={ORDER_STATUSES}
+              onSave={(v) => saveItemField(row.itemId!, row.orderId, "itemStatus", v)}
+            />
+          ) : row.isFirstRow ? (
+            <EditableCell
+              value={row.orderStatus || "待处理"}
+              type="select"
+              selectOptions={ORDER_STATUSES}
+              onSave={(v) => saveOrderField(row.orderId, "orderStatus", v)}
+            />
+          ) : null}
+        </td>
+
+        {/* 17. 总金额$ */}
+        <td className="py-1 px-1 border-r border-gray-100 text-right font-mono whitespace-nowrap text-[11px]">
+          {hasItem ? (
+            <EditableCell
+              value={row.amountUsd || ""}
+              type="number"
+              onSave={(v) => saveItemField(row.itemId!, row.orderId, "amountUsd", v)}
+              placeholder="0"
+            />
+          ) : (
+            fmtNum(row.amountUsd) ? `$${fmtNum(row.amountUsd)}` : ""
+          )}
+        </td>
+
+        {/* 18. 总金额¥ */}
+        <td className="py-1 px-1 border-r border-gray-100 text-right font-mono whitespace-nowrap text-[11px]">
+          {hasItem ? (
+            <EditableCell
+              value={row.amountCny || ""}
+              type="number"
+              onSave={(v) => saveItemField(row.itemId!, row.orderId, "amountCny", v)}
+              placeholder="0"
+            />
+          ) : (
+            fmtNum(row.amountCny) ? `¥${fmtNum(row.amountCny)}` : ""
+          )}
+        </td>
+
+        {/* 19. 售价 */}
+        <td className="py-1 px-1 border-r border-gray-100 text-right font-mono whitespace-nowrap text-[11px]">
+          {hasItem ? (
+            <EditableCell
+              value={row.sellingPrice || ""}
+              type="number"
+              onSave={(v) => saveItemField(row.itemId!, row.orderId, "sellingPrice", v)}
+              placeholder="0"
+            />
+          ) : null}
+        </td>
+
+        {/* 20. 产品成本 */}
+        <td className="py-1 px-1 border-r border-gray-100 text-right font-mono whitespace-nowrap text-[11px]">
+          {hasItem ? (
+            <EditableCell
+              value={row.productCost || ""}
+              type="number"
+              onSave={(v) => saveItemField(row.itemId!, row.orderId, "productCost", v)}
+              placeholder="0"
+            />
+          ) : null}
+        </td>
+
+        {/* 21. 产品毛利润 - auto calculated, read only */}
+        <td className={`py-1 px-1 border-r border-gray-100 text-right font-mono whitespace-nowrap text-[11px] ${profitColor(row.productProfit)}`}>
+          {fmtNum(row.productProfit)}
+        </td>
+
+        {/* 22. 产品毛利率 - auto calculated, read only */}
+        <td className={`py-1 px-1 border-r border-gray-100 text-right font-mono whitespace-nowrap text-[11px] ${profitColor(row.productProfitRate)}`}>
+          {fmtPct(row.productProfitRate)}
+        </td>
+
+        {/* 23. 收取运费(¥) */}
+        <td className="py-1 px-1 border-r border-gray-100 text-right font-mono whitespace-nowrap text-[11px]">
+          {hasItem ? (
+            <EditableCell
+              value={row.shippingCharged || ""}
+              type="number"
+              onSave={(v) => saveItemField(row.itemId!, row.orderId, "shippingCharged", v)}
+              placeholder="0"
+            />
+          ) : null}
+        </td>
+
+        {/* 24. 实际运费 */}
+        <td className="py-1 px-1 border-r border-gray-100 text-right font-mono whitespace-nowrap text-[11px]">
+          {hasItem ? (
+            <EditableCell
+              value={row.shippingActual || ""}
+              type="number"
+              onSave={(v) => saveItemField(row.itemId!, row.orderId, "shippingActual", v)}
+              placeholder="0"
+            />
+          ) : null}
+        </td>
+
+        {/* 25. 运费利润 - auto calculated */}
+        <td className={`py-1 px-1 border-r border-gray-100 text-right font-mono whitespace-nowrap text-[11px] ${profitColor(row.shippingProfit)}`}>
+          {fmtNum(row.shippingProfit)}
+        </td>
+
+        {/* 26. 运费利润率 - auto calculated */}
+        <td className={`py-1 px-1 border-r border-gray-100 text-right font-mono whitespace-nowrap text-[11px] ${profitColor(row.shippingProfitRate)}`}>
+          {fmtPct(row.shippingProfitRate)}
+        </td>
+
+        {/* 27. 总利润 - auto calculated */}
+        <td className={`py-1 px-1 border-r border-gray-100 text-right font-mono whitespace-nowrap text-[11px] font-medium ${profitColor(row.totalProfit)}`}>
+          {fmtNum(row.totalProfit)}
+        </td>
+
+        {/* 28. 利润率 - auto calculated */}
+        <td className={`py-1 px-1 border-r border-gray-100 text-right font-mono whitespace-nowrap text-[11px] ${profitColor(row.profitRate)}`}>
+          {fmtPct(row.profitRate)}
+        </td>
+
+        {/* 29. 付款截图 - item level with upload */}
+        <td className="py-1 px-1 border-r border-gray-100 text-center">
+          {hasItem ? (
+            <ImageUploadCell
+              imageUrl={row.paymentScreenshotUrl}
+              onUploaded={(url) => saveItemField(row.itemId!, row.orderId, "paymentScreenshotUrl", url)}
+              onPreview={setPreviewImage}
+              uploadMutation={uploadMutation}
+            />
+          ) : null}
+        </td>
+
+        {/* 30. 备注 */}
+        <td className="py-1 px-1 border-r border-gray-100 text-[11px] max-w-[120px]">
+          {hasItem ? (
+            <EditableCell
+              value={row.remarks || ""}
+              type="textarea"
+              onSave={(v) => saveItemField(row.itemId!, row.orderId, "remarks", v)}
+              placeholder="备注"
+            />
+          ) : row.isFirstRow ? (
+            <EditableCell
+              value={row.remarks || ""}
+              type="textarea"
+              onSave={(v) => saveOrderField(row.orderId, "remarks", v)}
+              placeholder="备注"
+            />
+          ) : null}
+        </td>
+
+        {/* 31. 付款状态 */}
+        <td className="py-1 px-1 text-center text-[11px]">
+          {hasItem ? (
+            <EditableCell
+              value={row.paymentStatus || "未付款"}
+              type="select"
+              selectOptions={PAYMENT_STATUSES}
+              onSave={(v) => saveItemField(row.itemId!, row.orderId, "paymentStatus", v)}
+            />
+          ) : row.isFirstRow ? (
+            <EditableCell
+              value={row.paymentStatus || "未付款"}
+              type="select"
+              selectOptions={PAYMENT_STATUSES}
+              onSave={(v) => saveOrderField(row.orderId, "paymentStatus", v)}
+            />
+          ) : null}
+        </td>
+      </tr>
+    );
+  };
+
   return (
     <div className="space-y-4">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">订单管理</h1>
-          <p className="text-muted-foreground mt-1">
-            按模版表格形式展示所有订单及子项
+          <p className="text-muted-foreground mt-1 text-sm">
+            点击单元格直接编辑 · 支持图片上传 · 利润自动计算
           </p>
         </div>
         <Button
@@ -530,15 +1151,17 @@ export default function OrdersPage() {
       <Card className="border-0 shadow-sm">
         <CardContent className="p-0">
           {isLoading ? (
-            <div className="p-12 text-center text-muted-foreground">加载中...</div>
+            <div className="p-12 text-center text-muted-foreground">
+              <Loader2 className="h-6 w-6 animate-spin mx-auto mb-2" />
+              加载中...
+            </div>
           ) : flatRows.length > 0 ? (
             <>
               <div className="overflow-x-auto">
                 <table className="w-max min-w-full text-xs border-collapse">
                   <thead className="sticky top-0 z-10">
                     <tr className="bg-emerald-600 text-white">
-                      {/* Action column */}
-                      <th className="py-2 px-2 text-center font-medium border-r border-emerald-500 whitespace-nowrap" style={{ width: "70px" }}>
+                      <th className="py-2 px-2 text-center font-medium border-r border-emerald-500 whitespace-nowrap sticky left-0 bg-emerald-600 z-20" style={{ width: "90px" }}>
                         操作
                       </th>
                       {columns.map((col) => (
@@ -553,263 +1176,7 @@ export default function OrdersPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {flatRows.map((row, rowIdx) => {
-                      const isOrderBoundary = row.isFirstRow;
-                      const borderTop = isOrderBoundary ? "border-t-2 border-t-emerald-200" : "border-t border-t-gray-100";
-                      const bgClass = isOrderBoundary ? "bg-white" : "bg-gray-50/50";
-
-                      return (
-                        <tr
-                          key={`${row.orderId}-${rowIdx}`}
-                          className={`${borderTop} ${bgClass} hover:bg-emerald-50/40 transition-colors`}
-                        >
-                          {/* Action buttons - only on first row */}
-                          <td className="py-1.5 px-1 text-center border-r border-gray-100">
-                            {row.isFirstRow && (
-                              <div className="flex items-center justify-center gap-0.5">
-                                <Tooltip>
-                                  <TooltipTrigger asChild>
-                                    <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => setLocation(`/orders/${row.orderId}`)}>
-                                      <Eye className="h-3 w-3" />
-                                    </Button>
-                                  </TooltipTrigger>
-                                  <TooltipContent>查看详情</TooltipContent>
-                                </Tooltip>
-                                <Tooltip>
-                                  <TooltipTrigger asChild>
-                                    <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => {
-                                      const order = data?.data?.find((o: any) => o.id === row.orderId);
-                                      if (order) handleEdit(order);
-                                    }}>
-                                      <Edit className="h-3 w-3" />
-                                    </Button>
-                                  </TooltipTrigger>
-                                  <TooltipContent>编辑订单</TooltipContent>
-                                </Tooltip>
-                                <Tooltip>
-                                  <TooltipTrigger asChild>
-                                    <Button variant="ghost" size="icon" className="h-6 w-6 text-destructive hover:text-destructive" onClick={() => setDeleteId(row.orderId)}>
-                                      <Trash2 className="h-3 w-3" />
-                                    </Button>
-                                  </TooltipTrigger>
-                                  <TooltipContent>删除订单</TooltipContent>
-                                </Tooltip>
-                              </div>
-                            )}
-                          </td>
-
-                          {/* 1. 日期 */}
-                          <td className="py-1.5 px-2 border-r border-gray-100 whitespace-nowrap text-center">
-                            {row.isFirstRow ? (
-                              <span className="font-medium text-gray-700">{row.orderDate || ""}</span>
-                            ) : null}
-                          </td>
-
-                          {/* 2. 客服名字 */}
-                          <td className="py-1.5 px-2 border-r border-gray-100 whitespace-nowrap text-center">
-                            {row.isFirstRow ? row.staffName || "" : ""}
-                          </td>
-
-                          {/* 3. 账号 */}
-                          <td className="py-1.5 px-2 border-r border-gray-100 whitespace-nowrap text-center">
-                            {row.isFirstRow ? row.account || "" : ""}
-                          </td>
-
-                          {/* 4. 客户WhatsApp */}
-                          <td className="py-1.5 px-2 border-r border-gray-100 whitespace-nowrap">
-                            {row.isFirstRow ? (
-                              <span className="font-medium text-emerald-700">{row.customerWhatsapp}</span>
-                            ) : null}
-                          </td>
-
-                          {/* 5. 客户属性 */}
-                          <td className="py-1.5 px-2 border-r border-gray-100 whitespace-nowrap text-center">
-                            {row.isFirstRow && row.customerType ? (
-                              <span className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-medium ${
-                                row.customerType === "零售复购"
-                                  ? "bg-blue-50 text-blue-700"
-                                  : "bg-orange-50 text-orange-700"
-                              }`}>
-                                {row.customerType}
-                              </span>
-                            ) : null}
-                          </td>
-
-                          {/* 6. 订单编号 */}
-                          <td className="py-1.5 px-2 border-r border-gray-100 whitespace-nowrap">
-                            <button
-                              onClick={() => setLocation(`/orders/${row.orderId}`)}
-                              className="text-primary hover:underline text-left font-medium"
-                            >
-                              {row.orderNumber}
-                            </button>
-                          </td>
-
-                          {/* 7. 订单图片 */}
-                          <td className="py-1.5 px-2 border-r border-gray-100 text-center">
-                            {row.orderImageUrl ? (
-                              <button onClick={() => setPreviewImage(row.orderImageUrl)} className="inline-flex items-center justify-center">
-                                <img src={row.orderImageUrl} alt="" className="h-6 w-6 rounded object-cover border" />
-                              </button>
-                            ) : null}
-                          </td>
-
-                          {/* 8. Size */}
-                          <td className="py-1.5 px-2 border-r border-gray-100 whitespace-nowrap text-center font-medium">
-                            {row.size || ""}
-                          </td>
-
-                          {/* 9. 国内单号 */}
-                          <td className="py-1.5 px-2 border-r border-gray-100 whitespace-nowrap text-[10px]">
-                            {row.domesticTrackingNo || ""}
-                          </td>
-
-                          {/* 10. 推荐码数 */}
-                          <td className="py-1.5 px-2 border-r border-gray-100 whitespace-nowrap text-[10px]">
-                            {row.sizeRecommendation || ""}
-                          </td>
-
-                          {/* 11. 联系方式 */}
-                          <td className="py-1.5 px-2 border-r border-gray-100 max-w-[200px]">
-                            {row.contactInfo ? (
-                              <Tooltip>
-                                <TooltipTrigger asChild>
-                                  <div className="text-[10px] leading-tight truncate max-w-[200px] cursor-help">
-                                    {row.contactInfo.split("\n")[0]}...
-                                  </div>
-                                </TooltipTrigger>
-                                <TooltipContent side="bottom" className="max-w-sm whitespace-pre-wrap text-xs">
-                                  {row.contactInfo}
-                                </TooltipContent>
-                              </Tooltip>
-                            ) : null}
-                          </td>
-
-                          {/* 12. 国际跟踪单号 */}
-                          <td className="py-1.5 px-2 border-r border-gray-100 whitespace-nowrap text-[10px]">
-                            {row.internationalTrackingNo || ""}
-                          </td>
-
-                          {/* 13. 发出日期 */}
-                          <td className="py-1.5 px-2 border-r border-gray-100 whitespace-nowrap text-center text-[10px]">
-                            {row.shipDate || ""}
-                          </td>
-
-                          {/* 14. 件数 */}
-                          <td className="py-1.5 px-2 border-r border-gray-100 text-center">
-                            {row.quantity || ""}
-                          </td>
-
-                          {/* 15. 货源 */}
-                          <td className="py-1.5 px-2 border-r border-gray-100 whitespace-nowrap text-[10px]">
-                            {row.source || ""}
-                          </td>
-
-                          {/* 16. 订单状态 */}
-                          <td className="py-1.5 px-2 border-r border-gray-100 text-center">
-                            {(row.itemStatus || (row.isFirstRow ? row.orderStatus : null)) ? (
-                              <span className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-medium border ${statusColor(row.itemStatus || row.orderStatus)}`}>
-                                {row.itemStatus || row.orderStatus}
-                              </span>
-                            ) : null}
-                          </td>
-
-                          {/* 17. 总金额$ */}
-                          <td className="py-1.5 px-2 border-r border-gray-100 text-right font-mono whitespace-nowrap">
-                            {fmtNum(row.amountUsd) ? `$${fmtNum(row.amountUsd)}` : ""}
-                          </td>
-
-                          {/* 18. 总金额¥ */}
-                          <td className="py-1.5 px-2 border-r border-gray-100 text-right font-mono whitespace-nowrap">
-                            {fmtNum(row.amountCny) ? `¥${fmtNum(row.amountCny)}` : ""}
-                          </td>
-
-                          {/* 19. 售价 */}
-                          <td className="py-1.5 px-2 border-r border-gray-100 text-right font-mono whitespace-nowrap">
-                            {fmtNum(row.sellingPrice)}
-                          </td>
-
-                          {/* 20. 产品成本 */}
-                          <td className="py-1.5 px-2 border-r border-gray-100 text-right font-mono whitespace-nowrap">
-                            {fmtNum(row.productCost)}
-                          </td>
-
-                          {/* 21. 产品毛利润 */}
-                          <td className={`py-1.5 px-2 border-r border-gray-100 text-right font-mono whitespace-nowrap ${profitColor(row.productProfit)}`}>
-                            {fmtNum(row.productProfit)}
-                          </td>
-
-                          {/* 22. 产品毛利率 */}
-                          <td className={`py-1.5 px-2 border-r border-gray-100 text-right font-mono whitespace-nowrap ${profitColor(row.productProfitRate)}`}>
-                            {fmtPct(row.productProfitRate)}
-                          </td>
-
-                          {/* 23. 收取运费(¥) */}
-                          <td className="py-1.5 px-2 border-r border-gray-100 text-right font-mono whitespace-nowrap">
-                            {fmtNum(row.shippingCharged)}
-                          </td>
-
-                          {/* 24. 实际运费 */}
-                          <td className="py-1.5 px-2 border-r border-gray-100 text-right font-mono whitespace-nowrap">
-                            {fmtNum(row.shippingActual)}
-                          </td>
-
-                          {/* 25. 运费利润 */}
-                          <td className={`py-1.5 px-2 border-r border-gray-100 text-right font-mono whitespace-nowrap ${profitColor(row.shippingProfit)}`}>
-                            {fmtNum(row.shippingProfit)}
-                          </td>
-
-                          {/* 26. 运费利润率 */}
-                          <td className={`py-1.5 px-2 border-r border-gray-100 text-right font-mono whitespace-nowrap ${profitColor(row.shippingProfitRate)}`}>
-                            {fmtPct(row.shippingProfitRate)}
-                          </td>
-
-                          {/* 27. 总利润 */}
-                          <td className={`py-1.5 px-2 border-r border-gray-100 text-right font-mono whitespace-nowrap font-medium ${profitColor(row.totalProfit)}`}>
-                            {fmtNum(row.totalProfit)}
-                          </td>
-
-                          {/* 28. 利润率 */}
-                          <td className={`py-1.5 px-2 border-r border-gray-100 text-right font-mono whitespace-nowrap ${profitColor(row.profitRate)}`}>
-                            {fmtPct(row.profitRate)}
-                          </td>
-
-                          {/* 29. 付款截图 */}
-                          <td className="py-1.5 px-2 border-r border-gray-100 text-center">
-                            {row.paymentScreenshotUrl ? (
-                              <button onClick={() => setPreviewImage(row.paymentScreenshotUrl)} className="inline-flex items-center justify-center">
-                                <img src={row.paymentScreenshotUrl} alt="" className="h-6 w-6 rounded object-cover border" />
-                              </button>
-                            ) : null}
-                          </td>
-
-                          {/* 30. 备注 */}
-                          <td className="py-1.5 px-2 border-r border-gray-100 max-w-[120px]">
-                            {row.remarks ? (
-                              <Tooltip>
-                                <TooltipTrigger asChild>
-                                  <div className="text-[10px] truncate max-w-[120px] cursor-help">
-                                    {row.remarks}
-                                  </div>
-                                </TooltipTrigger>
-                                <TooltipContent side="bottom" className="max-w-sm whitespace-pre-wrap text-xs">
-                                  {row.remarks}
-                                </TooltipContent>
-                              </Tooltip>
-                            ) : null}
-                          </td>
-
-                          {/* 31. 付款状态 */}
-                          <td className="py-1.5 px-2 text-center">
-                            {row.paymentStatus ? (
-                              <span className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-medium border ${paymentColor(row.paymentStatus)}`}>
-                                {row.paymentStatus}
-                              </span>
-                            ) : null}
-                          </td>
-                        </tr>
-                      );
-                    })}
+                    {flatRows.map((row, rowIdx) => renderRow(row, rowIdx))}
                   </tbody>
                 </table>
               </div>

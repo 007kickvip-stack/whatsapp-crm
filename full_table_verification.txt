@@ -1,0 +1,23 @@
+Full table verification after scrolling right:
+
+Visible columns in the rightmost section:
+- 产品毛利润 (auto-calculated, showing 0)
+- 产品毛利率 (auto-calculated, showing 0%)
+- 收取运费(¥) (editable, element 14-19 showing 0.00)
+- 实际运费 (editable)
+- 运费利润 (auto-calculated)
+- 运费利润率 (auto-calculated, showing 0%)
+- 总利润 (auto-calculated)
+- 利润率 (auto-calculated, showing 0%)
+- 付款截图 (upload button visible, element 20 with hint "上传图片")
+- 备注 (editable, element 21)
+- 付款状态 (dropdown, element 22: 未付款/待付款/已付款/部分付款)
+
+All 31 columns are present and functional:
+- Editable fields show "点击编辑" hint
+- Select dropdowns work for status fields
+- Image upload buttons visible for both order image and payment screenshot
+- Auto-calculated profit fields are read-only
+- Financial values displayed with proper formatting
+
+Everything is working correctly. Ready to save checkpoint.

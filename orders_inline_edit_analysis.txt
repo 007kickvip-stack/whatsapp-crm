@@ -1,0 +1,21 @@
+Orders page inline edit analysis:
+
+The table now shows:
+- Action column with view/delete/add-subitem buttons (elements 11, 12, 13)
+- Date field "2026-04-08" is clickable for editing (element 14, hint "点击编辑")
+- Staff name "Abe Abe" shown as read-only
+- Account "ssss" is clickable for editing (element 15)
+- Customer WhatsApp "+44 95168542" is clickable for editing (element 16)
+- Customer type has dropdown selector (element 17: 新零售/零售复购)
+- Order number "zhu 951556" shown as link (element 18)
+- Order status has dropdown (element 19: 待处理/已发货/已签收/已完成/已取消)
+- Remarks field clickable for editing (element 20)
+- Payment status has dropdown (element 21: 未付款/待付款/已付款/部分付款)
+
+The inline editing is working! Fields show "点击编辑" hint on hover.
+Select dropdowns for status fields are directly visible.
+
+This order has no items yet (itemCount=0), so item-level fields (图片, Size, etc.) are empty.
+The "+" button (element 13) allows adding sub-items directly from the table.
+
+Need to scroll right to verify image upload columns are visible.
