@@ -1,17 +1,11 @@
-import { int, mysqlEnum, mysqlTable, text, timestamp, varchar } from "drizzle-orm/mysql-core";
+import { int, mysqlEnum, mysqlTable, text, timestamp, varchar, decimal, date } from "drizzle-orm/mysql-core";
 
 /**
  * Core user table backing auth flow.
- * Extend this file with additional tables as your product grows.
- * Columns use camelCase to match both database fields and generated types.
+ * Role: admin (管理员) | user (客服)
  */
 export const users = mysqlTable("users", {
-  /**
-   * Surrogate primary key. Auto-incremented numeric value managed by the database.
-   * Use this for relations between tables.
-   */
   id: int("id").autoincrement().primaryKey(),
-  /** Manus OAuth identifier (openId) returned from the OAuth callback. Unique per user. */
   openId: varchar("openId", { length: 64 }).notNull().unique(),
   name: text("name"),
   email: varchar("email", { length: 320 }),
@@ -25,4 +19,92 @@ export const users = mysqlTable("users", {
 export type User = typeof users.$inferSelect;
 export type InsertUser = typeof users.$inferInsert;
 
-// TODO: Add your tables here
+/**
+ * 客户表 - 以 WhatsApp 号码为主要标识
+ */
+export const customers = mysqlTable("customers", {
+  id: int("id").autoincrement().primaryKey(),
+  whatsapp: varchar("whatsapp", { length: 32 }).notNull().unique(),
+  customerType: varchar("customerType", { length: 32 }).default("新零售"),
+  contactName: varchar("contactName", { length: 128 }),
+  telephone: varchar("telephone", { length: 64 }),
+  address: text("address"),
+  province: varchar("province", { length: 128 }),
+  city: varchar("city", { length: 128 }),
+  cityCode: varchar("cityCode", { length: 32 }),
+  country: varchar("country", { length: 64 }),
+  createdById: int("createdById"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type Customer = typeof customers.$inferSelect;
+export type InsertCustomer = typeof customers.$inferInsert;
+
+/**
+ * 订单表 - 主订单信息
+ */
+export const orders = mysqlTable("orders", {
+  id: int("id").autoincrement().primaryKey(),
+  orderDate: date("orderDate"),
+  staffName: varchar("staffName", { length: 64 }),
+  staffId: int("staffId"),
+  account: varchar("account", { length: 64 }),
+  customerWhatsapp: varchar("customerWhatsapp", { length: 32 }).notNull(),
+  customerId: int("customerId"),
+  customerType: varchar("customerType", { length: 32 }),
+  orderNumber: varchar("orderNumber", { length: 128 }).notNull(),
+  orderStatus: varchar("orderStatus", { length: 64 }).default("待处理"),
+  paymentStatus: varchar("paymentStatus", { length: 64 }).default("未付款"),
+  remarks: text("remarks"),
+  // 汇总金额（所有子项合计）
+  totalAmountUsd: decimal("totalAmountUsd", { precision: 12, scale: 2 }).default("0"),
+  totalAmountCny: decimal("totalAmountCny", { precision: 12, scale: 2 }).default("0"),
+  totalProfit: decimal("totalProfit", { precision: 12, scale: 2 }).default("0"),
+  totalProfitRate: decimal("totalProfitRate", { precision: 8, scale: 6 }).default("0"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type Order = typeof orders.$inferSelect;
+export type InsertOrder = typeof orders.$inferInsert;
+
+/**
+ * 订单子项表 - 每个商品/尺码独立记录
+ */
+export const orderItems = mysqlTable("order_items", {
+  id: int("id").autoincrement().primaryKey(),
+  orderId: int("orderId").notNull(),
+  orderNumber: varchar("orderNumber", { length: 128 }),
+  orderImageUrl: text("orderImageUrl"),
+  size: varchar("size", { length: 32 }),
+  domesticTrackingNo: varchar("domesticTrackingNo", { length: 128 }),
+  sizeRecommendation: text("sizeRecommendation"),
+  contactInfo: text("contactInfo"),
+  internationalTrackingNo: varchar("internationalTrackingNo", { length: 128 }),
+  shipDate: varchar("shipDate", { length: 128 }),
+  quantity: int("quantity").default(1),
+  source: varchar("source", { length: 128 }),
+  itemStatus: varchar("itemStatus", { length: 64 }),
+  // 金额字段
+  amountUsd: decimal("amountUsd", { precision: 12, scale: 2 }).default("0"),
+  amountCny: decimal("amountCny", { precision: 12, scale: 2 }).default("0"),
+  sellingPrice: decimal("sellingPrice", { precision: 12, scale: 2 }).default("0"),
+  productCost: decimal("productCost", { precision: 12, scale: 2 }).default("0"),
+  productProfit: decimal("productProfit", { precision: 12, scale: 2 }).default("0"),
+  productProfitRate: decimal("productProfitRate", { precision: 8, scale: 6 }).default("0"),
+  shippingCharged: decimal("shippingCharged", { precision: 12, scale: 2 }).default("0"),
+  shippingActual: decimal("shippingActual", { precision: 12, scale: 2 }).default("0"),
+  shippingProfit: decimal("shippingProfit", { precision: 12, scale: 2 }).default("0"),
+  shippingProfitRate: decimal("shippingProfitRate", { precision: 8, scale: 6 }).default("0"),
+  totalProfit: decimal("totalProfit", { precision: 12, scale: 2 }).default("0"),
+  profitRate: decimal("profitRate", { precision: 8, scale: 6 }).default("0"),
+  paymentScreenshotUrl: text("paymentScreenshotUrl"),
+  remarks: text("remarks"),
+  paymentStatus: varchar("paymentStatus", { length: 64 }),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type OrderItem = typeof orderItems.$inferSelect;
+export type InsertOrderItem = typeof orderItems.$inferInsert;

@@ -1,28 +1,335 @@
 import { COOKIE_NAME } from "@shared/const";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
-import { publicProcedure, router } from "./_core/trpc";
+import { publicProcedure, protectedProcedure, adminProcedure, router } from "./_core/trpc";
+import { z } from "zod";
+import {
+  listUsers, updateUserRole, deleteUser, getUserById,
+  createCustomer, updateCustomer, deleteCustomer, getCustomerById, getCustomerByWhatsapp, listCustomers,
+  createOrder, updateOrder, deleteOrder, getOrderById, getOrderWithItems, listOrders,
+  createOrderItem, updateOrderItem, deleteOrderItem, getOrderItemsByOrderId, recalculateOrderTotals,
+  getOrderStats, getOrderStatusDistribution, getPaymentStatusDistribution,
+  getStaffPerformance, getRecentOrders, getCustomerStats, getDailyOrderTrend,
+} from "./db";
+import { storagePut } from "./storage";
+import { nanoid } from "nanoid";
 
 export const appRouter = router({
-    // if you need to use socket.io, read and register route in server/_core/index.ts, all api should start with '/api/' so that the gateway can route correctly
   system: systemRouter,
   auth: router({
     me: publicProcedure.query(opts => opts.ctx.user),
     logout: publicProcedure.mutation(({ ctx }) => {
       const cookieOptions = getSessionCookieOptions(ctx.req);
       ctx.res.clearCookie(COOKIE_NAME, { ...cookieOptions, maxAge: -1 });
-      return {
-        success: true,
-      } as const;
+      return { success: true } as const;
     }),
   }),
 
-  // TODO: add feature routers here, e.g.
-  // todo: router({
-  //   list: protectedProcedure.query(({ ctx }) =>
-  //     db.getUserTodos(ctx.user.id)
-  //   ),
-  // }),
+  // ==================== User Management (Admin Only) ====================
+  users: router({
+    list: adminProcedure.input(z.object({
+      page: z.number().default(1),
+      pageSize: z.number().default(20),
+    })).query(({ input }) => listUsers(input.page, input.pageSize)),
+
+    getById: adminProcedure.input(z.object({ id: z.number() })).query(({ input }) => getUserById(input.id)),
+
+    updateRole: adminProcedure.input(z.object({
+      userId: z.number(),
+      role: z.enum(["user", "admin"]),
+    })).mutation(({ input }) => updateUserRole(input.userId, input.role)),
+
+    delete: adminProcedure.input(z.object({ userId: z.number() })).mutation(({ input }) => deleteUser(input.userId)),
+  }),
+
+  // ==================== Customer Management ====================
+  customers: router({
+    list: protectedProcedure.input(z.object({
+      page: z.number().default(1),
+      pageSize: z.number().default(20),
+      search: z.string().optional(),
+    })).query(({ input, ctx }) => {
+      const isAdmin = ctx.user.role === "admin";
+      return listCustomers({
+        ...input,
+        createdById: isAdmin ? undefined : ctx.user.id,
+      });
+    }),
+
+    getById: protectedProcedure.input(z.object({ id: z.number() })).query(({ input }) => getCustomerById(input.id)),
+
+    getByWhatsapp: protectedProcedure.input(z.object({ whatsapp: z.string() })).query(({ input }) => getCustomerByWhatsapp(input.whatsapp)),
+
+    create: protectedProcedure.input(z.object({
+      whatsapp: z.string().min(1),
+      customerType: z.string().optional(),
+      contactName: z.string().optional(),
+      telephone: z.string().optional(),
+      address: z.string().optional(),
+      province: z.string().optional(),
+      city: z.string().optional(),
+      cityCode: z.string().optional(),
+      country: z.string().optional(),
+    })).mutation(async ({ input, ctx }) => {
+      const id = await createCustomer({ ...input, createdById: ctx.user.id });
+      return { id };
+    }),
+
+    update: protectedProcedure.input(z.object({
+      id: z.number(),
+      whatsapp: z.string().optional(),
+      customerType: z.string().optional(),
+      contactName: z.string().optional(),
+      telephone: z.string().optional(),
+      address: z.string().optional(),
+      province: z.string().optional(),
+      city: z.string().optional(),
+      cityCode: z.string().optional(),
+      country: z.string().optional(),
+    })).mutation(async ({ input }) => {
+      const { id, ...data } = input;
+      await updateCustomer(id, data);
+      return { success: true };
+    }),
+
+    delete: protectedProcedure.input(z.object({ id: z.number() })).mutation(async ({ input }) => {
+      await deleteCustomer(input.id);
+      return { success: true };
+    }),
+  }),
+
+  // ==================== Order Management ====================
+  orders: router({
+    list: protectedProcedure.input(z.object({
+      page: z.number().default(1),
+      pageSize: z.number().default(20),
+      search: z.string().optional(),
+      orderStatus: z.string().optional(),
+      paymentStatus: z.string().optional(),
+      customerWhatsapp: z.string().optional(),
+      dateFrom: z.string().optional(),
+      dateTo: z.string().optional(),
+    })).query(({ input, ctx }) => {
+      const isAdmin = ctx.user.role === "admin";
+      return listOrders({
+        ...input,
+        staffId: isAdmin ? undefined : ctx.user.id,
+      });
+    }),
+
+    getById: protectedProcedure.input(z.object({ id: z.number() })).query(({ input }) => getOrderWithItems(input.id)),
+
+    create: protectedProcedure.input(z.object({
+      orderDate: z.string().optional(),
+      account: z.string().optional(),
+      customerWhatsapp: z.string().min(1),
+      customerId: z.number().optional(),
+      customerType: z.string().optional(),
+      orderNumber: z.string().min(1),
+      orderStatus: z.string().optional(),
+      paymentStatus: z.string().optional(),
+      remarks: z.string().optional(),
+    })).mutation(async ({ input, ctx }) => {
+      const { orderDate, ...rest } = input;
+      const id = await createOrder({
+        ...rest,
+        orderDate: orderDate ? new Date(orderDate) : null,
+        staffId: ctx.user.id,
+        staffName: ctx.user.name || "未知客服",
+      });
+      return { id };
+    }),
+
+    update: protectedProcedure.input(z.object({
+      id: z.number(),
+      orderDate: z.string().optional(),
+      account: z.string().optional(),
+      customerWhatsapp: z.string().optional(),
+      customerType: z.string().optional(),
+      orderNumber: z.string().optional(),
+      orderStatus: z.string().optional(),
+      paymentStatus: z.string().optional(),
+      remarks: z.string().optional(),
+    })).mutation(async ({ input }) => {
+      const { id, orderDate, ...data } = input;
+      await updateOrder(id, {
+        ...data,
+        ...(orderDate !== undefined ? { orderDate: orderDate ? new Date(orderDate) : null } : {}),
+      });
+      return { success: true };
+    }),
+
+    delete: protectedProcedure.input(z.object({ id: z.number() })).mutation(async ({ input }) => {
+      await deleteOrder(input.id);
+      return { success: true };
+    }),
+  }),
+
+  // ==================== Order Items ====================
+  orderItems: router({
+    listByOrder: protectedProcedure.input(z.object({ orderId: z.number() })).query(({ input }) => getOrderItemsByOrderId(input.orderId)),
+
+    create: protectedProcedure.input(z.object({
+      orderId: z.number(),
+      orderNumber: z.string().optional(),
+      orderImageUrl: z.string().optional(),
+      size: z.string().optional(),
+      domesticTrackingNo: z.string().optional(),
+      sizeRecommendation: z.string().optional(),
+      contactInfo: z.string().optional(),
+      internationalTrackingNo: z.string().optional(),
+      shipDate: z.string().optional(),
+      quantity: z.number().optional(),
+      source: z.string().optional(),
+      itemStatus: z.string().optional(),
+      amountUsd: z.string().optional(),
+      amountCny: z.string().optional(),
+      sellingPrice: z.string().optional(),
+      productCost: z.string().optional(),
+      shippingCharged: z.string().optional(),
+      shippingActual: z.string().optional(),
+      paymentScreenshotUrl: z.string().optional(),
+      remarks: z.string().optional(),
+      paymentStatus: z.string().optional(),
+    })).mutation(async ({ input }) => {
+      // Auto-calculate profit fields
+      const sellingPrice = parseFloat(input.sellingPrice || "0");
+      const productCost = parseFloat(input.productCost || "0");
+      const productProfit = sellingPrice - productCost;
+      const productProfitRate = sellingPrice > 0 ? productProfit / sellingPrice : 0;
+
+      const shippingCharged = parseFloat(input.shippingCharged || "0");
+      const shippingActual = parseFloat(input.shippingActual || "0");
+      const shippingProfit = shippingCharged - shippingActual;
+      const shippingProfitRate = shippingCharged > 0 ? shippingProfit / shippingCharged : 0;
+
+      const amountCny = parseFloat(input.amountCny || "0");
+      const totalProfit = productProfit + shippingProfit;
+      const profitRate = amountCny > 0 ? totalProfit / amountCny : 0;
+
+      const id = await createOrderItem({
+        ...input,
+        productProfit: productProfit.toFixed(2),
+        productProfitRate: productProfitRate.toFixed(6),
+        shippingProfit: shippingProfit.toFixed(2),
+        shippingProfitRate: shippingProfitRate.toFixed(6),
+        totalProfit: totalProfit.toFixed(2),
+        profitRate: profitRate.toFixed(6),
+      });
+
+      // Recalculate order totals
+      await recalculateOrderTotals(input.orderId);
+      return { id };
+    }),
+
+    update: protectedProcedure.input(z.object({
+      id: z.number(),
+      orderId: z.number(),
+      orderNumber: z.string().optional(),
+      orderImageUrl: z.string().optional(),
+      size: z.string().optional(),
+      domesticTrackingNo: z.string().optional(),
+      sizeRecommendation: z.string().optional(),
+      contactInfo: z.string().optional(),
+      internationalTrackingNo: z.string().optional(),
+      shipDate: z.string().optional(),
+      quantity: z.number().optional(),
+      source: z.string().optional(),
+      itemStatus: z.string().optional(),
+      amountUsd: z.string().optional(),
+      amountCny: z.string().optional(),
+      sellingPrice: z.string().optional(),
+      productCost: z.string().optional(),
+      shippingCharged: z.string().optional(),
+      shippingActual: z.string().optional(),
+      paymentScreenshotUrl: z.string().optional(),
+      remarks: z.string().optional(),
+      paymentStatus: z.string().optional(),
+    })).mutation(async ({ input }) => {
+      const { id, orderId, ...data } = input;
+      // Auto-calculate profit fields
+      const sellingPrice = parseFloat(data.sellingPrice || "0");
+      const productCost = parseFloat(data.productCost || "0");
+      const productProfit = sellingPrice - productCost;
+      const productProfitRate = sellingPrice > 0 ? productProfit / sellingPrice : 0;
+
+      const shippingCharged = parseFloat(data.shippingCharged || "0");
+      const shippingActual = parseFloat(data.shippingActual || "0");
+      const shippingProfit = shippingCharged - shippingActual;
+      const shippingProfitRate = shippingCharged > 0 ? shippingProfit / shippingCharged : 0;
+
+      const amountCny = parseFloat(data.amountCny || "0");
+      const totalProfit = productProfit + shippingProfit;
+      const profitRate = amountCny > 0 ? totalProfit / amountCny : 0;
+
+      await updateOrderItem(id, {
+        ...data,
+        productProfit: productProfit.toFixed(2),
+        productProfitRate: productProfitRate.toFixed(6),
+        shippingProfit: shippingProfit.toFixed(2),
+        shippingProfitRate: shippingProfitRate.toFixed(6),
+        totalProfit: totalProfit.toFixed(2),
+        profitRate: profitRate.toFixed(6),
+      });
+
+      await recalculateOrderTotals(orderId);
+      return { success: true };
+    }),
+
+    delete: protectedProcedure.input(z.object({
+      id: z.number(),
+      orderId: z.number(),
+    })).mutation(async ({ input }) => {
+      await deleteOrderItem(input.id);
+      await recalculateOrderTotals(input.orderId);
+      return { success: true };
+    }),
+  }),
+
+  // ==================== File Upload ====================
+  upload: router({
+    image: protectedProcedure.input(z.object({
+      base64: z.string(),
+      filename: z.string(),
+      contentType: z.string().default("image/jpeg"),
+    })).mutation(async ({ input }) => {
+      const buffer = Buffer.from(input.base64, "base64");
+      const key = `orders/${nanoid()}-${input.filename}`;
+      const { url } = await storagePut(key, buffer, input.contentType);
+      return { url };
+    }),
+  }),
+
+  // ==================== Statistics (Dashboard) ====================
+  stats: router({
+    overview: protectedProcedure.query(async ({ ctx }) => {
+      const isAdmin = ctx.user.role === "admin";
+      const staffId = isAdmin ? undefined : ctx.user.id;
+      const [orderStats, customerStats, statusDist, paymentDist] = await Promise.all([
+        getOrderStats(staffId),
+        getCustomerStats(),
+        getOrderStatusDistribution(staffId),
+        getPaymentStatusDistribution(staffId),
+      ]);
+      return { orderStats, customerStats, statusDist, paymentDist };
+    }),
+
+    staffPerformance: adminProcedure.query(() => getStaffPerformance()),
+
+    recentOrders: protectedProcedure.input(z.object({
+      limit: z.number().default(10),
+    })).query(({ input, ctx }) => {
+      const isAdmin = ctx.user.role === "admin";
+      return getRecentOrders(input.limit, isAdmin ? undefined : ctx.user.id);
+    }),
+
+    dailyTrend: protectedProcedure.input(z.object({
+      days: z.number().default(30),
+    })).query(({ input, ctx }) => {
+      const isAdmin = ctx.user.role === "admin";
+      return getDailyOrderTrend(input.days, isAdmin ? undefined : ctx.user.id);
+    }),
+  }),
 });
 
 export type AppRouter = typeof appRouter;
