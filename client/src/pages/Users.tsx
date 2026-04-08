@@ -4,6 +4,8 @@ import { useAuth } from "@/_core/hooks/useAuth";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
   Select,
   SelectContent,
@@ -11,6 +13,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -29,6 +38,8 @@ import {
   ChevronRight,
   Users,
   ShieldAlert,
+  UserPlus,
+  Loader2,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useLocation } from "wouter";
@@ -38,6 +49,12 @@ export default function UsersPage() {
   const [, setLocation] = useLocation();
   const [page, setPage] = useState(1);
   const [deleteId, setDeleteId] = useState<number | null>(null);
+  const [showAddDialog, setShowAddDialog] = useState(false);
+  const [addForm, setAddForm] = useState({
+    name: "",
+    email: "",
+    role: "user" as "user" | "admin",
+  });
 
   const utils = trpc.useUtils();
 
@@ -73,15 +90,42 @@ export default function UsersPage() {
     onError: (err) => toast.error(err.message),
   });
 
+  const addUserMutation = trpc.users.create.useMutation({
+    onSuccess: () => {
+      toast.success("客服账号创建成功");
+      utils.users.list.invalidate();
+      setShowAddDialog(false);
+      setAddForm({ name: "", email: "", role: "user" });
+    },
+    onError: (err) => toast.error(err.message),
+  });
+
   const totalPages = Math.ceil((data?.total ?? 0) / 20);
+
+  const handleAddSubmit = () => {
+    if (!addForm.name.trim()) {
+      toast.error("请输入用户姓名");
+      return;
+    }
+    addUserMutation.mutate(addForm);
+  };
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight">用户管理</h1>
-        <p className="text-muted-foreground mt-1">
-          管理系统用户和角色权限
-        </p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">用户管理</h1>
+          <p className="text-muted-foreground mt-1">
+            管理系统用户和角色权限
+          </p>
+        </div>
+        <Button
+          onClick={() => setShowAddDialog(true)}
+          className="bg-emerald-600 hover:bg-emerald-700"
+        >
+          <UserPlus className="h-4 w-4 mr-2" />
+          添加客服
+        </Button>
       </div>
 
       <Card className="border-0 shadow-sm">
@@ -197,6 +241,81 @@ export default function UsersPage() {
           )}
         </CardContent>
       </Card>
+
+      {/* Add User Dialog */}
+      <Dialog open={showAddDialog} onOpenChange={setShowAddDialog}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <UserPlus className="h-5 w-5 text-emerald-600" />
+              添加客服账号
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="add-name">姓名 <span className="text-destructive">*</span></Label>
+              <Input
+                id="add-name"
+                placeholder="请输入客服姓名"
+                value={addForm.name}
+                onChange={(e) => setAddForm((f) => ({ ...f, name: e.target.value }))}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="add-email">邮箱</Label>
+              <Input
+                id="add-email"
+                type="email"
+                placeholder="请输入邮箱地址（可选）"
+                value={addForm.email}
+                onChange={(e) => setAddForm((f) => ({ ...f, email: e.target.value }))}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>角色</Label>
+              <Select
+                value={addForm.role}
+                onValueChange={(v: "user" | "admin") => setAddForm((f) => ({ ...f, role: v }))}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="user">
+                    <div className="flex items-center gap-1.5">
+                      <UserCog className="h-3.5 w-3.5" />
+                      客服
+                    </div>
+                  </SelectItem>
+                  <SelectItem value="admin">
+                    <div className="flex items-center gap-1.5">
+                      <Shield className="h-3.5 w-3.5" />
+                      管理员
+                    </div>
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="rounded-lg bg-amber-50 border border-amber-200 p-3 text-sm text-amber-800">
+              <p className="font-medium mb-1">提示</p>
+              <p>创建后，该账号将生成一个唯一的登录链接。客服使用该链接首次登录后即可开始工作。</p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowAddDialog(false)}>
+              取消
+            </Button>
+            <Button
+              onClick={handleAddSubmit}
+              disabled={addUserMutation.isPending}
+              className="bg-emerald-600 hover:bg-emerald-700"
+            >
+              {addUserMutation.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+              创建账号
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Delete Confirmation */}
       <AlertDialog open={deleteId !== null} onOpenChange={() => setDeleteId(null)}>

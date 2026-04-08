@@ -4,7 +4,7 @@ import { systemRouter } from "./_core/systemRouter";
 import { publicProcedure, protectedProcedure, adminProcedure, router } from "./_core/trpc";
 import { z } from "zod";
 import {
-  listUsers, updateUserRole, deleteUser, getUserById,
+  listUsers, updateUserRole, deleteUser, getUserById, createUser,
   createCustomer, updateCustomer, deleteCustomer, getCustomerById, getCustomerByWhatsapp, listCustomers,
   createOrder, updateOrder, deleteOrder, getOrderById, getOrderWithItems, listOrders,
   createOrderItem, updateOrderItem, deleteOrderItem, getOrderItemsByOrderId, recalculateOrderTotals,
@@ -40,6 +40,15 @@ export const appRouter = router({
     })).mutation(({ input }) => updateUserRole(input.userId, input.role)),
 
     delete: adminProcedure.input(z.object({ userId: z.number() })).mutation(({ input }) => deleteUser(input.userId)),
+
+    create: adminProcedure.input(z.object({
+      name: z.string().min(1),
+      email: z.string().optional(),
+      role: z.enum(["user", "admin"]).default("user"),
+    })).mutation(async ({ input }) => {
+      const result = await createUser(input);
+      return result;
+    }),
   }),
 
   // ==================== Customer Management ====================

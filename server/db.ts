@@ -2,6 +2,7 @@ import { eq, like, and, sql, desc, or, SQL } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import { InsertUser, users, customers, orders, orderItems, InsertCustomer, InsertOrder, InsertOrderItem } from "../drizzle/schema";
 import { ENV } from './_core/env';
+import { nanoid } from 'nanoid';
 
 let _db: ReturnType<typeof drizzle> | null = null;
 
@@ -100,6 +101,21 @@ export async function getUserById(userId: number) {
   if (!db) return undefined;
   const result = await db.select().from(users).where(eq(users.id, userId)).limit(1);
   return result.length > 0 ? result[0] : undefined;
+}
+
+export async function createUser(data: { name: string; email?: string; role?: "user" | "admin" }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const openId = `manual-${nanoid()}`;
+  const result = await db.insert(users).values({
+    openId,
+    name: data.name,
+    email: data.email || null,
+    role: data.role || "user",
+    loginMethod: "manual",
+    lastSignedIn: new Date(),
+  });
+  return { id: result[0].insertId, openId };
 }
 
 // ==================== Customer Helpers ====================

@@ -1,0 +1,14 @@
+Users page verification:
+
+1. "添加客服" button is visible in the top-right corner (green button with UserPlus icon)
+2. Clicking the button opens a dialog with fields: 姓名(required), 邮箱(optional), 角色(dropdown: 客服/管理员)
+3. Dialog includes a helpful tip about login link generation
+4. Cancel and Create buttons are present
+5. User list shows existing users with role management dropdowns
+6. Delete button available for non-self users
+
+All features working correctly.
+
+Now need to verify that the order editing works for non-admin (客服) users.
+The routers.ts already uses protectedProcedure for orders.update, orderItems.update, and orderItems.create - 
+meaning both admin and 客服 can edit orders. This was already correctly implemented.
