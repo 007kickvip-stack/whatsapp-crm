@@ -32,6 +32,9 @@ vi.mock("./db", () => ({
   getRecentOrders: vi.fn().mockResolvedValue([]),
   getCustomerStats: vi.fn().mockResolvedValue({ total: 10 }),
   getDailyOrderTrend: vi.fn().mockResolvedValue([]),
+  createAuditLog: vi.fn().mockResolvedValue(undefined),
+  listAuditLogs: vi.fn().mockResolvedValue({ data: [], total: 0 }),
+  exportOrders: vi.fn().mockResolvedValue([]),
 }));
 
 vi.mock("./storage", () => ({

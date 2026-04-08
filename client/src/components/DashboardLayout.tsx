@@ -33,6 +33,7 @@ import {
   Package,
   MessageSquare,
   Shield,
+  ClipboardList,
 } from "lucide-react";
 import { CSSProperties, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation } from "wouter";
@@ -60,6 +61,7 @@ const mainMenuItems: MenuItem[] = [
 
 const adminMenuItems: MenuItem[] = [
   { icon: UserCog, label: "用户管理", path: "/users", adminOnly: true },
+  { icon: ClipboardList, label: "操作日志", path: "/audit-logs", adminOnly: true },
 ];
 
 export default function DashboardLayout({

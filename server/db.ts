@@ -1,6 +1,6 @@
 import { eq, like, and, sql, desc, or, SQL } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
-import { InsertUser, users, customers, orders, orderItems, InsertCustomer, InsertOrder, InsertOrderItem } from "../drizzle/schema";
+import { InsertUser, users, customers, orders, orderItems, InsertCustomer, InsertOrder, InsertOrderItem, auditLogs, InsertAuditLog } from "../drizzle/schema";
 import { ENV } from './_core/env';
 import { nanoid } from 'nanoid';
 import { createHash, randomBytes } from 'crypto';
@@ -457,4 +457,115 @@ export async function getDailyOrderTrend(days: number = 30, staffId?: number) {
     revenue: sql<number>`COALESCE(SUM(totalAmountCny), 0)`,
     profit: sql<number>`COALESCE(SUM(totalProfit), 0)`,
   }).from(orders).where(whereClause).groupBy(orders.orderDate).orderBy(orders.orderDate);
+}
+
+// ==================== Audit Log Helpers ====================
+
+export async function createAuditLog(data: InsertAuditLog) {
+  const db = await getDb();
+  if (!db) return;
+  try {
+    await db.insert(auditLogs).values(data);
+  } catch (error) {
+    console.error("[AuditLog] Failed to create log:", error);
+  }
+}
+
+export async function listAuditLogs(params: {
+  page?: number;
+  pageSize?: number;
+  userId?: number;
+  action?: string;
+  targetType?: string;
+  dateFrom?: string;
+  dateTo?: string;
+}) {
+  const db = await getDb();
+  if (!db) return { data: [], total: 0 };
+  const { page = 1, pageSize = 20, userId, action, targetType, dateFrom, dateTo } = params;
+  const offset = (page - 1) * pageSize;
+  const conditions: SQL[] = [];
+  if (userId) {
+    conditions.push(eq(auditLogs.userId, userId));
+  }
+  if (action) {
+    conditions.push(eq(auditLogs.action, action));
+  }
+  if (targetType) {
+    conditions.push(eq(auditLogs.targetType, targetType));
+  }
+  if (dateFrom && dateTo) {
+    conditions.push(sql`${auditLogs.createdAt} >= ${dateFrom} AND ${auditLogs.createdAt} <= ${dateTo}`);
+  } else if (dateFrom) {
+    conditions.push(sql`${auditLogs.createdAt} >= ${dateFrom}`);
+  } else if (dateTo) {
+    conditions.push(sql`${auditLogs.createdAt} <= ${dateTo}`);
+  }
+  const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
+  const [data, countResult] = await Promise.all([
+    db.select().from(auditLogs).where(whereClause).orderBy(desc(auditLogs.createdAt)).limit(pageSize).offset(offset),
+    db.select({ count: sql<number>`count(*)` }).from(auditLogs).where(whereClause),
+  ]);
+  return { data, total: countResult[0]?.count ?? 0 };
+}
+
+// ==================== Order Export Helpers ====================
+
+export async function exportOrders(params: {
+  staffId?: number;
+  search?: string;
+  orderStatus?: string;
+  paymentStatus?: string;
+  customerWhatsapp?: string;
+  dateFrom?: string;
+  dateTo?: string;
+}) {
+  const db = await getDb();
+  if (!db) return [];
+  const { search, staffId, orderStatus, paymentStatus, customerWhatsapp, dateFrom, dateTo } = params;
+  const conditions: SQL[] = [];
+  if (search) {
+    conditions.push(
+      or(
+        like(orders.orderNumber, `%${search}%`),
+        like(orders.customerWhatsapp, `%${search}%`),
+        like(orders.staffName, `%${search}%`)
+      )!
+    );
+  }
+  if (staffId) {
+    conditions.push(eq(orders.staffId, staffId));
+  }
+  if (orderStatus) {
+    conditions.push(eq(orders.orderStatus, orderStatus));
+  }
+  if (paymentStatus) {
+    conditions.push(eq(orders.paymentStatus, paymentStatus));
+  }
+  if (customerWhatsapp) {
+    conditions.push(like(orders.customerWhatsapp, `%${customerWhatsapp}%`));
+  }
+  if (dateFrom && dateTo) {
+    conditions.push(sql`${orders.orderDate} >= ${dateFrom} AND ${orders.orderDate} <= ${dateTo}`);
+  } else if (dateFrom) {
+    conditions.push(sql`${orders.orderDate} >= ${dateFrom}`);
+  } else if (dateTo) {
+    conditions.push(sql`${orders.orderDate} <= ${dateTo}`);
+  }
+  const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
+  // Get all matching orders (no pagination for export)
+  const data = await db.select().from(orders).where(whereClause).orderBy(desc(orders.createdAt));
+  // Fetch items for all orders
+  const orderIds = data.map(o => o.id);
+  let itemsMap: Record<number, typeof orderItems.$inferSelect[]> = {};
+  if (orderIds.length > 0) {
+    const allItems = await db.select().from(orderItems)
+      .where(sql`${orderItems.orderId} IN (${sql.join(orderIds.map(id => sql`${id}`), sql`, `)})`)
+      .orderBy(orderItems.id);
+    for (const item of allItems) {
+      if (!itemsMap[item.orderId]) itemsMap[item.orderId] = [];
+      itemsMap[item.orderId].push(item);
+    }
+  }
+  return data.map(o => ({ ...o, items: itemsMap[o.id] || [] }));
 }

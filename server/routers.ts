@@ -12,6 +12,7 @@ import {
   createOrderItem, updateOrderItem, deleteOrderItem, getOrderItemsByOrderId, recalculateOrderTotals,
   getOrderStats, getOrderStatusDistribution, getPaymentStatusDistribution,
   getStaffPerformance, getRecentOrders, getCustomerStats, getDailyOrderTrend,
+  createAuditLog, listAuditLogs, exportOrders,
 } from "./db";
 import { sdk } from "./_core/sdk";
 import { ONE_YEAR_MS } from "@shared/const";
@@ -129,6 +130,7 @@ export const appRouter = router({
       country: z.string().optional(),
     })).mutation(async ({ input, ctx }) => {
       const id = await createCustomer({ ...input, createdById: ctx.user.id });
+      await logAction(ctx, "create", "customer", id, input.whatsapp, JSON.stringify(input));
       return { id };
     }),
 
@@ -143,14 +145,16 @@ export const appRouter = router({
       city: z.string().optional(),
       cityCode: z.string().optional(),
       country: z.string().optional(),
-    })).mutation(async ({ input }) => {
+    })).mutation(async ({ input, ctx }) => {
       const { id, ...data } = input;
       await updateCustomer(id, data);
+      await logAction(ctx, "update", "customer", id, undefined, JSON.stringify(data));
       return { success: true };
     }),
 
-    delete: protectedProcedure.input(z.object({ id: z.number() })).mutation(async ({ input }) => {
+    delete: protectedProcedure.input(z.object({ id: z.number() })).mutation(async ({ input, ctx }) => {
       await deleteCustomer(input.id);
+      await logAction(ctx, "delete", "customer", input.id);
       return { success: true };
     }),
   }),
@@ -202,6 +206,7 @@ export const appRouter = router({
         staffId: ctx.user.id,
         staffName: ctx.user.name || "未知客服",
       });
+      await logAction(ctx, "create", "order", id, rest.orderNumber, JSON.stringify(input));
       return { id };
     }),
 
@@ -228,6 +233,7 @@ export const appRouter = router({
         ...data,
         ...(orderDate !== undefined ? { orderDate: orderDate ? new Date(orderDate) : null } : {}),
       });
+      await logAction(ctx, "update", "order", id, undefined, JSON.stringify(data));
       return { success: true };
     }),
 
@@ -240,6 +246,7 @@ export const appRouter = router({
         }
       }
       await deleteOrder(input.id);
+      await logAction(ctx, "delete", "order", input.id);
       return { success: true };
     }),
   }),
@@ -409,6 +416,63 @@ export const appRouter = router({
       return getDailyOrderTrend(input.days, isAdmin ? undefined : ctx.user.id);
     }),
   }),
+
+  // ==================== Audit Logs ====================
+  auditLogs: router({
+    list: adminProcedure.input(z.object({
+      page: z.number().default(1),
+      pageSize: z.number().default(20),
+      userId: z.number().optional(),
+      action: z.string().optional(),
+      targetType: z.string().optional(),
+      dateFrom: z.string().optional(),
+      dateTo: z.string().optional(),
+    })).query(({ input }) => listAuditLogs(input)),
+  }),
+
+  // ==================== Order Export ====================
+  export: router({
+    orders: protectedProcedure.input(z.object({
+      search: z.string().optional(),
+      orderStatus: z.string().optional(),
+      paymentStatus: z.string().optional(),
+      customerWhatsapp: z.string().optional(),
+      dateFrom: z.string().optional(),
+      dateTo: z.string().optional(),
+    })).mutation(async ({ input, ctx }) => {
+      const isAdmin = ctx.user.role === "admin";
+      const data = await exportOrders({
+        ...input,
+        staffId: isAdmin ? undefined : ctx.user.id,
+      });
+      // Log the export action
+      await createAuditLog({
+        userId: ctx.user.id,
+        userName: ctx.user.name || "未知",
+        userRole: ctx.user.role,
+        action: "export",
+        targetType: "order",
+        targetName: `导出 ${data.length} 条订单`,
+        details: JSON.stringify({ filters: input, count: data.length }),
+      });
+      return data;
+    }),
+  }),
 });
+
+// ==================== Audit Log Helper for Routers ====================
+// Call this in mutation handlers to log actions
+export async function logAction(ctx: { user: { id: number; name: string | null; role: string } }, action: string, targetType: string, targetId?: number, targetName?: string, details?: string) {
+  await createAuditLog({
+    userId: ctx.user.id,
+    userName: ctx.user.name || "未知",
+    userRole: ctx.user.role,
+    action,
+    targetType,
+    targetId: targetId ?? undefined,
+    targetName: targetName ?? undefined,
+    details: details ?? undefined,
+  });
+}
 
 export type AppRouter = typeof appRouter;

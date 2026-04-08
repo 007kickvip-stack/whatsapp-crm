@@ -11,6 +11,7 @@ import OrdersPage from "./pages/Orders";
 import OrderDetailPage from "./pages/OrderDetail";
 import UsersPage from "./pages/Users";
 import LoginPage from "./pages/Login";
+import AuditLogsPage from "./pages/AuditLogs";
 
 function Router() {
   return (
@@ -26,6 +27,7 @@ function Router() {
             <Route path="/orders" component={OrdersPage} />
             <Route path="/orders/:id" component={OrderDetailPage} />
             <Route path="/users" component={UsersPage} />
+            <Route path="/audit-logs" component={AuditLogsPage} />
             <Route path="/404" component={NotFound} />
             <Route component={NotFound} />
           </Switch>

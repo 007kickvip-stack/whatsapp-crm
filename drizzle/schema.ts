@@ -110,3 +110,23 @@ export const orderItems = mysqlTable("order_items", {
 
 export type OrderItem = typeof orderItems.$inferSelect;
 export type InsertOrderItem = typeof orderItems.$inferInsert;
+
+/**
+ * 操作日志表 - 记录系统关键操作
+ */
+export const auditLogs = mysqlTable("audit_logs", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId").notNull(),
+  userName: varchar("userName", { length: 128 }),
+  userRole: varchar("userRole", { length: 32 }),
+  action: varchar("action", { length: 64 }).notNull(), // create, update, delete, export, login
+  targetType: varchar("targetType", { length: 64 }).notNull(), // order, customer, user, orderItem
+  targetId: int("targetId"),
+  targetName: varchar("targetName", { length: 255 }),
+  details: text("details"), // JSON string with change details
+  ipAddress: varchar("ipAddress", { length: 64 }),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type AuditLog = typeof auditLogs.$inferSelect;
+export type InsertAuditLog = typeof auditLogs.$inferInsert;
