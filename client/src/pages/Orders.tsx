@@ -338,12 +338,11 @@ export default function OrdersPage() {
   const uploadMutation = trpc.upload.image.useMutation();
 
   const createMutation = trpc.orders.create.useMutation({
-    onSuccess: (result) => {
-      toast.success("订单创建成功");
+    onSuccess: () => {
+      toast.success("订单创建成功，可直接在表格中编辑");
       utils.orders.list.invalidate();
       setDialogOpen(false);
       setForm(emptyOrderForm);
-      setLocation(`/orders/${result.id}`);
     },
     onError: (err) => toast.error(err.message),
   });
@@ -609,12 +608,29 @@ export default function OrdersPage() {
     paymentStatus: string | null;
   };
 
+  // Auto-create initial item for orders that have no items
+  const autoCreateRef = useRef<Set<number>>(new Set());
+  useEffect(() => {
+    if (!data?.data) return;
+    for (const order of data.data) {
+      const items = (order as any).items || [];
+      if (items.length === 0 && !autoCreateRef.current.has(order.id)) {
+        autoCreateRef.current.add(order.id);
+        createItemMutation.mutate({
+          orderId: order.id,
+          orderNumber: order.orderNumber,
+        });
+      }
+    }
+  }, [data]);
+
   const flatRows: FlatRow[] = useMemo(() => {
     if (!data?.data) return [];
     const rows: FlatRow[] = [];
     for (const order of data.data) {
       const items = (order as any).items || [];
       if (items.length === 0) {
+        // Temporary placeholder row while auto-creating item
         rows.push({
           orderId: order.id,
           isFirstRow: true,

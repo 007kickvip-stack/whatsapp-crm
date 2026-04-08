@@ -206,6 +206,17 @@ export const appRouter = router({
         staffId: ctx.user.id,
         staffName: ctx.user.name || "未知客服",
       });
+      // Auto-create an initial order item so the order is immediately editable in the table
+      await createOrderItem({
+        orderId: id,
+        orderNumber: rest.orderNumber,
+        productProfit: "0.00",
+        productProfitRate: "0.000000",
+        shippingProfit: "0.00",
+        shippingProfitRate: "0.000000",
+        totalProfit: "0.00",
+        profitRate: "0.000000",
+      });
       await logAction(ctx, "create", "order", id, rest.orderNumber, JSON.stringify(input));
       return { id };
     }),
