@@ -624,10 +624,13 @@ describe("Profit Report", () => {
     expect(result).toHaveProperty("summary");
   });
 
-  it("staff cannot get profit report", async () => {
+  it("staff can get their own profit report", async () => {
     const ctx = createStaffContext();
     const caller = appRouter.createCaller(ctx);
-    await expect(caller.profitReport.summary({})).rejects.toThrow();
+    const result = await caller.profitReport.summary({});
+    // Staff gets filtered data (only their own)
+    expect(result).toBeDefined();
+    expect(result.summary).toBeDefined();
   });
 
   it("any authenticated user can get staff names", async () => {
@@ -661,10 +664,12 @@ describe("Profit Report", () => {
     const result = await caller.profitReport.monthlyComparison({ staffName: "Staff A" });
     expect(Array.isArray(result)).toBe(true);
   });
-  it("staff cannot get monthly comparison", async () => {
+  it("staff can get their own monthly comparison", async () => {
     const ctx = createStaffContext();
     const caller = appRouter.createCaller(ctx);
-    await expect(caller.profitReport.monthlyComparison({})).rejects.toThrow();
+    const result = await caller.profitReport.monthlyComparison({});
+    // Staff gets filtered data (only their own)
+    expect(Array.isArray(result)).toBe(true);
   });
   it("admin can get quarterly profit comparison", async () => {
     const ctx = createAdminContext();
@@ -674,10 +679,12 @@ describe("Profit Report", () => {
     expect(result.length).toBe(1);
     expect(result[0].period).toBe("2026-Q1");
   });
-  it("staff cannot get quarterly comparison", async () => {
+  it("staff can get their own quarterly comparison", async () => {
     const ctx = createStaffContext();
     const caller = appRouter.createCaller(ctx);
-    await expect(caller.profitReport.quarterlyComparison({})).rejects.toThrow();
+    const result = await caller.profitReport.quarterlyComparison({});
+    // Staff gets filtered data (only their own)
+    expect(Array.isArray(result)).toBe(true);
   });
 
   // Profit Alert Settings Tests
@@ -764,10 +771,12 @@ describe("staffTargets", () => {
     expect(result.length).toBe(2);
   });
 
-  it("staff cannot list targets", async () => {
+  it("staff can list their own targets", async () => {
     const ctx = createStaffContext();
     const caller = appRouter.createCaller(ctx);
-    await expect(caller.staffTargets.list({ yearMonth: "2026-04" })).rejects.toThrow();
+    const result = await caller.staffTargets.list({ yearMonth: "2026-04" });
+    // Staff gets filtered data (only their own targets)
+    expect(Array.isArray(result)).toBe(true);
   });
 
   it("staff cannot upsert targets", async () => {

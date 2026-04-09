@@ -650,31 +650,38 @@ export const appRouter = router({
 
   // ==================== Profit Report ====================
   profitReport: router({
-    summary: adminProcedure.input(z.object({
+    summary: protectedProcedure.input(z.object({
       startDate: z.string().optional(),
       endDate: z.string().optional(),
       staffName: z.string().optional(),
-    }).optional()).query(async ({ input }) => {
+    }).optional()).query(async ({ input, ctx }) => {
+      const isAdmin = ctx.user.role === "admin";
+      // 客服只能看自己的数据，强制设置 staffName
+      const staffName = isAdmin ? input?.staffName : (ctx.user.name || undefined);
       return await getProfitReport({
         startDate: input?.startDate,
         endDate: input?.endDate,
-        staffName: input?.staffName,
+        staffName,
       });
     }),
     staffNames: protectedProcedure.query(async () => {
       return await getDistinctStaffNames();
     }),
-    monthlyComparison: adminProcedure.input(z.object({
+    monthlyComparison: protectedProcedure.input(z.object({
       staffName: z.string().optional(),
-    }).optional()).query(async ({ input }) => {
-      return await getMonthlyProfitComparison(input?.staffName);
+    }).optional()).query(async ({ input, ctx }) => {
+      const isAdmin = ctx.user.role === "admin";
+      const staffName = isAdmin ? input?.staffName : (ctx.user.name || undefined);
+      return await getMonthlyProfitComparison(staffName);
     }),
-    quarterlyComparison: adminProcedure.input(z.object({
+    quarterlyComparison: protectedProcedure.input(z.object({
       staffName: z.string().optional(),
-    }).optional()).query(async ({ input }) => {
-      return await getQuarterlyProfitComparison(input?.staffName);
+    }).optional()).query(async ({ input, ctx }) => {
+      const isAdmin = ctx.user.role === "admin";
+      const staffName = isAdmin ? input?.staffName : (ctx.user.name || undefined);
+      return await getQuarterlyProfitComparison(staffName);
     }),
-    // Profit alert settings
+    // Profit alert settings (admin only)
     alertSetting: adminProcedure.query(async () => {
       return await getProfitAlertSetting();
     }),
@@ -702,11 +709,16 @@ export const appRouter = router({
 
   // ==================== Staff Monthly Targets ====================
   staffTargets: router({
-    list: adminProcedure.input(z.object({
+    // 客服可以查看目标列表（但前端会过滤只显示自己的）
+    list: protectedProcedure.input(z.object({
       yearMonth: z.string().regex(/^\d{4}-\d{2}$/),
-    })).query(async ({ input }) => {
-      return await listStaffMonthlyTargets(input.yearMonth);
+    })).query(async ({ input, ctx }) => {
+      const allTargets = await listStaffMonthlyTargets(input.yearMonth);
+      if (ctx.user.role === "admin") return allTargets;
+      // 客服只能看自己的目标
+      return allTargets.filter(t => t.staffId === ctx.user.id);
     }),
+    // 设定目标仅管理员
     upsert: adminProcedure.input(z.object({
       staffId: z.number(),
       staffName: z.string().min(1),
@@ -726,6 +738,7 @@ export const appRouter = router({
       await logAction(ctx, "upsert", "staffTarget", result.id, `${input.staffName} ${input.yearMonth}`, JSON.stringify(input));
       return result;
     }),
+    // 删除目标仅管理员
     delete: adminProcedure.input(z.object({
       id: z.number(),
     })).mutation(async ({ input, ctx }) => {
@@ -733,11 +746,16 @@ export const appRouter = router({
       await logAction(ctx, "delete", "staffTarget", input.id);
       return { success: true };
     }),
-    progress: adminProcedure.input(z.object({
+    // 客服可以查看目标进度（但只能看自己的）
+    progress: protectedProcedure.input(z.object({
       yearMonth: z.string().regex(/^\d{4}-\d{2}$/),
-    })).query(async ({ input }) => {
-      return await getStaffTargetProgress(input.yearMonth);
+    })).query(async ({ input, ctx }) => {
+      const allProgress = await getStaffTargetProgress(input.yearMonth);
+      if (ctx.user.role === "admin") return allProgress;
+      // 客服只能看自己的进度
+      return allProgress.filter(p => p.staffId === ctx.user.id);
     }),
+    // 客服列表仅管理员可见
     staffList: adminProcedure.query(async () => {
       return await getStaffList();
     }),

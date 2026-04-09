@@ -51,8 +51,8 @@ export default function StaffTargetsPage() {
 
   const ymInput = useMemo(() => ({ yearMonth }), [yearMonth]);
 
-  const { data: targets, isLoading: targetsLoading } = trpc.staffTargets.list.useQuery(ymInput, { enabled: isAdmin });
-  const { data: progress, isLoading: progressLoading } = trpc.staffTargets.progress.useQuery(ymInput, { enabled: isAdmin });
+  const { data: targets, isLoading: targetsLoading } = trpc.staffTargets.list.useQuery(ymInput);
+  const { data: progress, isLoading: progressLoading } = trpc.staffTargets.progress.useQuery(ymInput);
   const { data: staffList } = trpc.staffTargets.staffList.useQuery(undefined, { enabled: isAdmin });
 
   const utils = trpc.useUtils();
@@ -124,13 +124,7 @@ export default function StaffTargetsPage() {
     }
   };
 
-  if (!isAdmin) {
-    return (
-      <div className="p-6 text-center text-gray-500">
-        <p>仅管理员可管理客服目标</p>
-      </div>
-    );
-  }
+  // 客服和管理员都可以查看目标管理，后端会自动过滤数据
 
   // Already-assigned staff IDs for this month
   const assignedStaffIds = new Set((targets || []).map((t: any) => t.staffId));
@@ -155,12 +149,16 @@ export default function StaffTargetsPage() {
             <Target className="h-6 w-6 text-indigo-600" />
             客服目标管理
           </h1>
-          <p className="text-sm text-gray-500 mt-1">为每个客服设定月度利润和营业额目标，跟踪完成进度</p>
+          <p className="text-sm text-gray-500 mt-1">
+            {isAdmin ? "为每个客服设定月度利润和营业额目标，跟踪完成进度" : "查看您的月度目标完成进度"}
+          </p>
         </div>
-        <Button onClick={openCreateDialog} className="gap-1.5">
-          <Plus className="h-4 w-4" />
-          设定目标
-        </Button>
+        {isAdmin && (
+          <Button onClick={openCreateDialog} className="gap-1.5">
+            <Plus className="h-4 w-4" />
+            设定目标
+          </Button>
+        )}
       </div>
 
       {/* Month Selector */}
@@ -264,20 +262,22 @@ export default function StaffTargetsPage() {
                         <span className="font-semibold text-gray-900">{p.staffName}</span>
                         <span className="text-xs text-gray-400">订单 {p.orderCount} 笔</span>
                       </div>
-                      <div className="flex gap-1">
-                        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => {
-                          openEditDialog({
-                            staffId: p.staffId,
-                            profitTarget: p.profitTarget,
-                            revenueTarget: p.revenueTarget,
-                          });
-                        }}>
-                          <Pencil className="h-3.5 w-3.5 text-gray-400" />
-                        </Button>
-                        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleDelete(p.targetId, p.staffName)}>
-                          <Trash2 className="h-3.5 w-3.5 text-red-400" />
-                        </Button>
-                      </div>
+                      {isAdmin && (
+                        <div className="flex gap-1">
+                          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => {
+                            openEditDialog({
+                              staffId: p.staffId,
+                              profitTarget: p.profitTarget,
+                              revenueTarget: p.revenueTarget,
+                            });
+                          }}>
+                            <Pencil className="h-3.5 w-3.5 text-gray-400" />
+                          </Button>
+                          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleDelete(p.targetId, p.staffName)}>
+                            <Trash2 className="h-3.5 w-3.5 text-red-400" />
+                          </Button>
+                        </div>
+                      )}
                     </div>
 
                     {/* Profit Progress */}
@@ -351,10 +351,12 @@ export default function StaffTargetsPage() {
         <Card>
           <CardContent className="py-12 text-center text-gray-400">
             <Target className="h-12 w-12 mx-auto mb-3 opacity-30" />
-            <p>{formatYearMonth(yearMonth)} 暂未设定任何客服目标</p>
-            <Button variant="outline" size="sm" className="mt-3" onClick={openCreateDialog}>
-              <Plus className="h-4 w-4 mr-1" /> 立即设定
-            </Button>
+            <p>{formatYearMonth(yearMonth)} {isAdmin ? "暂未设定任何客服目标" : "暂未为您设定目标"}</p>
+            {isAdmin && (
+              <Button variant="outline" size="sm" className="mt-3" onClick={openCreateDialog}>
+                <Plus className="h-4 w-4 mr-1" /> 立即设定
+              </Button>
+            )}
           </CardContent>
         </Card>
       )}
@@ -363,7 +365,7 @@ export default function StaffTargetsPage() {
       {targets && targets.length > 0 && (
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-base">目标设定记录</CardTitle>
+            <CardTitle className="text-base">{isAdmin ? "目标设定记录" : "我的目标记录"}</CardTitle>
           </CardHeader>
           <CardContent>
             <Table>
@@ -372,9 +374,9 @@ export default function StaffTargetsPage() {
                   <TableHead className="text-center">客服</TableHead>
                   <TableHead className="text-center">利润目标 (¥)</TableHead>
                   <TableHead className="text-center">营业额目标 (¥)</TableHead>
-                  <TableHead className="text-center">设定人</TableHead>
+                  {isAdmin && <TableHead className="text-center">设定人</TableHead>}
                   <TableHead className="text-center">更新时间</TableHead>
-                  <TableHead className="text-center">操作</TableHead>
+                  {isAdmin && <TableHead className="text-center">操作</TableHead>}
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -383,20 +385,22 @@ export default function StaffTargetsPage() {
                     <TableCell className="text-center font-medium">{t.staffName}</TableCell>
                     <TableCell className="text-center font-mono">¥{fmtMoney(t.profitTarget)}</TableCell>
                     <TableCell className="text-center font-mono">¥{fmtMoney(t.revenueTarget)}</TableCell>
-                    <TableCell className="text-center text-gray-500">{t.setByName || "未知"}</TableCell>
+                    {isAdmin && <TableCell className="text-center text-gray-500">{t.setByName || "未知"}</TableCell>}
                     <TableCell className="text-center text-gray-500 text-xs">
                       {new Date(t.updatedAt).toLocaleString("zh-CN")}
                     </TableCell>
-                    <TableCell className="text-center">
-                      <div className="flex justify-center gap-1">
-                        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEditDialog(t)}>
-                          <Pencil className="h-3.5 w-3.5" />
-                        </Button>
-                        <Button variant="ghost" size="icon" className="h-7 w-7 text-red-500" onClick={() => handleDelete(t.id, t.staffName)}>
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </Button>
-                      </div>
-                    </TableCell>
+                    {isAdmin && (
+                      <TableCell className="text-center">
+                        <div className="flex justify-center gap-1">
+                          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEditDialog(t)}>
+                            <Pencil className="h-3.5 w-3.5" />
+                          </Button>
+                          <Button variant="ghost" size="icon" className="h-7 w-7 text-red-500" onClick={() => handleDelete(t.id, t.staffName)}>
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    )}
                   </TableRow>
                 ))}
               </TableBody>

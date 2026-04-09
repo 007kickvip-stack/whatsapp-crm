@@ -62,11 +62,16 @@ const mainMenuItems: MenuItem[] = [
   { icon: ShoppingCart, label: "订单管理", path: "/orders" },
 ];
 
+// 客服和管理员都可见的数据分析菜单
+const dataMenuItems: MenuItem[] = [
+  { icon: BarChart3, label: "利润报表", path: "/profit-report" },
+  { icon: Target, label: "目标管理", path: "/staff-targets" },
+];
+
+// 仅管理员可见的系统管理菜单
 const adminMenuItems: MenuItem[] = [
   { icon: UserCog, label: "用户管理", path: "/users", adminOnly: true },
   { icon: ArrowRightLeft, label: "汇率管理", path: "/exchange-rate", adminOnly: true },
-  { icon: BarChart3, label: "利润报表", path: "/profit-report", adminOnly: true },
-  { icon: Target, label: "目标管理", path: "/staff-targets", adminOnly: true },
   { icon: ClipboardList, label: "操作日志", path: "/audit-logs", adminOnly: true },
 ];
 
@@ -129,7 +134,7 @@ function DashboardLayoutContent({
   const isAdmin = user?.role === "admin";
 
   const allMenuItems = useMemo(() => {
-    return [...mainMenuItems, ...(isAdmin ? adminMenuItems : [])];
+    return [...mainMenuItems, ...dataMenuItems, ...(isAdmin ? adminMenuItems : [])];
   }, [isAdmin]);
 
   const activeMenuItem = allMenuItems.find((item) => {
@@ -209,6 +214,32 @@ function DashboardLayoutContent({
                     item.path === "/"
                       ? location === "/"
                       : location.startsWith(item.path);
+                  return (
+                    <SidebarMenuItem key={item.path}>
+                      <SidebarMenuButton
+                        isActive={isActive}
+                        onClick={() => setLocation(item.path)}
+                        tooltip={item.label}
+                        className="h-10 transition-all font-normal"
+                      >
+                        <item.icon
+                          className={`h-4 w-4 ${isActive ? "text-primary" : ""}`}
+                        />
+                        <span>{item.label}</span>
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  );
+                })}
+              </SidebarMenu>
+            </SidebarGroup>
+
+            <SidebarGroup>
+              <SidebarGroupLabel className="text-xs text-muted-foreground/70 uppercase tracking-wider">
+                数据分析
+              </SidebarGroupLabel>
+              <SidebarMenu className="px-2 py-1">
+                {dataMenuItems.map((item) => {
+                  const isActive = location.startsWith(item.path);
                   return (
                     <SidebarMenuItem key={item.path}>
                       <SidebarMenuButton

@@ -80,9 +80,9 @@ export default function ProfitReportPage() {
     staffName: (staffName && staffName !== "__all__") ? staffName : undefined,
   }), [staffName]);
 
-  const { data: report, isLoading } = trpc.profitReport.summary.useQuery(queryInput, { enabled: isAdmin });
-  const { data: monthlyData } = trpc.profitReport.monthlyComparison.useQuery(comparisonInput, { enabled: isAdmin && comparisonTab === "monthly" });
-  const { data: quarterlyData } = trpc.profitReport.quarterlyComparison.useQuery(comparisonInput, { enabled: isAdmin && comparisonTab === "quarterly" });
+  const { data: report, isLoading } = trpc.profitReport.summary.useQuery(queryInput);
+  const { data: monthlyData } = trpc.profitReport.monthlyComparison.useQuery(comparisonInput, { enabled: comparisonTab === "monthly" });
+  const { data: quarterlyData } = trpc.profitReport.quarterlyComparison.useQuery(comparisonInput, { enabled: comparisonTab === "quarterly" });
   const { data: alertData } = trpc.profitReport.staffAlerts.useQuery(undefined, { enabled: isAdmin });
   const { data: alertSetting } = trpc.profitReport.alertSetting.useQuery(undefined, { enabled: isAdmin });
 
@@ -121,13 +121,7 @@ export default function ProfitReportPage() {
     updateAlertMutation.mutate({ minProfitRate: rate / 100, enabled: alertEnabled });
   };
 
-  if (!isAdmin) {
-    return (
-      <div className="p-6 text-center text-gray-500">
-        <p>仅管理员可查看利润报表</p>
-      </div>
-    );
-  }
+  // 客服和管理员都可以查看利润报表，后端会自动过滤数据
 
   const summary = report?.summary;
   const byStaff = report?.byStaff || [];
@@ -180,12 +174,16 @@ export default function ProfitReportPage() {
             <BarChart3 className="h-6 w-6 text-blue-600" />
             利润统计报表
           </h1>
-          <p className="text-sm text-gray-500 mt-1">按时间段、客服维度查看利润数据和趋势分析</p>
+          <p className="text-sm text-gray-500 mt-1">
+            {isAdmin ? "按时间段、客服维度查看利润数据和趋势分析" : "查看您的个人利润数据和趋势分析"}
+          </p>
         </div>
-        <Button variant="outline" size="sm" onClick={openAlertDialog} className="gap-1.5">
-          <Settings className="h-4 w-4" />
-          预警设置
-        </Button>
+        {isAdmin && (
+          <Button variant="outline" size="sm" onClick={openAlertDialog} className="gap-1.5">
+            <Settings className="h-4 w-4" />
+            预警设置
+          </Button>
+        )}
       </div>
 
       {/* Profit Alert Banner */}
@@ -216,20 +214,22 @@ export default function ProfitReportPage() {
               <Label className="text-xs text-gray-500">结束日期</Label>
               <Input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} className="w-40 h-9" />
             </div>
-            <div className="space-y-1">
-              <Label className="text-xs text-gray-500">客服</Label>
-              <Select value={staffName || "__all__"} onValueChange={(v) => setStaffName(v === "__all__" ? "" : v)}>
-                <SelectTrigger className="w-36 h-9">
-                  <SelectValue placeholder="全部客服" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="__all__">全部客服</SelectItem>
-                  {staffNames?.map((name: string) => (
-                    <SelectItem key={name} value={name}>{name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+            {isAdmin && (
+              <div className="space-y-1">
+                <Label className="text-xs text-gray-500">客服</Label>
+                <Select value={staffName || "__all__"} onValueChange={(v) => setStaffName(v === "__all__" ? "" : v)}>
+                  <SelectTrigger className="w-36 h-9">
+                    <SelectValue placeholder="全部客服" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__all__">全部客服</SelectItem>
+                    {staffNames?.map((name: string) => (
+                      <SelectItem key={name} value={name}>{name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
             {hasFilters && (
               <Button variant="ghost" size="sm" onClick={clearFilters} className="text-red-500 hover:text-red-700 h-9">
                 <RotateCcw className="h-3 w-3 mr-1" />清除
@@ -484,8 +484,8 @@ export default function ProfitReportPage() {
 
           {/* Staff Performance Table & Chart with Alert Highlighting */}
           {byStaff.length > 0 && (
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-              <Card>
+            <div className={`grid grid-cols-1 ${isAdmin ? 'lg:grid-cols-2' : ''} gap-4`}>
+              {isAdmin && <Card>
                 <CardHeader className="pb-2">
                   <CardTitle className="text-base">客服利润排名</CardTitle>
                   <CardDescription>按利润降序排列</CardDescription>
@@ -503,12 +503,12 @@ export default function ProfitReportPage() {
                     </BarChart>
                   </ResponsiveContainer>
                 </CardContent>
-              </Card>
+              </Card>}
 
               <Card>
                 <CardHeader className="pb-2">
-                  <CardTitle className="text-base">客服利润详情</CardTitle>
-                  {alertSetting?.enabled === 1 && (
+                  <CardTitle className="text-base">{isAdmin ? "客服利润详情" : "我的利润详情"}</CardTitle>
+                  {isAdmin && alertSetting?.enabled === 1 && (
                     <CardDescription className="flex items-center gap-1 text-xs">
                       <AlertTriangle className="h-3 w-3 text-red-500" />
                       利润率低于 {(alertThreshold * 100).toFixed(1)}% 的行将标红显示
@@ -529,7 +529,7 @@ export default function ProfitReportPage() {
                     <TableBody>
                       {byStaff.map((s: any, i: number) => {
                         const rate = parseFloat(String(s.avgProfitRate || "0"));
-                        const isLow = alertSetting?.enabled === 1 && rate > 0 && rate < alertThreshold;
+                        const isLow = isAdmin && alertSetting?.enabled === 1 && rate > 0 && rate < alertThreshold;
                         return (
                           <TableRow key={i} className={isLow ? "bg-red-50" : ""}>
                             <TableCell className="text-center font-medium">
