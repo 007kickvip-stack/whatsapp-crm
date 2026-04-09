@@ -21,6 +21,7 @@ import {
   getStaffTargetProgress, getStaffList,
   getDailyOrderSummary, listDailyData, createDailyData, updateDailyData, deleteDailyData,
   getDailyDataById, getDailyReport, syncOrderDataToDailyData, getDistinctOrderAccounts,
+  listAccounts, createAccount, updateAccount, deleteAccount, reorderAccounts,
 } from "./db";
 import { sdk } from "./_core/sdk";
 import { ONE_YEAR_MS } from "@shared/const";
@@ -924,6 +925,51 @@ export const appRouter = router({
     // 获取客服列表（仅管理员）
     staffList: adminProcedure.query(async () => {
       return await getStaffList();
+    }),
+  }),
+
+  // ==================== 账号管理 ====================
+  accounts: router({
+    list: protectedProcedure.query(async () => {
+      return await listAccounts();
+    }),
+
+    create: adminProcedure.input(z.object({
+      name: z.string().min(1, "账号名称不能为空"),
+      color: z.string().optional(),
+      sortOrder: z.number().optional(),
+    })).mutation(async ({ input, ctx }) => {
+      const result = await createAccount(input);
+      await logAction(ctx, "create", "account", result.id, input.name, JSON.stringify(input));
+      return result;
+    }),
+
+    update: adminProcedure.input(z.object({
+      id: z.number(),
+      name: z.string().min(1).optional(),
+      color: z.string().optional(),
+      sortOrder: z.number().optional(),
+    })).mutation(async ({ input, ctx }) => {
+      const { id, ...data } = input;
+      const result = await updateAccount(id, data);
+      await logAction(ctx, "update", "account", id, input.name, JSON.stringify(data));
+      return result;
+    }),
+
+    delete: adminProcedure.input(z.object({
+      id: z.number(),
+    })).mutation(async ({ input, ctx }) => {
+      const result = await deleteAccount(input.id);
+      await logAction(ctx, "delete", "account", input.id);
+      return result;
+    }),
+
+    reorder: adminProcedure.input(z.object({
+      items: z.array(z.object({ id: z.number(), sortOrder: z.number() })),
+    })).mutation(async ({ input, ctx }) => {
+      const result = await reorderAccounts(input.items);
+      await logAction(ctx, "update", "account", undefined, "批量排序", JSON.stringify(input.items));
+      return result;
     }),
   }),
 });

@@ -217,3 +217,18 @@ export const dailyData = mysqlTable("daily_data", {
 
 export type DailyData = typeof dailyData.$inferSelect;
 export type InsertDailyData = typeof dailyData.$inferInsert;
+
+/**
+ * 账号管理表 - 管理订单表和每日数据表中的账号下拉选项
+ */
+export const accounts = mysqlTable("accounts", {
+  id: int("id").autoincrement().primaryKey(),
+  name: varchar("name", { length: 128 }).notNull().unique(),
+  color: varchar("color", { length: 32 }).default("#94a3b8"), // 颜色标记（hex）
+  sortOrder: int("sortOrder").default(0), // 排序顺序
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type Account = typeof accounts.$inferSelect;
+export type InsertAccount = typeof accounts.$inferInsert;

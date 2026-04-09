@@ -65,6 +65,11 @@ vi.mock("./db", () => ({
   getDistinctOrderAccounts: vi.fn().mockResolvedValue(["M1 BUY-4254", "K-ONE-1718", "UMI BUY-3264"]),
   getDailyReport: vi.fn().mockResolvedValue({ rows: [{ id: 1, staffName: "Staff User", messageCount: 50, totalRevenue: "500" }], totals: { staffCount: 1, totalMessages: 50, totalRevenue: "500", totalEstimatedProfit: "150", avgProfitRate: "0.3" } }),
   syncOrderDataToDailyData: vi.fn().mockResolvedValue({ success: true }),
+  listAccounts: vi.fn().mockResolvedValue([{ id: 1, name: "M1 BUY-4254", color: "#f87171", sortOrder: 0 }, { id: 2, name: "K-ONE-1718", color: "#fb923c", sortOrder: 1 }]),
+  createAccount: vi.fn().mockResolvedValue({ id: 3 }),
+  updateAccount: vi.fn().mockResolvedValue({ success: true }),
+  deleteAccount: vi.fn().mockResolvedValue({ success: true }),
+  reorderAccounts: vi.fn().mockResolvedValue({ success: true }),
 }));
 
 vi.mock("./storage", () => ({
@@ -906,5 +911,85 @@ describe("dailyData", () => {
     const adminCaller = appRouter.createCaller(adminCtx);
     const result = await adminCaller.dailyData.staffList();
     expect(Array.isArray(result)).toBe(true);
+  });
+});
+
+describe("Account Management", () => {
+  it("any authenticated user can list accounts", async () => {
+    const ctx = createStaffContext();
+    const caller = appRouter.createCaller(ctx);
+    const result = await caller.accounts.list();
+    expect(Array.isArray(result)).toBe(true);
+    expect(result.length).toBe(2);
+    expect(result[0].name).toBe("M1 BUY-4254");
+    expect(result[0].color).toBe("#f87171");
+  });
+
+  it("unauthenticated user cannot list accounts", async () => {
+    const ctx = createUnauthContext();
+    const caller = appRouter.createCaller(ctx);
+    await expect(caller.accounts.list()).rejects.toThrow();
+  });
+
+  it("admin can create account", async () => {
+    const ctx = createAdminContext();
+    const caller = appRouter.createCaller(ctx);
+    const result = await caller.accounts.create({ name: "New Account", color: "#60a5fa" });
+    expect(result.id).toBe(3);
+  });
+
+  it("staff cannot create account", async () => {
+    const ctx = createStaffContext();
+    const caller = appRouter.createCaller(ctx);
+    await expect(caller.accounts.create({ name: "New Account" })).rejects.toThrow();
+  });
+
+  it("admin can update account", async () => {
+    const ctx = createAdminContext();
+    const caller = appRouter.createCaller(ctx);
+    const result = await caller.accounts.update({ id: 1, name: "Updated Name", color: "#34d399" });
+    expect(result.success).toBe(true);
+  });
+
+  it("staff cannot update account", async () => {
+    const ctx = createStaffContext();
+    const caller = appRouter.createCaller(ctx);
+    await expect(caller.accounts.update({ id: 1, name: "Updated" })).rejects.toThrow();
+  });
+
+  it("admin can delete account", async () => {
+    const ctx = createAdminContext();
+    const caller = appRouter.createCaller(ctx);
+    const result = await caller.accounts.delete({ id: 1 });
+    expect(result.success).toBe(true);
+  });
+
+  it("staff cannot delete account", async () => {
+    const ctx = createStaffContext();
+    const caller = appRouter.createCaller(ctx);
+    await expect(caller.accounts.delete({ id: 1 })).rejects.toThrow();
+  });
+
+  it("admin can reorder accounts", async () => {
+    const ctx = createAdminContext();
+    const caller = appRouter.createCaller(ctx);
+    const result = await caller.accounts.reorder({
+      items: [{ id: 2, sortOrder: 0 }, { id: 1, sortOrder: 1 }],
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("staff cannot reorder accounts", async () => {
+    const ctx = createStaffContext();
+    const caller = appRouter.createCaller(ctx);
+    await expect(
+      caller.accounts.reorder({ items: [{ id: 1, sortOrder: 0 }] })
+    ).rejects.toThrow();
+  });
+
+  it("create account rejects empty name", async () => {
+    const ctx = createAdminContext();
+    const caller = appRouter.createCaller(ctx);
+    await expect(caller.accounts.create({ name: "" })).rejects.toThrow();
   });
 });

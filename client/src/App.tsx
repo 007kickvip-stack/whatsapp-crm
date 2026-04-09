@@ -16,6 +16,7 @@ import ExchangeRatePage from "./pages/ExchangeRate";
 import ProfitReportPage from "./pages/ProfitReport";
 import StaffTargetsPage from "./pages/StaffTargets";
 import DailyDataPage from "./pages/DailyData";
+import AccountManagementPage from "./pages/AccountManagement";
 
 function Router() {
   return (
@@ -36,6 +37,7 @@ function Router() {
             <Route path="/profit-report" component={ProfitReportPage} />
             <Route path="/staff-targets" component={StaffTargetsPage} />
             <Route path="/daily-data" component={DailyDataPage} />
+            <Route path="/account-management" component={AccountManagementPage} />
             <Route path="/404" component={NotFound} />
             <Route component={NotFound} />
           </Switch>

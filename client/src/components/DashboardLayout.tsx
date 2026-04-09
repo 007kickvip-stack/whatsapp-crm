@@ -38,6 +38,7 @@ import {
   BarChart3,
   Target,
   CalendarDays,
+  Palette,
 } from "lucide-react";
 import { CSSProperties, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation } from "wouter";
@@ -73,6 +74,7 @@ const dataMenuItems: MenuItem[] = [
 // 仅管理员可见的系统管理菜单
 const adminMenuItems: MenuItem[] = [
   { icon: UserCog, label: "用户管理", path: "/users", adminOnly: true },
+  { icon: Palette, label: "账号管理", path: "/account-management", adminOnly: true },
   { icon: ArrowRightLeft, label: "汇率管理", path: "/exchange-rate", adminOnly: true },
   { icon: ClipboardList, label: "操作日志", path: "/audit-logs", adminOnly: true },
 ];

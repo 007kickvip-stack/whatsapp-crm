@@ -12,7 +12,7 @@ import {
   CalendarDays, Plus, Trash2, RefreshCw, FileText,
   MessageSquare, Users, ShoppingCart, Package, DollarSign, TrendingUp
 } from "lucide-react";
-import { ACCOUNT_OPTIONS } from "@shared/const";
+import AccountSelect from "@/components/AccountSelect";
 
 function formatDate(d: any): string {
   if (!d) return "";
@@ -113,46 +113,7 @@ function EditableCell({
   );
 }
 
-// ============================================================
-// Account select cell - dropdown for whats account
-// ============================================================
-function AccountSelectCell({
-  value,
-  accounts,
-  onSave,
-  disabled = false,
-}: {
-  value: string;
-  accounts: string[];
-  onSave: (val: string) => void;
-  disabled?: boolean;
-}) {
-  if (disabled) {
-    return (
-      <div className="min-h-[24px] px-1 py-0.5 text-center text-[11px]">
-        {value || <span className="text-gray-300">-</span>}
-      </div>
-    );
-  }
-
-  return (
-    <select
-      value={value || ""}
-      onChange={(e) => {
-        if (e.target.value !== value) {
-          onSave(e.target.value);
-        }
-      }}
-      className="w-full border border-gray-200 rounded px-0.5 py-0.5 text-[11px] text-center focus:outline-none focus:ring-1 focus:ring-emerald-400 bg-white cursor-pointer hover:bg-emerald-50 transition-colors"
-      title="选择whats账号"
-    >
-      <option value="">选择账号</option>
-      {accounts.map((acc) => (
-        <option key={acc} value={acc}>{acc}</option>
-      ))}
-    </select>
-  );
-}
+// AccountSelectCell removed - now using shared AccountSelect component
 
 export default function DailyData() {
   const { user } = useAuth();
@@ -187,8 +148,7 @@ export default function DailyData() {
   const staffListQuery = isAdmin ? trpc.dailyData.staffList.useQuery() : { data: [] };
   const staffList = staffListQuery.data || [];
 
-  // 使用固定账号列表
-  const accountList = ACCOUNT_OPTIONS as readonly string[];
+  // 账号列表现在从数据库加载（通过 AccountSelect 组件内部查询）
 
   const reportQuery = trpc.dailyData.report.useQuery(
     { reportDate, staffName: staffFilter === "__all__" ? undefined : staffFilter },
@@ -454,18 +414,14 @@ export default function DailyData() {
                         <span className="text-gray-500">{user?.name || "-"}</span>
                       )}
                     </td>
-                    {/* whats账号 - 下拉选择 */}
+                    {/* whats账号 - 可搜索下拉选择 */}
                     <td className={tdClass}>
-                      <select
+                      <AccountSelect
                         value={newRowAccount}
-                        onChange={(e) => setNewRowAccount(e.target.value)}
-                        className="w-full border border-emerald-400 rounded px-0.5 py-0.5 text-[11px] text-center focus:outline-none focus:ring-1 focus:ring-emerald-400 bg-white"
-                      >
-                        <option value="">选择账号</option>
-                        {ACCOUNT_OPTIONS.map((acc) => (
-                          <option key={acc} value={acc}>{acc}</option>
-                        ))}
-                      </select>
+                        onValueChange={setNewRowAccount}
+                        placeholder="选择账号"
+                        compact
+                      />
                     </td>
                     <td colSpan={16} className={tdClass}>
                       <span className="text-gray-400 text-[10px]">创建后可编辑各字段，选择账号后自动同步订单数据</span>
@@ -509,12 +465,13 @@ export default function DailyData() {
                         <td className={`${tdClass} font-medium`}>
                           {row.staffName}
                         </td>
-                        {/* whats账号 - 下拉选择，选择后自动同步 */}
+                        {/* whats账号 - 可搜索下拉选择，选择后自动同步 */}
                         <td className={tdClass}>
-                           <AccountSelectCell
+                          <AccountSelect
                             value={row.whatsAccount || ""}
-                            accounts={[...accountList]}
-                            onSave={(v) => saveFieldAndSync(row.id, "whatsAccount", v)}
+                            onValueChange={(v) => saveFieldAndSync(row.id, "whatsAccount", v)}
+                            placeholder="选择账号"
+                            compact
                           />
                         </td>
                         {/* 消息数 */}

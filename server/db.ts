@@ -1,6 +1,6 @@
 import { eq, like, and, sql, desc, or, SQL } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
-import { InsertUser, users, customers, orders, orderItems, InsertCustomer, InsertOrder, InsertOrderItem, auditLogs, InsertAuditLog, exchangeRates, InsertExchangeRate, profitAlertSettings, InsertProfitAlertSetting, staffMonthlyTargets, InsertStaffMonthlyTarget, dailyData, InsertDailyData } from "../drizzle/schema";
+import { InsertUser, users, customers, orders, orderItems, InsertCustomer, InsertOrder, InsertOrderItem, auditLogs, InsertAuditLog, exchangeRates, InsertExchangeRate, profitAlertSettings, InsertProfitAlertSetting, staffMonthlyTargets, InsertStaffMonthlyTarget, dailyData, InsertDailyData, accounts, InsertAccount } from "../drizzle/schema";
 import { ENV } from './_core/env';
 import { nanoid } from 'nanoid';
 import { createHash, randomBytes } from 'crypto';
@@ -1309,5 +1309,72 @@ export async function syncOrderDataToDailyData(id: number, whatsAccount: string,
     estimatedProfit: summary.estimatedProfit,
     estimatedProfitRate: profitRate,
   }).where(eq(dailyData.id, id));
+  return { success: true };
+}
+
+// ==================== 账号管理 ====================
+
+/**
+ * 获取所有账号列表（按 sortOrder 排序）
+ */
+export async function listAccounts() {
+  const db = await getDb();
+  if (!db) return [];
+  const rows = await db.select().from(accounts).orderBy(accounts.sortOrder);
+  return rows;
+}
+
+/**
+ * 创建新账号
+ */
+export async function createAccount(data: { name: string; color?: string; sortOrder?: number }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  // Get max sortOrder if not provided
+  if (data.sortOrder === undefined) {
+    const [rows] = await db.execute(sql`SELECT COALESCE(MAX(sortOrder), -1) + 1 as nextOrder FROM accounts`);
+    data.sortOrder = (rows as any)[0]?.nextOrder || 0;
+  }
+  const result = await db.insert(accounts).values({
+    name: data.name,
+    color: data.color || "#94a3b8",
+    sortOrder: data.sortOrder,
+  });
+  return { id: result[0].insertId };
+}
+
+/**
+ * 更新账号
+ */
+export async function updateAccount(id: number, data: { name?: string; color?: string; sortOrder?: number }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const updateData: any = {};
+  if (data.name !== undefined) updateData.name = data.name;
+  if (data.color !== undefined) updateData.color = data.color;
+  if (data.sortOrder !== undefined) updateData.sortOrder = data.sortOrder;
+  await db.update(accounts).set(updateData).where(eq(accounts.id, id));
+  return { success: true };
+}
+
+/**
+ * 删除账号
+ */
+export async function deleteAccount(id: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.delete(accounts).where(eq(accounts.id, id));
+  return { success: true };
+}
+
+/**
+ * 批量更新账号排序
+ */
+export async function reorderAccounts(items: { id: number; sortOrder: number }[]) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  for (const item of items) {
+    await db.update(accounts).set({ sortOrder: item.sortOrder }).where(eq(accounts.id, item.id));
+  }
   return { success: true };
 }

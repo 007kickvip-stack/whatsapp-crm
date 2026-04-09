@@ -58,7 +58,7 @@ import {
 import { toast } from "sonner";
 import { useLocation } from "wouter";
 import PasteImportDialog from "@/components/PasteImportDialog";
-import { ACCOUNT_OPTIONS } from "@shared/const";
+import AccountSelect from "@/components/AccountSelect";
 
 type OrderForm = {
   orderDate: string;
@@ -1008,15 +1008,14 @@ export default function OrdersPage() {
           {row.isFirstRow ? row.staffName || "" : ""}
         </td>
 
-        {/* 3. 账号 - order level editable (dropdown) */}
+        {/* 3. 账号 - order level editable (dropdown with search) */}
         <td className="py-1 px-1 border-r border-gray-100 whitespace-nowrap text-center text-[11px]">
           {row.isFirstRow ? (
-            <EditableCell
+            <AccountSelect
               value={row.account || ""}
-              onSave={(v) => saveOrderField(row.orderId, "account", v)}
-              type="select"
-              selectOptions={["", ...ACCOUNT_OPTIONS]}
+              onValueChange={(v) => saveOrderField(row.orderId, "account", v)}
               placeholder="账号"
+              compact
             />
           ) : null}
         </td>
@@ -1425,15 +1424,13 @@ export default function OrdersPage() {
             {/* 账号 */}
             <div className="space-y-1">
               <Label className="text-[10px] text-muted-foreground">账号</Label>
-              <Select value={filterAccount || "__all__"} onValueChange={(v) => { setFilterAccount(v === "__all__" ? "" : v); setPage(1); }}>
-                <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="__all__">全部账号</SelectItem>
-                  {ACCOUNT_OPTIONS.map((opt) => (
-                    <SelectItem key={opt} value={opt}>{opt}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <AccountSelect
+                value={filterAccount}
+                onValueChange={(v) => { setFilterAccount(v); setPage(1); }}
+                showAll
+                allLabel="全部账号"
+                className="h-8"
+              />
             </div>
             {/* 客户WhatsApp */}
             <div className="space-y-1">
@@ -1597,15 +1594,11 @@ export default function OrdersPage() {
               </div>
               <div className="space-y-2">
                 <Label>账号</Label>
-                <Select value={form.account || "__none__"} onValueChange={(v) => setForm({ ...form, account: v === "__none__" ? "" : v })}>
-                  <SelectTrigger><SelectValue placeholder="选择账号" /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="__none__">选择账号</SelectItem>
-                    {ACCOUNT_OPTIONS.map((opt) => (
-                      <SelectItem key={opt} value={opt}>{opt}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <AccountSelect
+                  value={form.account}
+                  onValueChange={(v) => setForm({ ...form, account: v })}
+                  placeholder="选择账号"
+                />
               </div>
             </div>
             <div className="grid grid-cols-2 gap-4">
