@@ -1114,9 +1114,15 @@ export async function getStaffList() {
 /**
  * 从订单表自动汇总某个客服某天的数据
  */
-export async function getDailyOrderSummary(staffName: string, reportDate: string) {
+export async function getDailyOrderSummary(account: string, reportDate: string) {
   const db = await getDb();
   if (!db) return { totalRevenue: "0", productSellingPrice: "0", shippingCharged: "0", estimatedProfit: "0" };
+
+  // Normalize reportDate to YYYY-MM-DD format
+  const dateStr = String(reportDate);
+  const normalizedDate = dateStr.includes('T')
+    ? dateStr.split('T')[0]
+    : dateStr.match(/\d{4}-\d{2}-\d{2}/)?.[0] || dateStr;
 
   const [rows] = await db.execute(sql`
     SELECT
@@ -1125,22 +1131,22 @@ export async function getDailyOrderSummary(staffName: string, reportDate: string
         SELECT SUM(oi.sellingPrice)
         FROM order_items oi
         JOIN orders o2 ON oi.orderId = o2.id
-        WHERE o2.staffName = ${staffName} AND o2.orderDate = ${reportDate}
+        WHERE o2.account = ${account} AND DATE(o2.orderDate) = ${normalizedDate}
       ), 0) as productSellingPrice,
       COALESCE((
         SELECT SUM(oi.shippingCharged)
         FROM order_items oi
         JOIN orders o2 ON oi.orderId = o2.id
-        WHERE o2.staffName = ${staffName} AND o2.orderDate = ${reportDate}
+        WHERE o2.account = ${account} AND DATE(o2.orderDate) = ${normalizedDate}
       ), 0) as shippingCharged,
       COALESCE((
         SELECT SUM(oi.productProfit)
         FROM order_items oi
         JOIN orders o2 ON oi.orderId = o2.id
-        WHERE o2.staffName = ${staffName} AND o2.orderDate = ${reportDate}
+        WHERE o2.account = ${account} AND DATE(o2.orderDate) = ${normalizedDate}
       ), 0) as estimatedProfit
     FROM orders o
-    WHERE o.staffName = ${staffName} AND o.orderDate = ${reportDate}
+    WHERE o.account = ${account} AND DATE(o.orderDate) = ${normalizedDate}
   `);
   const row = (rows as unknown as any[])[0] || {};
   return {
@@ -1149,6 +1155,19 @@ export async function getDailyOrderSummary(staffName: string, reportDate: string
     shippingCharged: String(row.shippingCharged || "0"),
     estimatedProfit: String(row.estimatedProfit || "0"),
   };
+}
+
+/**
+ * 获取订单表中所有不重复的 account 值
+ */
+export async function getDistinctOrderAccounts() {
+  const db = await getDb();
+  if (!db) return [];
+
+  const [rows] = await db.execute(sql`
+    SELECT DISTINCT account FROM orders WHERE account IS NOT NULL AND account != '' ORDER BY account ASC
+  `);
+  return (rows as unknown as any[]).map((r: any) => r.account as string);
 }
 
 /**
@@ -1274,8 +1293,9 @@ export async function getDailyReport(reportDate: string, staffName?: string) {
 /**
  * 批量同步订单汇总数据到每日数据表
  */
-export async function syncOrderDataToDailyData(id: number, staffName: string, reportDate: string) {
-  const summary = await getDailyOrderSummary(staffName, reportDate);
+export async function syncOrderDataToDailyData(id: number, whatsAccount: string, reportDate: string) {
+  if (!whatsAccount) return { success: false, message: "请先选择whats账号" };
+  const summary = await getDailyOrderSummary(whatsAccount, reportDate);
   const totalRev = parseFloat(summary.totalRevenue) || 0;
   const estProfit = parseFloat(summary.estimatedProfit) || 0;
   const profitRate = totalRev > 0 ? (estProfit / totalRev).toFixed(6) : "0";

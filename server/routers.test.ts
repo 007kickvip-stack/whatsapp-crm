@@ -61,7 +61,8 @@ vi.mock("./db", () => ({
   createDailyData: vi.fn().mockResolvedValue({ id: 1 }),
   updateDailyData: vi.fn().mockResolvedValue({ success: true }),
   deleteDailyData: vi.fn().mockResolvedValue({ success: true }),
-  getDailyDataById: vi.fn().mockResolvedValue({ id: 1, reportDate: "2026-04-09", staffId: 2, staffName: "Staff User" }),
+  getDailyDataById: vi.fn().mockResolvedValue({ id: 1, reportDate: "2026-04-09", staffId: 2, staffName: "Staff User", whatsAccount: "M1 BUY-4254" }),
+  getDistinctOrderAccounts: vi.fn().mockResolvedValue(["M1 BUY-4254", "K-ONE-1718", "UMI BUY-3264"]),
   getDailyReport: vi.fn().mockResolvedValue({ rows: [{ id: 1, staffName: "Staff User", messageCount: 50, totalRevenue: "500" }], totals: { staffCount: 1, totalMessages: 50, totalRevenue: "500", totalEstimatedProfit: "150", avgProfitRate: "0.3" } }),
   syncOrderDataToDailyData: vi.fn().mockResolvedValue({ success: true }),
 }));

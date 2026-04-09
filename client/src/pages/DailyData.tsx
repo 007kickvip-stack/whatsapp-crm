@@ -112,6 +112,47 @@ function EditableCell({
   );
 }
 
+// ============================================================
+// Account select cell - dropdown for whats account
+// ============================================================
+function AccountSelectCell({
+  value,
+  accounts,
+  onSave,
+  disabled = false,
+}: {
+  value: string;
+  accounts: string[];
+  onSave: (val: string) => void;
+  disabled?: boolean;
+}) {
+  if (disabled) {
+    return (
+      <div className="min-h-[24px] px-1 py-0.5 text-center text-[11px]">
+        {value || <span className="text-gray-300">-</span>}
+      </div>
+    );
+  }
+
+  return (
+    <select
+      value={value || ""}
+      onChange={(e) => {
+        if (e.target.value !== value) {
+          onSave(e.target.value);
+        }
+      }}
+      className="w-full border border-gray-200 rounded px-0.5 py-0.5 text-[11px] text-center focus:outline-none focus:ring-1 focus:ring-emerald-400 bg-white cursor-pointer hover:bg-emerald-50 transition-colors"
+      title="选择whats账号"
+    >
+      <option value="">选择账号</option>
+      {accounts.map((acc) => (
+        <option key={acc} value={acc}>{acc}</option>
+      ))}
+    </select>
+  );
+}
+
 export default function DailyData() {
   const { user } = useAuth();
   const isAdmin = user?.role === "admin";
@@ -133,6 +174,7 @@ export default function DailyData() {
   const [newRowDate, setNewRowDate] = useState(today);
   const [newRowStaffId, setNewRowStaffId] = useState<number>(0);
   const [newRowStaffName, setNewRowStaffName] = useState("");
+  const [newRowAccount, setNewRowAccount] = useState("");
 
   const queryParams = useMemo(() => ({
     startDate,
@@ -144,6 +186,9 @@ export default function DailyData() {
   const staffListQuery = isAdmin ? trpc.dailyData.staffList.useQuery() : { data: [] };
   const staffList = staffListQuery.data || [];
 
+  // 获取订单表中所有不重复的 account 列表
+  const { data: accountList = [] } = trpc.dailyData.accountList.useQuery();
+
   const reportQuery = trpc.dailyData.report.useQuery(
     { reportDate, staffName: staffFilter === "__all__" ? undefined : staffFilter },
     { enabled: reportDialogOpen }
@@ -153,6 +198,7 @@ export default function DailyData() {
     onSuccess: () => {
       toast.success("创建成功");
       setShowNewRow(false);
+      setNewRowAccount("");
       utils.dailyData.list.invalidate();
     },
     onError: (e: any) => toast.error(e.message),
@@ -182,8 +228,8 @@ export default function DailyData() {
     onError: (e: any) => toast.error(e.message),
   });
 
-  // Inline save field for existing record
-  const saveField = useCallback(
+  // 保存字段后自动同步：当修改 whatsAccount 时，保存后自动触发同步
+  const saveFieldAndSync = useCallback(
     (id: number, field: string, value: string) => {
       const numFields = [
         "messageCount", "newCustomerCount", "newIntentCount", "returnVisitCount",
@@ -199,16 +245,31 @@ export default function DailyData() {
         parsed = value;
       }
 
-      updateMutation.mutate({ id, [field]: parsed } as any);
+      if (field === "whatsAccount") {
+        // 保存 whatsAccount 后自动触发同步
+        updateMutation.mutate({ id, [field]: parsed } as any, {
+          onSuccess: () => {
+            toast.success("已保存");
+            utils.dailyData.list.invalidate();
+            // 自动同步订单数据
+            if (value) {
+              syncMutation.mutate({ id });
+            }
+          },
+        });
+      } else {
+        updateMutation.mutate({ id, [field]: parsed } as any);
+      }
     },
     []
   );
 
-  // Create new record
+  // Create new record (with optional whatsAccount)
   function handleCreateRow() {
     createMutation.mutate({
       reportDate: newRowDate,
       ...(isAdmin && newRowStaffId ? { staffId: newRowStaffId, staffName: newRowStaffName } : {}),
+      ...(newRowAccount ? { whatsAccount: newRowAccount } : {}),
     });
   }
 
@@ -291,7 +352,7 @@ export default function DailyData() {
         <Card>
           <CardContent className="p-3">
             <div className="flex items-center gap-2 text-muted-foreground text-xs"><DollarSign className="w-3.5 h-3.5" />总营业额</div>
-            <p className="text-lg font-bold mt-1">¥{formatMoney(totals.totalRevenue)}</p>
+            <p className="text-lg font-bold mt-1 text-emerald-600">¥{formatMoney(totals.totalRevenue)}</p>
           </CardContent>
         </Card>
         <Card>
@@ -321,8 +382,8 @@ export default function DailyData() {
                   <SelectTrigger className="w-36 h-8 text-xs"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="__all__">全部客服</SelectItem>
-                    {staffList.map((s: any) => (
-                      <SelectItem key={s.name} value={s.name}>{s.name}</SelectItem>
+                    {staffList.map((s: any, idx: number) => (
+                      <SelectItem key={s.staffId || `staff-${idx}`} value={s.staffName}>{s.staffName}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
@@ -341,7 +402,7 @@ export default function DailyData() {
                 <tr className="border-b bg-rose-50 text-gray-700">
                   <th className={`${thClass} sticky left-0 bg-rose-50 z-10 min-w-[80px]`}>日期</th>
                   <th className={`${thClass} min-w-[60px]`}>名字</th>
-                  <th className={`${thClass} min-w-[90px]`}>whats账号</th>
+                  <th className={`${thClass} min-w-[120px]`}>whats账号</th>
                   <th className={`${thClass} min-w-[55px]`}>消息数</th>
                   <th className={`${thClass} min-w-[60px]`}>新客人数</th>
                   <th className={`${thClass} min-w-[60px]`}>新增意向</th>
@@ -378,22 +439,35 @@ export default function DailyData() {
                         <select
                           value={newRowStaffId}
                           onChange={(e) => {
-                            const s = staffList.find((s: any) => String(s.id) === e.target.value);
-                            if (s) { setNewRowStaffId(s.id); setNewRowStaffName(s.name); }
+                            const s = staffList.find((s: any) => String(s.staffId) === e.target.value);
+                            if (s) { setNewRowStaffId(s.staffId); setNewRowStaffName(s.staffName); }
                           }}
                           className="w-full border border-emerald-400 rounded px-0.5 py-0.5 text-[11px] text-center focus:outline-none focus:ring-1 focus:ring-emerald-400 bg-white"
                         >
                           <option value={0}>选择客服</option>
                           {staffList.map((s: any) => (
-                            <option key={s.id} value={s.id}>{s.name}</option>
+                            <option key={s.staffId} value={s.staffId}>{s.staffName}</option>
                           ))}
                         </select>
                       ) : (
                         <span className="text-gray-500">{user?.name || "-"}</span>
                       )}
                     </td>
-                    <td colSpan={17} className={tdClass}>
-                      <span className="text-gray-400 text-[10px]">创建后可编辑各字段</span>
+                    {/* whats账号 - 下拉选择 */}
+                    <td className={tdClass}>
+                      <select
+                        value={newRowAccount}
+                        onChange={(e) => setNewRowAccount(e.target.value)}
+                        className="w-full border border-emerald-400 rounded px-0.5 py-0.5 text-[11px] text-center focus:outline-none focus:ring-1 focus:ring-emerald-400 bg-white"
+                      >
+                        <option value="">选择账号</option>
+                        {accountList.map((acc: string) => (
+                          <option key={acc} value={acc}>{acc}</option>
+                        ))}
+                      </select>
+                    </td>
+                    <td colSpan={16} className={tdClass}>
+                      <span className="text-gray-400 text-[10px]">创建后可编辑各字段，选择账号后自动同步订单数据</span>
                     </td>
                     <td className="py-1 px-1 text-center whitespace-nowrap">
                       <div className="flex items-center justify-center gap-1">
@@ -434,19 +508,19 @@ export default function DailyData() {
                         <td className={`${tdClass} font-medium`}>
                           {row.staffName}
                         </td>
-                        {/* whats账号 - 可编辑 */}
+                        {/* whats账号 - 下拉选择，选择后自动同步 */}
                         <td className={tdClass}>
-                          <EditableCell
+                          <AccountSelectCell
                             value={row.whatsAccount || ""}
-                            onSave={(v) => saveField(row.id, "whatsAccount", v)}
-                            placeholder="-"
+                            accounts={accountList}
+                            onSave={(v) => saveFieldAndSync(row.id, "whatsAccount", v)}
                           />
                         </td>
                         {/* 消息数 */}
                         <td className={tdClass}>
                           <EditableCell
                             value={String(row.messageCount || 0)}
-                            onSave={(v) => saveField(row.id, "messageCount", v)}
+                            onSave={(v) => saveFieldAndSync(row.id, "messageCount", v)}
                             type="number"
                           />
                         </td>
@@ -454,7 +528,7 @@ export default function DailyData() {
                         <td className={tdClass}>
                           <EditableCell
                             value={String(row.newCustomerCount || 0)}
-                            onSave={(v) => saveField(row.id, "newCustomerCount", v)}
+                            onSave={(v) => saveFieldAndSync(row.id, "newCustomerCount", v)}
                             type="number"
                           />
                         </td>
@@ -462,7 +536,7 @@ export default function DailyData() {
                         <td className={tdClass}>
                           <EditableCell
                             value={String(row.newIntentCount || 0)}
-                            onSave={(v) => saveField(row.id, "newIntentCount", v)}
+                            onSave={(v) => saveFieldAndSync(row.id, "newIntentCount", v)}
                             type="number"
                           />
                         </td>
@@ -470,7 +544,7 @@ export default function DailyData() {
                         <td className={tdClass}>
                           <EditableCell
                             value={String(row.returnVisitCount || 0)}
-                            onSave={(v) => saveField(row.id, "returnVisitCount", v)}
+                            onSave={(v) => saveFieldAndSync(row.id, "returnVisitCount", v)}
                             type="number"
                           />
                         </td>
@@ -478,7 +552,7 @@ export default function DailyData() {
                         <td className={tdClass}>
                           <EditableCell
                             value={String(row.newOrderCount || 0)}
-                            onSave={(v) => saveField(row.id, "newOrderCount", v)}
+                            onSave={(v) => saveFieldAndSync(row.id, "newOrderCount", v)}
                             type="number"
                           />
                         </td>
@@ -486,7 +560,7 @@ export default function DailyData() {
                         <td className={tdClass}>
                           <EditableCell
                             value={String(row.oldOrderCount || 0)}
-                            onSave={(v) => saveField(row.id, "oldOrderCount", v)}
+                            onSave={(v) => saveFieldAndSync(row.id, "oldOrderCount", v)}
                             type="number"
                           />
                         </td>
@@ -494,7 +568,7 @@ export default function DailyData() {
                         <td className={tdClass}>
                           <EditableCell
                             value={String(row.onlineOrderCount || 0)}
-                            onSave={(v) => saveField(row.id, "onlineOrderCount", v)}
+                            onSave={(v) => saveFieldAndSync(row.id, "onlineOrderCount", v)}
                             type="number"
                           />
                         </td>
@@ -502,7 +576,7 @@ export default function DailyData() {
                         <td className={tdClass}>
                           <EditableCell
                             value={String(row.itemCount || 0)}
-                            onSave={(v) => saveField(row.id, "itemCount", v)}
+                            onSave={(v) => saveFieldAndSync(row.id, "itemCount", v)}
                             type="number"
                           />
                         </td>
@@ -519,7 +593,7 @@ export default function DailyData() {
                         <td className={tdClass}>
                           <EditableCell
                             value={String(parseFloat(row.onlineRevenue) || 0)}
-                            onSave={(v) => saveField(row.id, "onlineRevenue", v)}
+                            onSave={(v) => saveFieldAndSync(row.id, "onlineRevenue", v)}
                             type="number"
                           />
                         </td>
@@ -560,7 +634,7 @@ export default function DailyData() {
                         <td className={tdClass}>
                           <EditableCell
                             value={String(row.telegramPraiseCount || 0)}
-                            onSave={(v) => saveField(row.id, "telegramPraiseCount", v)}
+                            onSave={(v) => saveFieldAndSync(row.id, "telegramPraiseCount", v)}
                             type="number"
                           />
                         </td>
@@ -568,7 +642,7 @@ export default function DailyData() {
                         <td className={tdClass}>
                           <EditableCell
                             value={String(row.referralCount || 0)}
-                            onSave={(v) => saveField(row.id, "referralCount", v)}
+                            onSave={(v) => saveFieldAndSync(row.id, "referralCount", v)}
                             type="number"
                           />
                         </td>
@@ -581,8 +655,9 @@ export default function DailyData() {
                               className="h-6 w-6"
                               title="同步订单数据"
                               onClick={() => syncMutation.mutate({ id: row.id })}
+                              disabled={!row.whatsAccount}
                             >
-                              <RefreshCw className="w-3 h-3" />
+                              <RefreshCw className={`w-3 h-3 ${syncMutation.isPending ? "animate-spin" : ""}`} />
                             </Button>
                             <Button
                               variant="ghost"
@@ -649,8 +724,8 @@ export default function DailyData() {
                   <SelectTrigger className="w-40"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="__all__">全部客服</SelectItem>
-                    {staffList.map((s: any) => (
-                      <SelectItem key={s.name} value={s.name}>{s.name}</SelectItem>
+                    {staffList.map((s: any, idx: number) => (
+                      <SelectItem key={s.staffId || `staff-${idx}`} value={s.staffName}>{s.staffName}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
@@ -700,6 +775,7 @@ export default function DailyData() {
                   <thead>
                     <tr className="border-b bg-rose-50">
                       <th className={thClass}>名字</th>
+                      <th className={thClass}>whats账号</th>
                       <th className={thClass}>消息数</th>
                       <th className={thClass}>新客人数</th>
                       <th className={thClass}>新增意向</th>
@@ -718,6 +794,7 @@ export default function DailyData() {
                     {reportQuery.data.rows.map((row: any) => (
                       <tr key={row.id} className="border-b hover:bg-muted/30">
                         <td className={`${tdClass} font-medium`}>{row.staffName}</td>
+                        <td className={tdClass}>{row.whatsAccount || "-"}</td>
                         <td className={tdClass}>{row.messageCount || 0}</td>
                         <td className={tdClass}>{row.newCustomerCount || 0}</td>
                         <td className={tdClass}>{row.newIntentCount || 0}</td>
@@ -736,6 +813,7 @@ export default function DailyData() {
                     {reportQuery.data.totals && (
                       <tr className="border-t-2 bg-amber-50/50 font-bold">
                         <td className={`${tdClass} font-bold`}>合计</td>
+                        <td className={tdClass}></td>
                         <td className={`${tdClass} font-bold`}>{reportQuery.data.totals.totalMessages}</td>
                         <td className={`${tdClass} font-bold`}>{reportQuery.data.totals.totalNewCustomers}</td>
                         <td className={`${tdClass} font-bold`}>{reportQuery.data.totals.totalNewIntents}</td>

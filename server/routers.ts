@@ -20,7 +20,7 @@ import {
   listStaffMonthlyTargets, upsertStaffMonthlyTarget, deleteStaffMonthlyTarget,
   getStaffTargetProgress, getStaffList,
   getDailyOrderSummary, listDailyData, createDailyData, updateDailyData, deleteDailyData,
-  getDailyDataById, getDailyReport, syncOrderDataToDailyData,
+  getDailyDataById, getDailyReport, syncOrderDataToDailyData, getDistinctOrderAccounts,
 } from "./db";
 import { sdk } from "./_core/sdk";
 import { ONE_YEAR_MS } from "@shared/const";
@@ -804,8 +804,11 @@ export const appRouter = router({
       const staffId = isAdmin && input.staffId ? input.staffId : ctx.user.id;
       const staffName = isAdmin && input.staffName ? input.staffName : (ctx.user.name || "未知");
 
-      // 获取订单汇总数据
-      const summary = await getDailyOrderSummary(staffName, input.reportDate);
+      // 获取订单汇总数据（按 whatsAccount 匹配订单表的 account 字段）
+      const account = input.whatsAccount || "";
+      const summary = account
+        ? await getDailyOrderSummary(account, input.reportDate)
+        : { totalRevenue: "0", productSellingPrice: "0", shippingCharged: "0", estimatedProfit: "0" };
       const totalRev = parseFloat(summary.totalRevenue) || 0;
       const estProfit = parseFloat(summary.estimatedProfit) || 0;
       const profitRate = totalRev > 0 ? (estProfit / totalRev).toFixed(6) : "0";
@@ -891,7 +894,21 @@ export const appRouter = router({
         throw new TRPCError({ code: "FORBIDDEN", message: "无权操作" });
       }
 
-      return await syncOrderDataToDailyData(input.id, existing.staffName, String(existing.reportDate));
+      if (!existing.whatsAccount) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "请先选择whats账号后再同步" });
+      }
+      // Normalize reportDate to YYYY-MM-DD format
+      const reportDateStr = existing.reportDate instanceof Date
+        ? existing.reportDate.toISOString().split('T')[0]
+        : String(existing.reportDate).includes('T')
+          ? String(existing.reportDate).split('T')[0]
+          : String(existing.reportDate);
+      return await syncOrderDataToDailyData(input.id, existing.whatsAccount, reportDateStr);
+    }),
+
+    // 获取订单表中所有不重复的 account 列表（用于 whats账号下拉选择）
+    accountList: protectedProcedure.query(async () => {
+      return await getDistinctOrderAccounts();
     }),
 
     // 日报表
