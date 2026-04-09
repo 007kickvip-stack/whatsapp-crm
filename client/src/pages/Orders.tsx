@@ -340,7 +340,7 @@ function ImageUploadCell({
   return (
     <div
       ref={containerRef}
-      className={`w-full h-full flex items-center justify-center rounded transition-colors outline-none ${
+      className={`flex items-center justify-center rounded p-0.5 transition-colors outline-none ${
         isFocused ? "ring-1 ring-emerald-400 bg-emerald-50/50" : ""
       }`}
       tabIndex={0}
@@ -362,14 +362,14 @@ function ImageUploadCell({
         }}
       />
       {imageUrl ? (
-        <div className="relative group w-full h-full flex items-center justify-center p-0.5">
-          <button onClick={() => onPreview(imageUrl)} className="inline-flex w-full h-full items-center justify-center">
-            <img src={imageUrl} alt="" className="max-w-full max-h-full w-auto h-auto rounded object-contain border border-emerald-200 hover:border-emerald-400 transition-colors cursor-pointer" />
+        <div className="relative group">
+          <button onClick={() => onPreview(imageUrl)} className="inline-flex">
+            <img src={imageUrl} alt="" className="h-10 w-10 rounded object-cover border border-emerald-200 hover:border-emerald-400 transition-colors cursor-pointer" />
           </button>
           {onRemove && (
             <button
               onClick={(e) => { e.stopPropagation(); onRemove(); }}
-              className="absolute top-0 right-0 h-4 w-4 rounded-full bg-red-500 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow-sm z-10"
+              className="absolute -top-1.5 -right-1.5 h-4 w-4 rounded-full bg-red-500 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow-sm"
               title="删除图片"
             >
               <X className="h-2.5 w-2.5" />
