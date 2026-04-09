@@ -58,6 +58,7 @@ import {
 import { toast } from "sonner";
 import { useLocation } from "wouter";
 import PasteImportDialog from "@/components/PasteImportDialog";
+import { ACCOUNT_OPTIONS } from "@shared/const";
 
 type OrderForm = {
   orderDate: string;
@@ -1007,12 +1008,14 @@ export default function OrdersPage() {
           {row.isFirstRow ? row.staffName || "" : ""}
         </td>
 
-        {/* 3. 账号 - order level editable */}
+        {/* 3. 账号 - order level editable (dropdown) */}
         <td className="py-1 px-1 border-r border-gray-100 whitespace-nowrap text-center text-[11px]">
           {row.isFirstRow ? (
             <EditableCell
               value={row.account || ""}
               onSave={(v) => saveOrderField(row.orderId, "account", v)}
+              type="select"
+              selectOptions={["", ...ACCOUNT_OPTIONS]}
               placeholder="账号"
             />
           ) : null}
@@ -1422,12 +1425,15 @@ export default function OrdersPage() {
             {/* 账号 */}
             <div className="space-y-1">
               <Label className="text-[10px] text-muted-foreground">账号</Label>
-              <Input
-                placeholder="输入账号"
-                value={filterAccount}
-                onChange={(e) => { setFilterAccount(e.target.value); setPage(1); }}
-                className="h-8 text-xs"
-              />
+              <Select value={filterAccount || "__all__"} onValueChange={(v) => { setFilterAccount(v === "__all__" ? "" : v); setPage(1); }}>
+                <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__all__">全部账号</SelectItem>
+                  {ACCOUNT_OPTIONS.map((opt) => (
+                    <SelectItem key={opt} value={opt}>{opt}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
             {/* 客户WhatsApp */}
             <div className="space-y-1">
@@ -1591,11 +1597,15 @@ export default function OrdersPage() {
               </div>
               <div className="space-y-2">
                 <Label>账号</Label>
-                <Input
-                  placeholder="WhatsApp 账号"
-                  value={form.account}
-                  onChange={(e) => setForm({ ...form, account: e.target.value })}
-                />
+                <Select value={form.account || "__none__"} onValueChange={(v) => setForm({ ...form, account: v === "__none__" ? "" : v })}>
+                  <SelectTrigger><SelectValue placeholder="选择账号" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none__">选择账号</SelectItem>
+                    {ACCOUNT_OPTIONS.map((opt) => (
+                      <SelectItem key={opt} value={opt}>{opt}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
             </div>
             <div className="grid grid-cols-2 gap-4">

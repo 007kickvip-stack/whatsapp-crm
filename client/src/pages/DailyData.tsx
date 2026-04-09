@@ -12,6 +12,7 @@ import {
   CalendarDays, Plus, Trash2, RefreshCw, FileText,
   MessageSquare, Users, ShoppingCart, Package, DollarSign, TrendingUp
 } from "lucide-react";
+import { ACCOUNT_OPTIONS } from "@shared/const";
 
 function formatDate(d: any): string {
   if (!d) return "";
@@ -186,8 +187,8 @@ export default function DailyData() {
   const staffListQuery = isAdmin ? trpc.dailyData.staffList.useQuery() : { data: [] };
   const staffList = staffListQuery.data || [];
 
-  // 获取订单表中所有不重复的 account 列表
-  const { data: accountList = [] } = trpc.dailyData.accountList.useQuery();
+  // 使用固定账号列表
+  const accountList = ACCOUNT_OPTIONS as readonly string[];
 
   const reportQuery = trpc.dailyData.report.useQuery(
     { reportDate, staffName: staffFilter === "__all__" ? undefined : staffFilter },
@@ -461,7 +462,7 @@ export default function DailyData() {
                         className="w-full border border-emerald-400 rounded px-0.5 py-0.5 text-[11px] text-center focus:outline-none focus:ring-1 focus:ring-emerald-400 bg-white"
                       >
                         <option value="">选择账号</option>
-                        {accountList.map((acc: string) => (
+                        {ACCOUNT_OPTIONS.map((acc) => (
                           <option key={acc} value={acc}>{acc}</option>
                         ))}
                       </select>
@@ -510,9 +511,9 @@ export default function DailyData() {
                         </td>
                         {/* whats账号 - 下拉选择，选择后自动同步 */}
                         <td className={tdClass}>
-                          <AccountSelectCell
+                           <AccountSelectCell
                             value={row.whatsAccount || ""}
-                            accounts={accountList}
+                            accounts={[...accountList]}
                             onSave={(v) => saveFieldAndSync(row.id, "whatsAccount", v)}
                           />
                         </td>
