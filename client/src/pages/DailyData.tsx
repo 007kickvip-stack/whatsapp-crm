@@ -1,15 +1,15 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef, useEffect, useCallback } from "react";
 import { trpc } from "@/lib/trpc";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import {
-  CalendarDays, Plus, Pencil, Trash2, RefreshCw, FileText,
+  CalendarDays, Plus, Trash2, RefreshCw, FileText,
   MessageSquare, Users, ShoppingCart, Package, DollarSign, TrendingUp
 } from "lucide-react";
 
@@ -29,9 +29,93 @@ function formatPercent(v: any): string {
   return (n * 100).toFixed(1) + "%";
 }
 
+// ============================================================
+// Inline editable cell component (same pattern as Orders page)
+// ============================================================
+function EditableCell({
+  value,
+  onSave,
+  type = "text",
+  className = "",
+  placeholder = "",
+  disabled = false,
+}: {
+  value: string;
+  onSave: (val: string) => void;
+  type?: "text" | "number";
+  className?: string;
+  placeholder?: string;
+  disabled?: boolean;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(value);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (editing && inputRef.current) {
+      inputRef.current.focus();
+      inputRef.current.select();
+    }
+  }, [editing]);
+
+  useEffect(() => {
+    setDraft(value);
+  }, [value]);
+
+  const commit = () => {
+    setEditing(false);
+    if (draft !== value) {
+      onSave(draft);
+    }
+  };
+
+  const cancel = () => {
+    setEditing(false);
+    setDraft(value);
+  };
+
+  if (disabled) {
+    return (
+      <div className={`min-h-[24px] px-1 py-0.5 text-center ${className}`}>
+        {value || <span className="text-gray-300">-</span>}
+      </div>
+    );
+  }
+
+  if (!editing) {
+    return (
+      <div
+        onClick={() => { setDraft(value); setEditing(true); }}
+        className={`cursor-text min-h-[24px] px-1 py-0.5 rounded hover:bg-emerald-50 transition-colors text-center ${className}`}
+        title="点击编辑"
+      >
+        {value || <span className="text-gray-300 italic text-[10px]">{placeholder || "点击编辑"}</span>}
+      </div>
+    );
+  }
+
+  return (
+    <input
+      ref={inputRef}
+      type={type === "number" ? "number" : "text"}
+      step={type === "number" ? "0.01" : undefined}
+      value={draft}
+      onChange={(e) => setDraft(e.target.value)}
+      onBlur={commit}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") commit();
+        if (e.key === "Escape") cancel();
+      }}
+      className="w-full border border-emerald-400 rounded px-1 py-0.5 text-[11px] text-center focus:outline-none focus:ring-1 focus:ring-emerald-400 bg-white"
+      placeholder={placeholder}
+    />
+  );
+}
+
 export default function DailyData() {
   const { user } = useAuth();
   const isAdmin = user?.role === "admin";
+  const utils = trpc.useUtils();
 
   const today = new Date().toISOString().split("T")[0];
   const [startDate, setStartDate] = useState(() => {
@@ -41,29 +125,14 @@ export default function DailyData() {
   });
   const [endDate, setEndDate] = useState(today);
   const [staffFilter, setStaffFilter] = useState("__all__");
-  const [dialogOpen, setDialogOpen] = useState(false);
-  const [editingId, setEditingId] = useState<number | null>(null);
   const [reportDialogOpen, setReportDialogOpen] = useState(false);
   const [reportDate, setReportDate] = useState(today);
 
-  // 表单状态
-  const [form, setForm] = useState({
-    reportDate: today,
-    staffId: 0,
-    staffName: "",
-    whatsAccount: "",
-    messageCount: 0,
-    newCustomerCount: 0,
-    newIntentCount: 0,
-    returnVisitCount: 0,
-    newOrderCount: 0,
-    oldOrderCount: 0,
-    onlineOrderCount: 0,
-    itemCount: 0,
-    onlineRevenue: "0",
-    telegramPraiseCount: 0,
-    referralCount: 0,
-  });
+  // New record creation state
+  const [showNewRow, setShowNewRow] = useState(false);
+  const [newRowDate, setNewRowDate] = useState(today);
+  const [newRowStaffId, setNewRowStaffId] = useState<number>(0);
+  const [newRowStaffName, setNewRowStaffName] = useState("");
 
   const queryParams = useMemo(() => ({
     startDate,
@@ -71,7 +140,7 @@ export default function DailyData() {
     staffName: staffFilter === "__all__" ? undefined : staffFilter,
   }), [startDate, endDate, staffFilter]);
 
-  const { data: dailyList = [], isLoading, refetch } = trpc.dailyData.list.useQuery(queryParams);
+  const { data: dailyList = [], isLoading } = trpc.dailyData.list.useQuery(queryParams);
   const staffListQuery = isAdmin ? trpc.dailyData.staffList.useQuery() : { data: [] };
   const staffList = staffListQuery.data || [];
 
@@ -83,121 +152,64 @@ export default function DailyData() {
   const createMutation = trpc.dailyData.create.useMutation({
     onSuccess: () => {
       toast.success("创建成功");
-      setDialogOpen(false);
-      refetch();
+      setShowNewRow(false);
+      utils.dailyData.list.invalidate();
     },
-    onError: (e) => toast.error(e.message),
+    onError: (e: any) => toast.error(e.message),
   });
 
   const updateMutation = trpc.dailyData.update.useMutation({
     onSuccess: () => {
-      toast.success("更新成功");
-      setDialogOpen(false);
-      setEditingId(null);
-      refetch();
+      toast.success("已保存");
+      utils.dailyData.list.invalidate();
     },
-    onError: (e) => toast.error(e.message),
+    onError: (e: any) => toast.error(e.message),
   });
 
   const deleteMutation = trpc.dailyData.delete.useMutation({
     onSuccess: () => {
       toast.success("删除成功");
-      refetch();
+      utils.dailyData.list.invalidate();
     },
-    onError: (e) => toast.error(e.message),
+    onError: (e: any) => toast.error(e.message),
   });
 
   const syncMutation = trpc.dailyData.syncOrderData.useMutation({
     onSuccess: () => {
-      toast.success("同步成功，订单汇总数据已更新");
-      refetch();
+      toast.success("同步成功");
+      utils.dailyData.list.invalidate();
     },
-    onError: (e) => toast.error(e.message),
+    onError: (e: any) => toast.error(e.message),
   });
 
-  function resetForm() {
-    setForm({
-      reportDate: today,
-      staffId: 0,
-      staffName: "",
-      whatsAccount: "",
-      messageCount: 0,
-      newCustomerCount: 0,
-      newIntentCount: 0,
-      returnVisitCount: 0,
-      newOrderCount: 0,
-      oldOrderCount: 0,
-      onlineOrderCount: 0,
-      itemCount: 0,
-      onlineRevenue: "0",
-      telegramPraiseCount: 0,
-      referralCount: 0,
+  // Inline save field for existing record
+  const saveField = useCallback(
+    (id: number, field: string, value: string) => {
+      const numFields = [
+        "messageCount", "newCustomerCount", "newIntentCount", "returnVisitCount",
+        "newOrderCount", "oldOrderCount", "onlineOrderCount", "itemCount",
+        "telegramPraiseCount", "referralCount"
+      ];
+      const decimalFields = ["onlineRevenue"];
+
+      let parsed: any = value;
+      if (numFields.includes(field)) {
+        parsed = parseInt(value) || 0;
+      } else if (decimalFields.includes(field)) {
+        parsed = value;
+      }
+
+      updateMutation.mutate({ id, [field]: parsed } as any);
+    },
+    []
+  );
+
+  // Create new record
+  function handleCreateRow() {
+    createMutation.mutate({
+      reportDate: newRowDate,
+      ...(isAdmin && newRowStaffId ? { staffId: newRowStaffId, staffName: newRowStaffName } : {}),
     });
-  }
-
-  function openCreate() {
-    resetForm();
-    setEditingId(null);
-    setDialogOpen(true);
-  }
-
-  function openEdit(row: any) {
-    setEditingId(row.id);
-    setForm({
-      reportDate: formatDate(row.reportDate),
-      staffId: row.staffId,
-      staffName: row.staffName,
-      whatsAccount: row.whatsAccount || "",
-      messageCount: row.messageCount || 0,
-      newCustomerCount: row.newCustomerCount || 0,
-      newIntentCount: row.newIntentCount || 0,
-      returnVisitCount: row.returnVisitCount || 0,
-      newOrderCount: row.newOrderCount || 0,
-      oldOrderCount: row.oldOrderCount || 0,
-      onlineOrderCount: row.onlineOrderCount || 0,
-      itemCount: row.itemCount || 0,
-      onlineRevenue: row.onlineRevenue || "0",
-      telegramPraiseCount: row.telegramPraiseCount || 0,
-      referralCount: row.referralCount || 0,
-    });
-    setDialogOpen(true);
-  }
-
-  function handleSubmit() {
-    if (editingId) {
-      updateMutation.mutate({
-        id: editingId,
-        whatsAccount: form.whatsAccount || undefined,
-        messageCount: form.messageCount,
-        newCustomerCount: form.newCustomerCount,
-        newIntentCount: form.newIntentCount,
-        returnVisitCount: form.returnVisitCount,
-        newOrderCount: form.newOrderCount,
-        oldOrderCount: form.oldOrderCount,
-        onlineOrderCount: form.onlineOrderCount,
-        itemCount: form.itemCount,
-        onlineRevenue: form.onlineRevenue,
-        telegramPraiseCount: form.telegramPraiseCount,
-        referralCount: form.referralCount,
-      });
-    } else {
-      createMutation.mutate({
-        reportDate: form.reportDate,
-        whatsAccount: form.whatsAccount || undefined,
-        messageCount: form.messageCount,
-        newCustomerCount: form.newCustomerCount,
-        newIntentCount: form.newIntentCount,
-        returnVisitCount: form.returnVisitCount,
-        newOrderCount: form.newOrderCount,
-        oldOrderCount: form.oldOrderCount,
-        onlineOrderCount: form.onlineOrderCount,
-        itemCount: form.itemCount,
-        onlineRevenue: form.onlineRevenue,
-        telegramPraiseCount: form.telegramPraiseCount,
-        referralCount: form.referralCount,
-        ...(isAdmin && form.staffId ? { staffId: form.staffId, staffName: form.staffName } : {}),
-      });
-    }
   }
 
   // 汇总当前列表数据
@@ -227,10 +239,13 @@ export default function DailyData() {
     });
   }, [dailyList]);
 
+  const thClass = "py-1.5 px-1 text-center font-medium whitespace-nowrap text-[11px] border-r border-gray-100";
+  const tdClass = "py-1 px-1 text-center border-r border-gray-100 whitespace-nowrap text-[11px]";
+
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       {/* 标题和操作栏 */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold">每日数据</h1>
           <p className="text-muted-foreground text-sm mt-1">
@@ -238,11 +253,11 @@ export default function DailyData() {
           </p>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" onClick={() => setReportDialogOpen(true)}>
-            <FileText className="w-4 h-4 mr-2" />日报表
+          <Button variant="outline" size="sm" onClick={() => setReportDialogOpen(true)}>
+            <FileText className="w-4 h-4 mr-1" />日报表
           </Button>
-          <Button onClick={openCreate}>
-            <Plus className="w-4 h-4 mr-2" />新增记录
+          <Button size="sm" onClick={() => setShowNewRow(true)}>
+            <Plus className="w-4 h-4 mr-1" />新增记录
           </Button>
         </div>
       </div>
@@ -282,28 +297,28 @@ export default function DailyData() {
         <Card>
           <CardContent className="p-3">
             <div className="flex items-center gap-2 text-muted-foreground text-xs"><TrendingUp className="w-3.5 h-3.5" />预估毛利润</div>
-            <p className="text-lg font-bold mt-1">¥{formatMoney(totals.estimatedProfit)}</p>
+            <p className="text-lg font-bold mt-1 text-blue-600">¥{formatMoney(totals.estimatedProfit)}</p>
           </CardContent>
         </Card>
       </div>
 
       {/* 筛选栏 */}
       <Card>
-        <CardContent className="p-4">
+        <CardContent className="p-3">
           <div className="flex flex-wrap items-end gap-4">
             <div>
               <Label className="text-xs mb-1 block">开始日期</Label>
-              <Input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="w-40" />
+              <Input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="w-36 h-8 text-xs" />
             </div>
             <div>
               <Label className="text-xs mb-1 block">结束日期</Label>
-              <Input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="w-40" />
+              <Input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="w-36 h-8 text-xs" />
             </div>
             {isAdmin && (
               <div>
                 <Label className="text-xs mb-1 block">客服</Label>
                 <Select value={staffFilter} onValueChange={setStaffFilter}>
-                  <SelectTrigger className="w-40"><SelectValue /></SelectTrigger>
+                  <SelectTrigger className="w-36 h-8 text-xs"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="__all__">全部客服</SelectItem>
                     {staffList.map((s: any) => (
@@ -317,102 +332,293 @@ export default function DailyData() {
         </CardContent>
       </Card>
 
-      {/* 数据表格 */}
+      {/* 内联编辑数据表格 */}
       <Card>
         <CardContent className="p-0">
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+            <table className="w-full text-[11px] border-collapse">
               <thead>
-                <tr className="border-b bg-muted/50">
-                  <th className="p-2 text-left font-medium whitespace-nowrap sticky left-0 bg-muted/50 z-10">日期</th>
-                  <th className="p-2 text-left font-medium whitespace-nowrap">名字</th>
-                  <th className="p-2 text-left font-medium whitespace-nowrap">whats账号</th>
-                  <th className="p-2 text-right font-medium whitespace-nowrap">消息数</th>
-                  <th className="p-2 text-right font-medium whitespace-nowrap">新客人数</th>
-                  <th className="p-2 text-right font-medium whitespace-nowrap">新增意向</th>
-                  <th className="p-2 text-right font-medium whitespace-nowrap">回访人数</th>
-                  <th className="p-2 text-right font-medium whitespace-nowrap">新客单数</th>
-                  <th className="p-2 text-right font-medium whitespace-nowrap">老客单数</th>
-                  <th className="p-2 text-right font-medium whitespace-nowrap">线上订单</th>
-                  <th className="p-2 text-right font-medium whitespace-nowrap">件数</th>
-                  <th className="p-2 text-right font-medium whitespace-nowrap">总营业额</th>
-                  <th className="p-2 text-right font-medium whitespace-nowrap">线上营业额</th>
-                  <th className="p-2 text-right font-medium whitespace-nowrap">产品售价</th>
-                  <th className="p-2 text-right font-medium whitespace-nowrap">收取运费</th>
-                  <th className="p-2 text-right font-medium whitespace-nowrap">预估毛利润</th>
-                  <th className="p-2 text-right font-medium whitespace-nowrap">预估利润率</th>
-                  <th className="p-2 text-right font-medium whitespace-nowrap">电报好评</th>
-                  <th className="p-2 text-right font-medium whitespace-nowrap">周转介绍</th>
-                  <th className="p-2 text-center font-medium whitespace-nowrap">操作</th>
+                <tr className="border-b bg-rose-50 text-gray-700">
+                  <th className={`${thClass} sticky left-0 bg-rose-50 z-10 min-w-[80px]`}>日期</th>
+                  <th className={`${thClass} min-w-[60px]`}>名字</th>
+                  <th className={`${thClass} min-w-[90px]`}>whats账号</th>
+                  <th className={`${thClass} min-w-[55px]`}>消息数</th>
+                  <th className={`${thClass} min-w-[60px]`}>新客人数</th>
+                  <th className={`${thClass} min-w-[60px]`}>新增意向</th>
+                  <th className={`${thClass} min-w-[60px]`}>回访人数</th>
+                  <th className={`${thClass} min-w-[60px]`}>新客单数</th>
+                  <th className={`${thClass} min-w-[60px]`}>老客单数</th>
+                  <th className={`${thClass} min-w-[60px]`}>线上订单</th>
+                  <th className={`${thClass} min-w-[50px]`}>件数</th>
+                  <th className={`${thClass} min-w-[80px]`}>总营业额</th>
+                  <th className={`${thClass} min-w-[80px]`}>线上营业额</th>
+                  <th className={`${thClass} min-w-[80px]`}>产品售价</th>
+                  <th className={`${thClass} min-w-[80px]`}>收取运费</th>
+                  <th className={`${thClass} min-w-[80px]`}>预估毛利润</th>
+                  <th className={`${thClass} min-w-[70px]`}>预估利润率</th>
+                  <th className={`${thClass} min-w-[55px]`}>电报好评</th>
+                  <th className={`${thClass} min-w-[60px]`}>周转介绍</th>
+                  <th className="py-1.5 px-1 text-center font-medium whitespace-nowrap text-[11px] min-w-[80px]">操作</th>
                 </tr>
               </thead>
               <tbody>
+                {/* New row for creating */}
+                {showNewRow && (
+                  <tr className="border-b bg-emerald-50/50">
+                    <td className={`${tdClass} sticky left-0 bg-emerald-50/50 z-10`}>
+                      <input
+                        type="date"
+                        value={newRowDate}
+                        onChange={(e) => setNewRowDate(e.target.value)}
+                        className="w-full border border-emerald-400 rounded px-1 py-0.5 text-[11px] text-center focus:outline-none focus:ring-1 focus:ring-emerald-400 bg-white"
+                      />
+                    </td>
+                    <td className={tdClass}>
+                      {isAdmin ? (
+                        <select
+                          value={newRowStaffId}
+                          onChange={(e) => {
+                            const s = staffList.find((s: any) => String(s.id) === e.target.value);
+                            if (s) { setNewRowStaffId(s.id); setNewRowStaffName(s.name); }
+                          }}
+                          className="w-full border border-emerald-400 rounded px-0.5 py-0.5 text-[11px] text-center focus:outline-none focus:ring-1 focus:ring-emerald-400 bg-white"
+                        >
+                          <option value={0}>选择客服</option>
+                          {staffList.map((s: any) => (
+                            <option key={s.id} value={s.id}>{s.name}</option>
+                          ))}
+                        </select>
+                      ) : (
+                        <span className="text-gray-500">{user?.name || "-"}</span>
+                      )}
+                    </td>
+                    <td colSpan={17} className={tdClass}>
+                      <span className="text-gray-400 text-[10px]">创建后可编辑各字段</span>
+                    </td>
+                    <td className="py-1 px-1 text-center whitespace-nowrap">
+                      <div className="flex items-center justify-center gap-1">
+                        <Button
+                          size="sm"
+                          className="h-6 px-2 text-[10px]"
+                          onClick={handleCreateRow}
+                          disabled={createMutation.isPending || (isAdmin && !newRowStaffId)}
+                        >
+                          {createMutation.isPending ? "..." : "确定"}
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-6 px-2 text-[10px]"
+                          onClick={() => setShowNewRow(false)}
+                        >
+                          取消
+                        </Button>
+                      </div>
+                    </td>
+                  </tr>
+                )}
+
                 {isLoading ? (
                   <tr><td colSpan={20} className="p-8 text-center text-muted-foreground">加载中...</td></tr>
-                ) : dailyList.length === 0 ? (
+                ) : dailyList.length === 0 && !showNewRow ? (
                   <tr><td colSpan={20} className="p-8 text-center text-muted-foreground">暂无数据，点击"新增记录"开始填写</td></tr>
                 ) : (
                   <>
                     {dailyList.map((row: any) => (
-                      <tr key={row.id} className="border-b hover:bg-muted/30 transition-colors">
-                        <td className="p-2 whitespace-nowrap sticky left-0 bg-background z-10 font-medium">{formatDate(row.reportDate)}</td>
-                        <td className="p-2 whitespace-nowrap">{row.staffName}</td>
-                        <td className="p-2 whitespace-nowrap text-muted-foreground">{row.whatsAccount || "-"}</td>
-                        <td className="p-2 text-right">{row.messageCount || 0}</td>
-                        <td className="p-2 text-right">{row.newCustomerCount || 0}</td>
-                        <td className="p-2 text-right">{row.newIntentCount || 0}</td>
-                        <td className="p-2 text-right">{row.returnVisitCount || 0}</td>
-                        <td className="p-2 text-right">{row.newOrderCount || 0}</td>
-                        <td className="p-2 text-right">{row.oldOrderCount || 0}</td>
-                        <td className="p-2 text-right">{row.onlineOrderCount || 0}</td>
-                        <td className="p-2 text-right">{row.itemCount || 0}</td>
-                        <td className="p-2 text-right font-medium text-emerald-600">¥{formatMoney(row.totalRevenue)}</td>
-                        <td className="p-2 text-right">¥{formatMoney(row.onlineRevenue)}</td>
-                        <td className="p-2 text-right">¥{formatMoney(row.productSellingPrice)}</td>
-                        <td className="p-2 text-right">¥{formatMoney(row.shippingCharged)}</td>
-                        <td className="p-2 text-right font-medium text-blue-600">¥{formatMoney(row.estimatedProfit)}</td>
-                        <td className="p-2 text-right">{formatPercent(row.estimatedProfitRate)}</td>
-                        <td className="p-2 text-right">{row.telegramPraiseCount || 0}</td>
-                        <td className="p-2 text-right">{row.referralCount || 0}</td>
-                        <td className="p-2 whitespace-nowrap">
-                          <div className="flex items-center justify-center gap-1">
-                            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEdit(row)}>
-                              <Pencil className="w-3.5 h-3.5" />
+                      <tr key={row.id} className="border-b hover:bg-muted/30 transition-colors group">
+                        {/* 日期 - 不可编辑 */}
+                        <td className={`${tdClass} sticky left-0 bg-background group-hover:bg-muted/30 z-10 font-medium`}>
+                          {formatDate(row.reportDate)}
+                        </td>
+                        {/* 名字 - 不可编辑 */}
+                        <td className={`${tdClass} font-medium`}>
+                          {row.staffName}
+                        </td>
+                        {/* whats账号 - 可编辑 */}
+                        <td className={tdClass}>
+                          <EditableCell
+                            value={row.whatsAccount || ""}
+                            onSave={(v) => saveField(row.id, "whatsAccount", v)}
+                            placeholder="-"
+                          />
+                        </td>
+                        {/* 消息数 */}
+                        <td className={tdClass}>
+                          <EditableCell
+                            value={String(row.messageCount || 0)}
+                            onSave={(v) => saveField(row.id, "messageCount", v)}
+                            type="number"
+                          />
+                        </td>
+                        {/* 新客人数 */}
+                        <td className={tdClass}>
+                          <EditableCell
+                            value={String(row.newCustomerCount || 0)}
+                            onSave={(v) => saveField(row.id, "newCustomerCount", v)}
+                            type="number"
+                          />
+                        </td>
+                        {/* 新增意向 */}
+                        <td className={tdClass}>
+                          <EditableCell
+                            value={String(row.newIntentCount || 0)}
+                            onSave={(v) => saveField(row.id, "newIntentCount", v)}
+                            type="number"
+                          />
+                        </td>
+                        {/* 回访人数 */}
+                        <td className={tdClass}>
+                          <EditableCell
+                            value={String(row.returnVisitCount || 0)}
+                            onSave={(v) => saveField(row.id, "returnVisitCount", v)}
+                            type="number"
+                          />
+                        </td>
+                        {/* 新客单数 */}
+                        <td className={tdClass}>
+                          <EditableCell
+                            value={String(row.newOrderCount || 0)}
+                            onSave={(v) => saveField(row.id, "newOrderCount", v)}
+                            type="number"
+                          />
+                        </td>
+                        {/* 老客单数 */}
+                        <td className={tdClass}>
+                          <EditableCell
+                            value={String(row.oldOrderCount || 0)}
+                            onSave={(v) => saveField(row.id, "oldOrderCount", v)}
+                            type="number"
+                          />
+                        </td>
+                        {/* 线上订单 */}
+                        <td className={tdClass}>
+                          <EditableCell
+                            value={String(row.onlineOrderCount || 0)}
+                            onSave={(v) => saveField(row.id, "onlineOrderCount", v)}
+                            type="number"
+                          />
+                        </td>
+                        {/* 件数 */}
+                        <td className={tdClass}>
+                          <EditableCell
+                            value={String(row.itemCount || 0)}
+                            onSave={(v) => saveField(row.id, "itemCount", v)}
+                            type="number"
+                          />
+                        </td>
+                        {/* 总营业额 - 自动汇总，不可编辑 */}
+                        <td className={`${tdClass} font-medium text-emerald-600`}>
+                          <EditableCell
+                            value={`¥${formatMoney(row.totalRevenue)}`}
+                            onSave={() => {}}
+                            disabled
+                            className="text-emerald-600 font-medium"
+                          />
+                        </td>
+                        {/* 线上营业额 - 可编辑 */}
+                        <td className={tdClass}>
+                          <EditableCell
+                            value={String(parseFloat(row.onlineRevenue) || 0)}
+                            onSave={(v) => saveField(row.id, "onlineRevenue", v)}
+                            type="number"
+                          />
+                        </td>
+                        {/* 产品售价 - 自动汇总，不可编辑 */}
+                        <td className={tdClass}>
+                          <EditableCell
+                            value={`¥${formatMoney(row.productSellingPrice)}`}
+                            onSave={() => {}}
+                            disabled
+                          />
+                        </td>
+                        {/* 收取运费 - 自动汇总，不可编辑 */}
+                        <td className={tdClass}>
+                          <EditableCell
+                            value={`¥${formatMoney(row.shippingCharged)}`}
+                            onSave={() => {}}
+                            disabled
+                          />
+                        </td>
+                        {/* 预估毛利润 - 自动汇总，不可编辑 */}
+                        <td className={`${tdClass} font-medium text-blue-600`}>
+                          <EditableCell
+                            value={`¥${formatMoney(row.estimatedProfit)}`}
+                            onSave={() => {}}
+                            disabled
+                            className="text-blue-600 font-medium"
+                          />
+                        </td>
+                        {/* 预估利润率 - 自动计算，不可编辑 */}
+                        <td className={tdClass}>
+                          <EditableCell
+                            value={formatPercent(row.estimatedProfitRate)}
+                            onSave={() => {}}
+                            disabled
+                          />
+                        </td>
+                        {/* 电报好评 */}
+                        <td className={tdClass}>
+                          <EditableCell
+                            value={String(row.telegramPraiseCount || 0)}
+                            onSave={(v) => saveField(row.id, "telegramPraiseCount", v)}
+                            type="number"
+                          />
+                        </td>
+                        {/* 周转介绍 */}
+                        <td className={tdClass}>
+                          <EditableCell
+                            value={String(row.referralCount || 0)}
+                            onSave={(v) => saveField(row.id, "referralCount", v)}
+                            type="number"
+                          />
+                        </td>
+                        {/* 操作 */}
+                        <td className="py-1 px-1 text-center whitespace-nowrap">
+                          <div className="flex items-center justify-center gap-0.5">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-6 w-6"
+                              title="同步订单数据"
+                              onClick={() => syncMutation.mutate({ id: row.id })}
+                            >
+                              <RefreshCw className="w-3 h-3" />
                             </Button>
-                            <Button variant="ghost" size="icon" className="h-7 w-7" title="同步订单数据"
-                              onClick={() => syncMutation.mutate({ id: row.id })}>
-                              <RefreshCw className="w-3.5 h-3.5" />
-                            </Button>
-                            <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive"
-                              onClick={() => { if (confirm("确定删除？")) deleteMutation.mutate({ id: row.id }); }}>
-                              <Trash2 className="w-3.5 h-3.5" />
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-6 w-6 text-destructive"
+                              title="删除"
+                              onClick={() => { if (confirm("确定删除该记录？")) deleteMutation.mutate({ id: row.id }); }}
+                            >
+                              <Trash2 className="w-3 h-3" />
                             </Button>
                           </div>
                         </td>
                       </tr>
                     ))}
                     {/* 汇总行 */}
-                    <tr className="border-t-2 bg-muted/50 font-bold">
-                      <td className="p-2 sticky left-0 bg-muted/50 z-10">合计</td>
-                      <td className="p-2">{dailyList.length}人</td>
-                      <td className="p-2"></td>
-                      <td className="p-2 text-right">{totals.messageCount}</td>
-                      <td className="p-2 text-right">{totals.newCustomerCount}</td>
-                      <td className="p-2 text-right">{totals.newIntentCount}</td>
-                      <td className="p-2 text-right">{totals.returnVisitCount}</td>
-                      <td className="p-2 text-right">{totals.newOrderCount}</td>
-                      <td className="p-2 text-right">{totals.oldOrderCount}</td>
-                      <td className="p-2 text-right">{totals.onlineOrderCount}</td>
-                      <td className="p-2 text-right">{totals.itemCount}</td>
-                      <td className="p-2 text-right text-emerald-600">¥{formatMoney(totals.totalRevenue)}</td>
-                      <td className="p-2 text-right">¥{formatMoney(totals.onlineRevenue)}</td>
-                      <td className="p-2 text-right">¥{formatMoney(totals.productSellingPrice)}</td>
-                      <td className="p-2 text-right">¥{formatMoney(totals.shippingCharged)}</td>
-                      <td className="p-2 text-right text-blue-600">¥{formatMoney(totals.estimatedProfit)}</td>
-                      <td className="p-2 text-right">{totals.totalRevenue > 0 ? formatPercent(totals.estimatedProfit / totals.totalRevenue) : "0.0%"}</td>
-                      <td className="p-2 text-right">{totals.telegramPraiseCount}</td>
-                      <td className="p-2 text-right">{totals.referralCount}</td>
-                      <td className="p-2"></td>
+                    <tr className="border-t-2 bg-amber-50/50 font-bold text-[11px]">
+                      <td className={`${tdClass} sticky left-0 bg-amber-50/50 z-10 font-bold`}>合计</td>
+                      <td className={`${tdClass} font-bold`}>{dailyList.length}条</td>
+                      <td className={tdClass}></td>
+                      <td className={`${tdClass} font-bold`}>{totals.messageCount}</td>
+                      <td className={`${tdClass} font-bold`}>{totals.newCustomerCount}</td>
+                      <td className={`${tdClass} font-bold`}>{totals.newIntentCount}</td>
+                      <td className={`${tdClass} font-bold`}>{totals.returnVisitCount}</td>
+                      <td className={`${tdClass} font-bold`}>{totals.newOrderCount}</td>
+                      <td className={`${tdClass} font-bold`}>{totals.oldOrderCount}</td>
+                      <td className={`${tdClass} font-bold`}>{totals.onlineOrderCount}</td>
+                      <td className={`${tdClass} font-bold`}>{totals.itemCount}</td>
+                      <td className={`${tdClass} font-bold text-emerald-600`}>¥{formatMoney(totals.totalRevenue)}</td>
+                      <td className={`${tdClass} font-bold`}>¥{formatMoney(totals.onlineRevenue)}</td>
+                      <td className={`${tdClass} font-bold`}>¥{formatMoney(totals.productSellingPrice)}</td>
+                      <td className={`${tdClass} font-bold`}>¥{formatMoney(totals.shippingCharged)}</td>
+                      <td className={`${tdClass} font-bold text-blue-600`}>¥{formatMoney(totals.estimatedProfit)}</td>
+                      <td className={`${tdClass} font-bold`}>{totals.totalRevenue > 0 ? formatPercent(totals.estimatedProfit / totals.totalRevenue) : "0.0%"}</td>
+                      <td className={`${tdClass} font-bold`}>{totals.telegramPraiseCount}</td>
+                      <td className={`${tdClass} font-bold`}>{totals.referralCount}</td>
+                      <td className={tdClass}></td>
                     </tr>
                   </>
                 )}
@@ -421,94 +627,6 @@ export default function DailyData() {
           </div>
         </CardContent>
       </Card>
-
-      {/* 新增/编辑弹窗 */}
-      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>{editingId ? "编辑每日数据" : "新增每日数据"}</DialogTitle>
-          </DialogHeader>
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <Label>日期</Label>
-              <Input type="date" value={form.reportDate} onChange={(e) => setForm({ ...form, reportDate: e.target.value })} disabled={!!editingId} />
-            </div>
-            {isAdmin && !editingId && (
-              <div>
-                <Label>客服</Label>
-                <Select value={form.staffId ? String(form.staffId) : ""} onValueChange={(v) => {
-                  const s = staffList.find((s: any) => String(s.id) === v);
-                  if (s) setForm({ ...form, staffId: s.id, staffName: s.name });
-                }}>
-                  <SelectTrigger><SelectValue placeholder="选择客服" /></SelectTrigger>
-                  <SelectContent>
-                    {staffList.map((s: any) => (
-                      <SelectItem key={s.id} value={String(s.id)}>{s.name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
-            <div>
-              <Label>whats账号</Label>
-              <Input value={form.whatsAccount} onChange={(e) => setForm({ ...form, whatsAccount: e.target.value })} />
-            </div>
-            <div>
-              <Label>消息数</Label>
-              <Input type="number" value={form.messageCount} onChange={(e) => setForm({ ...form, messageCount: parseInt(e.target.value) || 0 })} />
-            </div>
-            <div>
-              <Label>新客人数</Label>
-              <Input type="number" value={form.newCustomerCount} onChange={(e) => setForm({ ...form, newCustomerCount: parseInt(e.target.value) || 0 })} />
-            </div>
-            <div>
-              <Label>新增意向客户</Label>
-              <Input type="number" value={form.newIntentCount} onChange={(e) => setForm({ ...form, newIntentCount: parseInt(e.target.value) || 0 })} />
-            </div>
-            <div>
-              <Label>回访人数</Label>
-              <Input type="number" value={form.returnVisitCount} onChange={(e) => setForm({ ...form, returnVisitCount: parseInt(e.target.value) || 0 })} />
-            </div>
-            <div>
-              <Label>新客单数</Label>
-              <Input type="number" value={form.newOrderCount} onChange={(e) => setForm({ ...form, newOrderCount: parseInt(e.target.value) || 0 })} />
-            </div>
-            <div>
-              <Label>老客单数</Label>
-              <Input type="number" value={form.oldOrderCount} onChange={(e) => setForm({ ...form, oldOrderCount: parseInt(e.target.value) || 0 })} />
-            </div>
-            <div>
-              <Label>线上订单</Label>
-              <Input type="number" value={form.onlineOrderCount} onChange={(e) => setForm({ ...form, onlineOrderCount: parseInt(e.target.value) || 0 })} />
-            </div>
-            <div>
-              <Label>件数</Label>
-              <Input type="number" value={form.itemCount} onChange={(e) => setForm({ ...form, itemCount: parseInt(e.target.value) || 0 })} />
-            </div>
-            <div>
-              <Label>线上营业额</Label>
-              <Input type="number" step="0.01" value={form.onlineRevenue} onChange={(e) => setForm({ ...form, onlineRevenue: e.target.value })} />
-            </div>
-            <div>
-              <Label>电报好评人数</Label>
-              <Input type="number" value={form.telegramPraiseCount} onChange={(e) => setForm({ ...form, telegramPraiseCount: parseInt(e.target.value) || 0 })} />
-            </div>
-            <div>
-              <Label>周转介绍</Label>
-              <Input type="number" value={form.referralCount} onChange={(e) => setForm({ ...form, referralCount: parseInt(e.target.value) || 0 })} />
-            </div>
-          </div>
-          <p className="text-xs text-muted-foreground mt-2">
-            总营业额、产品售价、收取运费、预估毛利润、预估利润率将自动从订单表汇总计算
-          </p>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setDialogOpen(false)}>取消</Button>
-            <Button onClick={handleSubmit} disabled={createMutation.isPending || updateMutation.isPending}>
-              {createMutation.isPending || updateMutation.isPending ? "保存中..." : "保存"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
 
       {/* 日报表弹窗 */}
       <Dialog open={reportDialogOpen} onOpenChange={setReportDialogOpen}>
@@ -578,58 +696,58 @@ export default function DailyData() {
 
               {/* 详细表格 */}
               <div className="overflow-x-auto border rounded-lg">
-                <table className="w-full text-sm">
+                <table className="w-full text-[11px]">
                   <thead>
-                    <tr className="border-b bg-muted/50">
-                      <th className="p-2 text-left font-medium">名字</th>
-                      <th className="p-2 text-right font-medium">消息数</th>
-                      <th className="p-2 text-right font-medium">新客人数</th>
-                      <th className="p-2 text-right font-medium">新增意向</th>
-                      <th className="p-2 text-right font-medium">回访人数</th>
-                      <th className="p-2 text-right font-medium">新客单数</th>
-                      <th className="p-2 text-right font-medium">老客单数</th>
-                      <th className="p-2 text-right font-medium">件数</th>
-                      <th className="p-2 text-right font-medium">总营业额</th>
-                      <th className="p-2 text-right font-medium">产品售价</th>
-                      <th className="p-2 text-right font-medium">收取运费</th>
-                      <th className="p-2 text-right font-medium">预估毛利润</th>
-                      <th className="p-2 text-right font-medium">利润率</th>
+                    <tr className="border-b bg-rose-50">
+                      <th className={thClass}>名字</th>
+                      <th className={thClass}>消息数</th>
+                      <th className={thClass}>新客人数</th>
+                      <th className={thClass}>新增意向</th>
+                      <th className={thClass}>回访人数</th>
+                      <th className={thClass}>新客单数</th>
+                      <th className={thClass}>老客单数</th>
+                      <th className={thClass}>件数</th>
+                      <th className={thClass}>总营业额</th>
+                      <th className={thClass}>产品售价</th>
+                      <th className={thClass}>收取运费</th>
+                      <th className={thClass}>预估毛利润</th>
+                      <th className="py-1.5 px-1 text-center font-medium whitespace-nowrap text-[11px]">利润率</th>
                     </tr>
                   </thead>
                   <tbody>
                     {reportQuery.data.rows.map((row: any) => (
                       <tr key={row.id} className="border-b hover:bg-muted/30">
-                        <td className="p-2 font-medium">{row.staffName}</td>
-                        <td className="p-2 text-right">{row.messageCount || 0}</td>
-                        <td className="p-2 text-right">{row.newCustomerCount || 0}</td>
-                        <td className="p-2 text-right">{row.newIntentCount || 0}</td>
-                        <td className="p-2 text-right">{row.returnVisitCount || 0}</td>
-                        <td className="p-2 text-right">{row.newOrderCount || 0}</td>
-                        <td className="p-2 text-right">{row.oldOrderCount || 0}</td>
-                        <td className="p-2 text-right">{row.itemCount || 0}</td>
-                        <td className="p-2 text-right font-medium text-emerald-600">¥{formatMoney(row.totalRevenue)}</td>
-                        <td className="p-2 text-right">¥{formatMoney(row.productSellingPrice)}</td>
-                        <td className="p-2 text-right">¥{formatMoney(row.shippingCharged)}</td>
-                        <td className="p-2 text-right font-medium text-blue-600">¥{formatMoney(row.estimatedProfit)}</td>
-                        <td className="p-2 text-right">{formatPercent(row.estimatedProfitRate)}</td>
+                        <td className={`${tdClass} font-medium`}>{row.staffName}</td>
+                        <td className={tdClass}>{row.messageCount || 0}</td>
+                        <td className={tdClass}>{row.newCustomerCount || 0}</td>
+                        <td className={tdClass}>{row.newIntentCount || 0}</td>
+                        <td className={tdClass}>{row.returnVisitCount || 0}</td>
+                        <td className={tdClass}>{row.newOrderCount || 0}</td>
+                        <td className={tdClass}>{row.oldOrderCount || 0}</td>
+                        <td className={tdClass}>{row.itemCount || 0}</td>
+                        <td className={`${tdClass} font-medium text-emerald-600`}>¥{formatMoney(row.totalRevenue)}</td>
+                        <td className={tdClass}>¥{formatMoney(row.productSellingPrice)}</td>
+                        <td className={tdClass}>¥{formatMoney(row.shippingCharged)}</td>
+                        <td className={`${tdClass} font-medium text-blue-600`}>¥{formatMoney(row.estimatedProfit)}</td>
+                        <td className="py-1 px-1 text-center whitespace-nowrap text-[11px]">{formatPercent(row.estimatedProfitRate)}</td>
                       </tr>
                     ))}
                     {/* 汇总行 */}
                     {reportQuery.data.totals && (
-                      <tr className="border-t-2 bg-muted/50 font-bold">
-                        <td className="p-2">合计</td>
-                        <td className="p-2 text-right">{reportQuery.data.totals.totalMessages}</td>
-                        <td className="p-2 text-right">{reportQuery.data.totals.totalNewCustomers}</td>
-                        <td className="p-2 text-right">{reportQuery.data.totals.totalNewIntents}</td>
-                        <td className="p-2 text-right">{reportQuery.data.totals.totalReturnVisits}</td>
-                        <td className="p-2 text-right">{reportQuery.data.totals.totalNewOrders}</td>
-                        <td className="p-2 text-right">{reportQuery.data.totals.totalOldOrders}</td>
-                        <td className="p-2 text-right">{reportQuery.data.totals.totalItems}</td>
-                        <td className="p-2 text-right text-emerald-600">¥{formatMoney(reportQuery.data.totals.totalRevenue)}</td>
-                        <td className="p-2 text-right">¥{formatMoney(reportQuery.data.totals.totalProductSellingPrice)}</td>
-                        <td className="p-2 text-right">¥{formatMoney(reportQuery.data.totals.totalShippingCharged)}</td>
-                        <td className="p-2 text-right text-blue-600">¥{formatMoney(reportQuery.data.totals.totalEstimatedProfit)}</td>
-                        <td className="p-2 text-right">{formatPercent(reportQuery.data.totals.avgProfitRate)}</td>
+                      <tr className="border-t-2 bg-amber-50/50 font-bold">
+                        <td className={`${tdClass} font-bold`}>合计</td>
+                        <td className={`${tdClass} font-bold`}>{reportQuery.data.totals.totalMessages}</td>
+                        <td className={`${tdClass} font-bold`}>{reportQuery.data.totals.totalNewCustomers}</td>
+                        <td className={`${tdClass} font-bold`}>{reportQuery.data.totals.totalNewIntents}</td>
+                        <td className={`${tdClass} font-bold`}>{reportQuery.data.totals.totalReturnVisits}</td>
+                        <td className={`${tdClass} font-bold`}>{reportQuery.data.totals.totalNewOrders}</td>
+                        <td className={`${tdClass} font-bold`}>{reportQuery.data.totals.totalOldOrders}</td>
+                        <td className={`${tdClass} font-bold`}>{reportQuery.data.totals.totalItems}</td>
+                        <td className={`${tdClass} font-bold text-emerald-600`}>¥{formatMoney(reportQuery.data.totals.totalRevenue)}</td>
+                        <td className={`${tdClass} font-bold`}>¥{formatMoney(reportQuery.data.totals.totalProductSellingPrice)}</td>
+                        <td className={`${tdClass} font-bold`}>¥{formatMoney(reportQuery.data.totals.totalShippingCharged)}</td>
+                        <td className={`${tdClass} font-bold text-blue-600`}>¥{formatMoney(reportQuery.data.totals.totalEstimatedProfit)}</td>
+                        <td className="py-1 px-1 text-center whitespace-nowrap text-[11px] font-bold">{formatPercent(reportQuery.data.totals.avgProfitRate)}</td>
                       </tr>
                     )}
                   </tbody>
