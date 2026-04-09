@@ -162,3 +162,22 @@ export const profitAlertSettings = mysqlTable("profit_alert_settings", {
 
 export type ProfitAlertSetting = typeof profitAlertSettings.$inferSelect;
 export type InsertProfitAlertSetting = typeof profitAlertSettings.$inferInsert;
+
+/**
+ * 客服月度目标表 - 记录每个客服每月的利润和营业额目标
+ */
+export const staffMonthlyTargets = mysqlTable("staff_monthly_targets", {
+  id: int("id").autoincrement().primaryKey(),
+  staffId: int("staffId").notNull(),
+  staffName: varchar("staffName", { length: 128 }).notNull(),
+  yearMonth: varchar("yearMonth", { length: 7 }).notNull(), // 格式: "2026-04"
+  profitTarget: decimal("profitTarget", { precision: 12, scale: 2 }).notNull().default("0"),
+  revenueTarget: decimal("revenueTarget", { precision: 12, scale: 2 }).notNull().default("0"),
+  setById: int("setById").notNull(),
+  setByName: varchar("setByName", { length: 128 }),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type StaffMonthlyTarget = typeof staffMonthlyTargets.$inferSelect;
+export type InsertStaffMonthlyTarget = typeof staffMonthlyTargets.$inferInsert;

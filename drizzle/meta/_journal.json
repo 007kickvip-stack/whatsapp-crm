@@ -50,6 +50,13 @@
       "when": 1775721319752,
       "tag": "0006_aberrant_synch",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "5",
+      "when": 1775721954418,
+      "tag": "0007_icy_starfox",
+      "breakpoints": true
     }
   ]
 }

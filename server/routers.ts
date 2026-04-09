@@ -17,6 +17,8 @@ import {
   getProfitReport, getDistinctStaffNames,
   getMonthlyProfitComparison, getQuarterlyProfitComparison,
   getProfitAlertSetting, upsertProfitAlertSetting, getStaffProfitAlerts,
+  listStaffMonthlyTargets, upsertStaffMonthlyTarget, deleteStaffMonthlyTarget,
+  getStaffTargetProgress, getStaffList,
 } from "./db";
 import { sdk } from "./_core/sdk";
 import { ONE_YEAR_MS } from "@shared/const";
@@ -695,6 +697,49 @@ export const appRouter = router({
       const minRate = parseFloat(String(setting.minProfitRate));
       const alerts = await getStaffProfitAlerts(minRate);
       return { alerts, setting };
+    }),
+  }),
+
+  // ==================== Staff Monthly Targets ====================
+  staffTargets: router({
+    list: adminProcedure.input(z.object({
+      yearMonth: z.string().regex(/^\d{4}-\d{2}$/),
+    })).query(async ({ input }) => {
+      return await listStaffMonthlyTargets(input.yearMonth);
+    }),
+    upsert: adminProcedure.input(z.object({
+      staffId: z.number(),
+      staffName: z.string().min(1),
+      yearMonth: z.string().regex(/^\d{4}-\d{2}$/),
+      profitTarget: z.number().min(0),
+      revenueTarget: z.number().min(0),
+    })).mutation(async ({ input, ctx }) => {
+      const result = await upsertStaffMonthlyTarget({
+        staffId: input.staffId,
+        staffName: input.staffName,
+        yearMonth: input.yearMonth,
+        profitTarget: input.profitTarget.toFixed(2),
+        revenueTarget: input.revenueTarget.toFixed(2),
+        setById: ctx.user.id,
+        setByName: ctx.user.name || "\u672a\u77e5",
+      });
+      await logAction(ctx, "upsert", "staffTarget", result.id, `${input.staffName} ${input.yearMonth}`, JSON.stringify(input));
+      return result;
+    }),
+    delete: adminProcedure.input(z.object({
+      id: z.number(),
+    })).mutation(async ({ input, ctx }) => {
+      await deleteStaffMonthlyTarget(input.id);
+      await logAction(ctx, "delete", "staffTarget", input.id);
+      return { success: true };
+    }),
+    progress: adminProcedure.input(z.object({
+      yearMonth: z.string().regex(/^\d{4}-\d{2}$/),
+    })).query(async ({ input }) => {
+      return await getStaffTargetProgress(input.yearMonth);
+    }),
+    staffList: adminProcedure.query(async () => {
+      return await getStaffList();
     }),
   }),
 });

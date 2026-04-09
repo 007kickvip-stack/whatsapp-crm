@@ -14,6 +14,7 @@ import LoginPage from "./pages/Login";
 import AuditLogsPage from "./pages/AuditLogs";
 import ExchangeRatePage from "./pages/ExchangeRate";
 import ProfitReportPage from "./pages/ProfitReport";
+import StaffTargetsPage from "./pages/StaffTargets";
 
 function Router() {
   return (
@@ -32,6 +33,7 @@ function Router() {
             <Route path="/audit-logs" component={AuditLogsPage} />
             <Route path="/exchange-rate" component={ExchangeRatePage} />
             <Route path="/profit-report" component={ProfitReportPage} />
+            <Route path="/staff-targets" component={StaffTargetsPage} />
             <Route path="/404" component={NotFound} />
             <Route component={NotFound} />
           </Switch>

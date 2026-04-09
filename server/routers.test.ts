@@ -51,6 +51,11 @@ vi.mock("./db", () => ({
   getProfitAlertSetting: vi.fn().mockResolvedValue({ id: 1, minProfitRate: "0.100000", enabled: 1, updatedByName: "Admin" }),
   upsertProfitAlertSetting: vi.fn().mockResolvedValue({ id: 2 }),
   getStaffProfitAlerts: vi.fn().mockResolvedValue([{ staffName: "Staff C", orderCount: 3, totalRevenueCny: "500", totalProfit: "20", avgProfitRate: "0.04" }]),
+  listStaffMonthlyTargets: vi.fn().mockResolvedValue([{ id: 1, staffId: 2, staffName: "Staff A", yearMonth: "2026-04", profitTarget: "5000", revenueTarget: "20000", setById: 1, setByName: "Admin", createdAt: new Date(), updatedAt: new Date() }]),
+  upsertStaffMonthlyTarget: vi.fn().mockResolvedValue({ id: 1 }),
+  deleteStaffMonthlyTarget: vi.fn().mockResolvedValue(undefined),
+  getStaffTargetProgress: vi.fn().mockResolvedValue([{ targetId: 1, staffId: 2, staffName: "Staff A", yearMonth: "2026-04", profitTarget: "5000", revenueTarget: "20000", actualProfit: "2500", actualRevenue: "12000", orderCount: 5, profitProgress: 0.5, revenueProgress: 0.6, profitGap: "2500.00", revenueGap: "8000.00" }]),
+  getStaffList: vi.fn().mockResolvedValue([{ staffId: 1, staffName: "Admin" }, { staffId: 2, staffName: "Staff A" }]),
 }));
 
 vi.mock("./storage", () => ({
@@ -706,5 +711,78 @@ describe("Profit Report", () => {
     const ctx = createStaffContext();
     const caller = appRouter.createCaller(ctx);
     await expect(caller.profitReport.staffAlerts()).rejects.toThrow();
+  });
+});
+
+// ==================== Staff Monthly Targets ====================
+describe("staffTargets", () => {
+  it("admin can list targets for a month", async () => {
+    const ctx = createAdminContext();
+    const caller = appRouter.createCaller(ctx);
+    const result = await caller.staffTargets.list({ yearMonth: "2026-04" });
+    expect(Array.isArray(result)).toBe(true);
+    expect(result.length).toBe(1);
+    expect(result[0].staffName).toBe("Staff A");
+  });
+
+  it("admin can upsert a target", async () => {
+    const ctx = createAdminContext();
+    const caller = appRouter.createCaller(ctx);
+    const result = await caller.staffTargets.upsert({
+      staffId: 2,
+      staffName: "Staff A",
+      yearMonth: "2026-04",
+      profitTarget: 5000,
+      revenueTarget: 20000,
+    });
+    expect(result.id).toBeDefined();
+  });
+
+  it("admin can delete a target", async () => {
+    const ctx = createAdminContext();
+    const caller = appRouter.createCaller(ctx);
+    const result = await caller.staffTargets.delete({ id: 1 });
+    expect(result.success).toBe(true);
+  });
+
+  it("admin can get target progress", async () => {
+    const ctx = createAdminContext();
+    const caller = appRouter.createCaller(ctx);
+    const result = await caller.staffTargets.progress({ yearMonth: "2026-04" });
+    expect(Array.isArray(result)).toBe(true);
+    expect(result.length).toBe(1);
+    expect(result[0].profitProgress).toBe(0.5);
+    expect(result[0].revenueProgress).toBe(0.6);
+    expect(result[0].profitGap).toBe("2500.00");
+  });
+
+  it("admin can get staff list", async () => {
+    const ctx = createAdminContext();
+    const caller = appRouter.createCaller(ctx);
+    const result = await caller.staffTargets.staffList();
+    expect(Array.isArray(result)).toBe(true);
+    expect(result.length).toBe(2);
+  });
+
+  it("staff cannot list targets", async () => {
+    const ctx = createStaffContext();
+    const caller = appRouter.createCaller(ctx);
+    await expect(caller.staffTargets.list({ yearMonth: "2026-04" })).rejects.toThrow();
+  });
+
+  it("staff cannot upsert targets", async () => {
+    const ctx = createStaffContext();
+    const caller = appRouter.createCaller(ctx);
+    await expect(caller.staffTargets.upsert({
+      staffId: 2, staffName: "Staff A", yearMonth: "2026-04",
+      profitTarget: 5000, revenueTarget: 20000,
+    })).rejects.toThrow();
+  });
+
+  it("validates yearMonth format", async () => {
+    const ctx = createAdminContext();
+    const caller = appRouter.createCaller(ctx);
+    await expect(caller.staffTargets.list({ yearMonth: "2026/04" })).rejects.toThrow();
+    await expect(caller.staffTargets.list({ yearMonth: "bad" })).rejects.toThrow();
   });
 });

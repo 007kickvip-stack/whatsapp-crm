@@ -1,6 +1,6 @@
 import { eq, like, and, sql, desc, or, SQL } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
-import { InsertUser, users, customers, orders, orderItems, InsertCustomer, InsertOrder, InsertOrderItem, auditLogs, InsertAuditLog, exchangeRates, InsertExchangeRate, profitAlertSettings, InsertProfitAlertSetting } from "../drizzle/schema";
+import { InsertUser, users, customers, orders, orderItems, InsertCustomer, InsertOrder, InsertOrderItem, auditLogs, InsertAuditLog, exchangeRates, InsertExchangeRate, profitAlertSettings, InsertProfitAlertSetting, staffMonthlyTargets, InsertStaffMonthlyTarget } from "../drizzle/schema";
 import { ENV } from './_core/env';
 import { nanoid } from 'nanoid';
 import { createHash, randomBytes } from 'crypto';
@@ -946,5 +946,158 @@ export async function getStaffProfitAlerts(minProfitRate: number) {
     totalRevenueCny: String(r.totalRevenueCny || "0"),
     totalProfit: String(r.totalProfit || "0"),
     avgProfitRate: String(r.avgProfitRate || "0"),
+  }));
+}
+
+// ============================================================
+// Staff Monthly Targets helpers
+// ============================================================
+
+export async function listStaffMonthlyTargets(yearMonth: string) {
+  const db = await getDb();
+  if (!db) return [];
+  return await db.select().from(staffMonthlyTargets)
+    .where(eq(staffMonthlyTargets.yearMonth, yearMonth))
+    .orderBy(staffMonthlyTargets.staffName);
+}
+
+export async function getStaffMonthlyTarget(staffId: number, yearMonth: string) {
+  const db = await getDb();
+  if (!db) return null;
+  const rows = await db.select().from(staffMonthlyTargets)
+    .where(and(
+      eq(staffMonthlyTargets.staffId, staffId),
+      eq(staffMonthlyTargets.yearMonth, yearMonth),
+    ))
+    .limit(1);
+  return rows[0] || null;
+}
+
+export async function upsertStaffMonthlyTarget(data: {
+  staffId: number;
+  staffName: string;
+  yearMonth: string;
+  profitTarget: string;
+  revenueTarget: string;
+  setById: number;
+  setByName: string;
+}) {
+  const db = await getDb();
+  if (!db) return { id: 0 };
+
+  // Check if target already exists for this staff+month
+  const existing = await getStaffMonthlyTarget(data.staffId, data.yearMonth);
+  if (existing) {
+    await db.update(staffMonthlyTargets)
+      .set({
+        profitTarget: data.profitTarget,
+        revenueTarget: data.revenueTarget,
+        setById: data.setById,
+        setByName: data.setByName,
+      })
+      .where(eq(staffMonthlyTargets.id, existing.id));
+    return { id: existing.id };
+  }
+
+  const result = await db.insert(staffMonthlyTargets).values({
+    staffId: data.staffId,
+    staffName: data.staffName,
+    yearMonth: data.yearMonth,
+    profitTarget: data.profitTarget,
+    revenueTarget: data.revenueTarget,
+    setById: data.setById,
+    setByName: data.setByName,
+  });
+  return { id: Number(result[0].insertId) };
+}
+
+export async function deleteStaffMonthlyTarget(id: number) {
+  const db = await getDb();
+  if (!db) return;
+  await db.delete(staffMonthlyTargets).where(eq(staffMonthlyTargets.id, id));
+}
+
+/**
+ * 获取客服月度目标完成率分析
+ * 返回每个客服的目标、实际完成值和完成率
+ */
+export async function getStaffTargetProgress(yearMonth: string) {
+  const db = await getDb();
+  if (!db) return [];
+
+  // Get all targets for this month
+  const targets = await listStaffMonthlyTargets(yearMonth);
+  if (targets.length === 0) return [];
+
+  // Get actual performance for each staff in this month
+  const result = await db.execute(sql`
+    SELECT
+      o.staffName,
+      o.staffId,
+      COUNT(DISTINCT o.id) as orderCount,
+      COALESCE(SUM(o.totalAmountCny), 0) as actualRevenue,
+      COALESCE(SUM(o.totalProfit), 0) as actualProfit
+    FROM orders o
+    WHERE DATE_FORMAT(o.orderDate, '%Y-%m') = ${yearMonth}
+      AND o.staffId IS NOT NULL
+    GROUP BY o.staffId, o.staffName
+  `);
+
+  const actualMap = new Map<number, { staffName: string; orderCount: number; actualRevenue: string; actualProfit: string }>();
+  for (const r of (result as any)[0] || []) {
+    actualMap.set(Number(r.staffId), {
+      staffName: r.staffName,
+      orderCount: Number(r.orderCount || 0),
+      actualRevenue: String(r.actualRevenue || "0"),
+      actualProfit: String(r.actualProfit || "0"),
+    });
+  }
+
+  return targets.map(t => {
+    const actual = actualMap.get(t.staffId) || { staffName: t.staffName, orderCount: 0, actualRevenue: "0", actualProfit: "0" };
+    const profitTarget = parseFloat(String(t.profitTarget));
+    const revenueTarget = parseFloat(String(t.revenueTarget));
+    const actualProfit = parseFloat(actual.actualProfit);
+    const actualRevenue = parseFloat(actual.actualRevenue);
+
+    const profitProgress = profitTarget > 0 ? actualProfit / profitTarget : 0;
+    const revenueProgress = revenueTarget > 0 ? actualRevenue / revenueTarget : 0;
+    const profitGap = profitTarget - actualProfit;
+    const revenueGap = revenueTarget - actualRevenue;
+
+    return {
+      targetId: t.id,
+      staffId: t.staffId,
+      staffName: t.staffName,
+      yearMonth: t.yearMonth,
+      profitTarget: String(t.profitTarget),
+      revenueTarget: String(t.revenueTarget),
+      actualProfit: actual.actualProfit,
+      actualRevenue: actual.actualRevenue,
+      orderCount: actual.orderCount,
+      profitProgress: Math.round(profitProgress * 10000) / 10000, // 4 decimal places
+      revenueProgress: Math.round(revenueProgress * 10000) / 10000,
+      profitGap: profitGap.toFixed(2),
+      revenueGap: revenueGap.toFixed(2),
+    };
+  });
+}
+
+/**
+ * 获取所有有订单的客服列表（含ID和名称）
+ */
+export async function getStaffList() {
+  const db = await getDb();
+  if (!db) return [];
+  const result = await db.execute(sql`
+    SELECT DISTINCT u.id as staffId, u.name as staffName
+    FROM users u
+    WHERE u.role IN ('user', 'admin')
+      AND u.name IS NOT NULL AND u.name != ''
+    ORDER BY u.name ASC
+  `);
+  return ((result as any)[0] || []).map((r: any) => ({
+    staffId: Number(r.staffId),
+    staffName: String(r.staffName),
   }));
 }
