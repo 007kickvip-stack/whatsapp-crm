@@ -1019,7 +1019,7 @@ export default function OrdersPage() {
         </td>
 
         {/* 4. 客户WhatsApp - order level editable */}
-        <td className="py-1 px-1 border-r border-gray-100 whitespace-nowrap text-[11px]">
+        <td className="py-1 px-1 border-r border-gray-100 whitespace-nowrap text-center text-[11px]">
           {row.isFirstRow ? (
             <EditableCell
               value={row.customerWhatsapp}
@@ -1044,7 +1044,7 @@ export default function OrdersPage() {
         </td>
 
         {/* 6. 订单编号 - item level editable */}
-        <td className="py-1 px-1 border-r border-gray-100 whitespace-nowrap text-[11px]">
+        <td className="py-1 px-1 border-r border-gray-100 whitespace-nowrap text-center text-[11px]">
           {hasItem ? (
             <EditableCell
               value={row.orderNumber}
@@ -1055,7 +1055,7 @@ export default function OrdersPage() {
           ) : (
             <button
               onClick={() => setLocation(`/orders/${row.orderId}`)}
-              className="text-primary hover:underline text-left font-medium text-[11px]"
+              className="text-primary hover:underline text-center font-medium text-[11px]"
             >
               {row.orderNumber}
             </button>
@@ -1088,7 +1088,7 @@ export default function OrdersPage() {
         </td>
 
         {/* 9. 国内单号 */}
-        <td className="py-1 px-1 border-r border-gray-100 whitespace-nowrap text-[11px]">
+        <td className="py-1 px-1 border-r border-gray-100 whitespace-nowrap text-center text-[11px]">
           {hasItem ? (
             <EditableCell
               value={row.domesticTrackingNo || ""}
@@ -1099,7 +1099,7 @@ export default function OrdersPage() {
         </td>
 
         {/* 10. 推荐码数 */}
-        <td className="py-1 px-1 border-r border-gray-100 whitespace-nowrap text-[11px]">
+        <td className="py-1 px-1 border-r border-gray-100 whitespace-nowrap text-center text-[11px]">
           {hasItem ? (
             <EditableCell
               value={row.sizeRecommendation || ""}
@@ -1110,7 +1110,7 @@ export default function OrdersPage() {
         </td>
 
         {/* 11. 联系方式 */}
-        <td className="py-1 px-1 border-r border-gray-100 text-[11px] max-w-[200px]">
+        <td className="py-1 px-1 border-r border-gray-100 text-center text-[11px] max-w-[200px]">
           {hasItem ? (
             <EditableCell
               value={row.contactInfo || ""}
@@ -1122,7 +1122,7 @@ export default function OrdersPage() {
         </td>
 
         {/* 12. 国际跟踪单号 */}
-        <td className="py-1 px-1 border-r border-gray-100 whitespace-nowrap text-[11px]">
+        <td className="py-1 px-1 border-r border-gray-100 whitespace-nowrap text-center text-[11px]">
           {hasItem ? (
             <EditableCell
               value={row.internationalTrackingNo || ""}
@@ -1137,6 +1137,7 @@ export default function OrdersPage() {
           {hasItem ? (
             <EditableCell
               value={row.shipDate || ""}
+              type="date"
               onSave={(v) => saveItemField(row.itemId!, row.orderId, "shipDate", v)}
               placeholder="日期"
             />
@@ -1156,7 +1157,7 @@ export default function OrdersPage() {
         </td>
 
         {/* 15. 货源 */}
-        <td className="py-1 px-1 border-r border-gray-100 whitespace-nowrap text-[11px]">
+        <td className="py-1 px-1 border-r border-gray-100 whitespace-nowrap text-center text-[11px]">
           {hasItem ? (
             <EditableCell
               value={row.source || ""}
@@ -1291,7 +1292,7 @@ export default function OrdersPage() {
         </td>
 
         {/* 30. 备注 */}
-        <td className="py-1 px-1 border-r border-gray-100 text-[11px] max-w-[120px]">
+        <td className="py-1 px-1 border-r border-gray-100 text-center text-[11px] max-w-[120px]">
           {hasItem ? (
             <EditableCell
               value={row.remarks || ""}
