@@ -272,20 +272,24 @@ function EditableCell({
 }
 
 // ============================================================
-// Image upload cell component
+// Image upload cell component (supports paste, delete key, remove)
 // ============================================================
 function ImageUploadCell({
   imageUrl,
   onUploaded,
   onPreview,
+  onRemove,
   uploadMutation,
 }: {
   imageUrl: string | null;
   onUploaded: (url: string) => void;
   onPreview: (url: string) => void;
+  onRemove?: () => void;
   uploadMutation: any;
 }) {
   const fileRef = useRef<HTMLInputElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [isFocused, setIsFocused] = useState(false);
 
   const handleFile = (file: File) => {
     if (file.size > 5 * 1024 * 1024) {
@@ -310,8 +314,42 @@ function ImageUploadCell({
     reader.readAsDataURL(file);
   };
 
+  // Handle paste event for image upload
+  const handlePaste = useCallback((e: React.ClipboardEvent) => {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+    for (let i = 0; i < items.length; i++) {
+      if (items[i].type.startsWith("image/")) {
+        e.preventDefault();
+        e.stopPropagation();
+        const file = items[i].getAsFile();
+        if (file) handleFile(file);
+        return;
+      }
+    }
+  }, []);
+
+  // Handle keyboard delete for image removal
+  const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
+    if ((e.key === "Delete" || e.key === "Backspace") && imageUrl && onRemove) {
+      e.preventDefault();
+      onRemove();
+    }
+  }, [imageUrl, onRemove]);
+
   return (
-    <div className="flex items-center justify-center gap-1">
+    <div
+      ref={containerRef}
+      className={`flex items-center justify-center gap-1 rounded p-0.5 transition-colors outline-none ${
+        isFocused ? "ring-1 ring-emerald-400 bg-emerald-50/50" : ""
+      }`}
+      tabIndex={0}
+      onFocus={() => setIsFocused(true)}
+      onBlur={() => setIsFocused(false)}
+      onPaste={handlePaste}
+      onKeyDown={handleKeyDown}
+      title={imageUrl ? "点击选中后按 Delete 删除图片，或粘贴新图片" : "点击选中后粘贴图片上传"}
+    >
       <input
         ref={fileRef}
         type="file"
@@ -324,14 +362,25 @@ function ImageUploadCell({
         }}
       />
       {imageUrl ? (
-        <button onClick={() => onPreview(imageUrl)} className="inline-flex">
-          <img src={imageUrl} alt="" className="h-7 w-7 rounded object-cover border border-emerald-200 hover:border-emerald-400 transition-colors" />
-        </button>
+        <div className="relative group">
+          <button onClick={() => onPreview(imageUrl)} className="inline-flex">
+            <img src={imageUrl} alt="" className="h-7 w-7 rounded object-cover border border-emerald-200 hover:border-emerald-400 transition-colors" />
+          </button>
+          {onRemove && (
+            <button
+              onClick={(e) => { e.stopPropagation(); onRemove(); }}
+              className="absolute -top-1 -right-1 h-3.5 w-3.5 rounded-full bg-red-500 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow-sm"
+              title="删除图片"
+            >
+              <X className="h-2 w-2" />
+            </button>
+          )}
+        </div>
       ) : null}
       <button
         onClick={() => fileRef.current?.click()}
         className="inline-flex items-center justify-center h-6 w-6 rounded border border-dashed border-gray-300 hover:border-emerald-400 hover:bg-emerald-50 transition-colors"
-        title="上传图片"
+        title="上传图片或粘贴"
       >
         {uploadMutation.isPending ? (
           <Loader2 className="h-3 w-3 animate-spin text-emerald-500" />
@@ -436,6 +485,17 @@ export default function OrdersPage() {
     onSuccess: () => {
       toast.success("子项已添加");
       utils.orders.list.invalidate();
+    },
+    onError: (err) => toast.error(err.message),
+  });
+
+  // Delete a single order item
+  const [deleteItemInfo, setDeleteItemInfo] = useState<{ id: number; orderId: number } | null>(null);
+  const deleteItemMutation = trpc.orderItems.delete.useMutation({
+    onSuccess: () => {
+      toast.success("子项已删除");
+      utils.orders.list.invalidate();
+      setDeleteItemInfo(null);
     },
     onError: (err) => toast.error(err.message),
   });
@@ -802,7 +862,7 @@ export default function OrdersPage() {
       >
         {/* Action buttons */}
         <td className="py-1 px-1 text-center border-r border-gray-100 sticky left-0 bg-inherit z-[5]">
-          {row.isFirstRow && (
+          {row.isFirstRow ? (
             <div className="flex items-center justify-center gap-0.5">
               <Tooltip>
                 <TooltipTrigger asChild>
@@ -839,7 +899,23 @@ export default function OrdersPage() {
                 <TooltipContent>添加子项</TooltipContent>
               </Tooltip>
             </div>
-          )}
+          ) : hasItem ? (
+            <div className="flex items-center justify-center">
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-6 w-6 text-destructive/60 hover:text-destructive opacity-0 group-hover:opacity-100 transition-opacity"
+                    onClick={() => setDeleteItemInfo({ id: row.itemId!, orderId: row.orderId })}
+                  >
+                    <Trash2 className="h-3 w-3" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>删除此子项</TooltipContent>
+              </Tooltip>
+            </div>
+          ) : null}
         </td>
 
         {/* 1. 日期 - order level, editable on first row */}
@@ -914,12 +990,13 @@ export default function OrdersPage() {
           )}
         </td>
 
-        {/* 7. 订单图片 - item level with upload */}
+        {/* 7. 订单图片 - item level with upload, paste, delete */}
         <td className="py-1 px-1 border-r border-gray-100 text-center">
           {hasItem ? (
             <ImageUploadCell
               imageUrl={row.orderImageUrl}
               onUploaded={(url) => saveItemField(row.itemId!, row.orderId, "orderImageUrl", url)}
+              onRemove={() => saveItemField(row.itemId!, row.orderId, "orderImageUrl", "")}
               onPreview={setPreviewImage}
               uploadMutation={uploadMutation}
             />
@@ -1144,12 +1221,13 @@ export default function OrdersPage() {
           {fmtPct(row.profitRate)}
         </td>
 
-        {/* 29. 付款截图 - item level with upload */}
+        {/* 29. 付款截图 - item level with upload, paste, delete */}
         <td className="py-1 px-1 border-r border-gray-100 text-center">
           {hasItem ? (
             <ImageUploadCell
               imageUrl={row.paymentScreenshotUrl}
               onUploaded={(url) => saveItemField(row.itemId!, row.orderId, "paymentScreenshotUrl", url)}
+              onRemove={() => saveItemField(row.itemId!, row.orderId, "paymentScreenshotUrl", "")}
               onPreview={setPreviewImage}
               uploadMutation={uploadMutation}
             />
@@ -1534,11 +1612,11 @@ export default function OrdersPage() {
         initialPasteData={clipboardData}
       />
 
-      {/* Delete Confirmation */}
+      {/* Delete Order Confirmation */}
       <AlertDialog open={deleteId !== null} onOpenChange={() => setDeleteId(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>确认删除</AlertDialogTitle>
+            <AlertDialogTitle>确认删除订单</AlertDialogTitle>
             <AlertDialogDescription>
               确定要删除此订单及其所有子项吗？此操作不可撤销。
             </AlertDialogDescription>
@@ -1550,6 +1628,27 @@ export default function OrdersPage() {
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
               删除
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Delete Item Confirmation */}
+      <AlertDialog open={deleteItemInfo !== null} onOpenChange={() => setDeleteItemInfo(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>确认删除子项</AlertDialogTitle>
+            <AlertDialogDescription>
+              确定要删除此子项吗？删除后订单总额将自动重新计算。
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>取消</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => deleteItemInfo && deleteItemMutation.mutate(deleteItemInfo)}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              删除子项
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
