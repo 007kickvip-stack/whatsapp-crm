@@ -165,6 +165,10 @@ export const appRouter = router({
       page: z.number().default(1),
       pageSize: z.number().default(20),
       search: z.string().optional(),
+      staffName: z.string().optional(),
+      account: z.string().optional(),
+      customerType: z.string().optional(),
+      orderNumber: z.string().optional(),
       orderStatus: z.string().optional(),
       paymentStatus: z.string().optional(),
       customerWhatsapp: z.string().optional(),
@@ -561,6 +565,10 @@ export const appRouter = router({
   export: router({
     orders: protectedProcedure.input(z.object({
       search: z.string().optional(),
+      staffName: z.string().optional(),
+      account: z.string().optional(),
+      customerType: z.string().optional(),
+      orderNumber: z.string().optional(),
       orderStatus: z.string().optional(),
       paymentStatus: z.string().optional(),
       customerWhatsapp: z.string().optional(),

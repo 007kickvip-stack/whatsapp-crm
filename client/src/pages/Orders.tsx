@@ -459,12 +459,16 @@ export default function OrdersPage() {
   const [editingId, setEditingId] = useState<number | null>(null);
   const [form, setForm] = useState<OrderForm>(emptyOrderForm);
   const [deleteId, setDeleteId] = useState<number | null>(null);
-  const [showFilters, setShowFilters] = useState(false);
-  const [filterStatus, setFilterStatus] = useState<string>("");
-  const [filterPayment, setFilterPayment] = useState<string>("");
+  // Filter states
   const [filterDateFrom, setFilterDateFrom] = useState("");
   const [filterDateTo, setFilterDateTo] = useState("");
+  const [filterStaffName, setFilterStaffName] = useState("");
+  const [filterAccount, setFilterAccount] = useState("");
   const [filterWhatsapp, setFilterWhatsapp] = useState("");
+  const [filterCustomerType, setFilterCustomerType] = useState<string>("");
+  const [filterOrderNumber, setFilterOrderNumber] = useState("");
+  const [filterStatus, setFilterStatus] = useState<string>("");
+  const [filterPayment, setFilterPayment] = useState<string>("");
   const [previewImage, setPreviewImage] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
   const [pasteImportOpen, setPasteImportOpen] = useState(false);
@@ -476,13 +480,17 @@ export default function OrdersPage() {
       page,
       pageSize: 20,
       search: search || undefined,
+      staffName: filterStaffName || undefined,
+      account: filterAccount || undefined,
+      customerWhatsapp: filterWhatsapp || undefined,
+      customerType: filterCustomerType || undefined,
+      orderNumber: filterOrderNumber || undefined,
       orderStatus: filterStatus || undefined,
       paymentStatus: filterPayment || undefined,
-      customerWhatsapp: filterWhatsapp || undefined,
       dateFrom: filterDateFrom || undefined,
       dateTo: filterDateTo || undefined,
     }),
-    [page, search, filterStatus, filterPayment, filterWhatsapp, filterDateFrom, filterDateTo]
+    [page, search, filterStaffName, filterAccount, filterWhatsapp, filterCustomerType, filterOrderNumber, filterStatus, filterPayment, filterDateFrom, filterDateTo]
   );
 
   const { data, isLoading } = trpc.orders.list.useQuery(queryInput);
@@ -605,16 +613,21 @@ export default function OrdersPage() {
   };
 
   const clearFilters = () => {
-    setFilterStatus("");
-    setFilterPayment("");
     setFilterDateFrom("");
     setFilterDateTo("");
+    setFilterStaffName("");
+    setFilterAccount("");
     setFilterWhatsapp("");
+    setFilterCustomerType("");
+    setFilterOrderNumber("");
+    setFilterStatus("");
+    setFilterPayment("");
+    setSearch("");
     setPage(1);
   };
 
   const hasActiveFilters =
-    filterStatus || filterPayment || filterDateFrom || filterDateTo || filterWhatsapp;
+    filterDateFrom || filterDateTo || filterStaffName || filterAccount || filterWhatsapp || filterCustomerType || filterOrderNumber || filterStatus || filterPayment;
   const totalPages = Math.ceil((data?.total ?? 0) / 20);
 
   const exportMutation = trpc.export.orders.useMutation();
@@ -624,9 +637,13 @@ export default function OrdersPage() {
     try {
       const exportData = await exportMutation.mutateAsync({
         search: search || undefined,
+        staffName: filterStaffName || undefined,
+        account: filterAccount || undefined,
+        customerWhatsapp: filterWhatsapp || undefined,
+        customerType: filterCustomerType || undefined,
+        orderNumber: filterOrderNumber || undefined,
         orderStatus: filterStatus || undefined,
         paymentStatus: filterPayment || undefined,
-        customerWhatsapp: filterWhatsapp || undefined,
         dateFrom: filterDateFrom || undefined,
         dateTo: filterDateTo || undefined,
       });
@@ -1374,108 +1391,131 @@ export default function OrdersPage() {
         </div>
       </div>
 
-      {/* Search & Filters */}
+      {/* Filter Bar */}
       <Card className="border-0 shadow-sm">
-        <CardContent className="pt-4 pb-4 space-y-3">
-          <div className="flex gap-2">
-            <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+        <CardContent className="pt-3 pb-3">
+          <div className="flex items-center gap-2 mb-2">
+            <Filter className="h-4 w-4 text-emerald-600 shrink-0" />
+            <span className="text-sm font-medium text-emerald-700">订单筛选</span>
+            {hasActiveFilters && (
+              <Button variant="ghost" size="sm" onClick={clearFilters} className="gap-1 text-xs h-6 px-2 ml-auto text-red-500 hover:text-red-700 hover:bg-red-50">
+                <X className="h-3 w-3" />
+                清除全部
+              </Button>
+            )}
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-9 gap-2">
+            {/* 日期范围 */}
+            <div className="space-y-1">
+              <Label className="text-[10px] text-muted-foreground">开始日期</Label>
               <Input
-                placeholder="搜索订单（编号、WhatsApp、客服名）..."
-                value={search}
-                onChange={(e) => {
-                  setSearch(e.target.value);
-                  setPage(1);
-                }}
-                className="pl-10"
+                type="date"
+                value={filterDateFrom}
+                onChange={(e) => { setFilterDateFrom(e.target.value); setPage(1); }}
+                className="h-8 text-xs"
               />
             </div>
-            <Button
-              variant={showFilters ? "default" : "outline"}
-              onClick={() => setShowFilters(!showFilters)}
-              className="gap-2"
-            >
-              <Filter className="h-4 w-4" />
-              筛选
-              {hasActiveFilters && (
-                <Badge variant="secondary" className="ml-1 h-5 w-5 p-0 flex items-center justify-center text-[10px]">
-                  !
-                </Badge>
-              )}
-            </Button>
-          </div>
-
-          {showFilters && (
-            <div className="grid grid-cols-2 md:grid-cols-5 gap-3 pt-2 border-t">
-              <div className="space-y-1">
-                <Label className="text-xs">订单状态</Label>
-                <Select value={filterStatus} onValueChange={(v) => { setFilterStatus(v === "all" ? "" : v); setPage(1); }}>
-                  <SelectTrigger className="h-9">
-                    <SelectValue placeholder="全部" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">全部</SelectItem>
-                    {ORDER_STATUSES.map((s) => (
-                      <SelectItem key={s} value={s}>
-                        <span className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-medium border ${statusColor(s)}`}>{s}</span>
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-1">
-                <Label className="text-xs">付款状态</Label>
-                <Select value={filterPayment} onValueChange={(v) => { setFilterPayment(v === "all" ? "" : v); setPage(1); }}>
-                  <SelectTrigger className="h-9">
-                    <SelectValue placeholder="全部" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">全部</SelectItem>
-                    {PAYMENT_STATUSES.map((s) => (
-                      <SelectItem key={s} value={s}>
-                        <span className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-medium border ${paymentColor(s)}`}>{s}</span>
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-1">
-                <Label className="text-xs">WhatsApp</Label>
-                <Input
-                  placeholder="客户号码"
-                  value={filterWhatsapp}
-                  onChange={(e) => { setFilterWhatsapp(e.target.value); setPage(1); }}
-                  className="h-9"
-                />
-              </div>
-              <div className="space-y-1">
-                <Label className="text-xs">开始日期</Label>
-                <Input
-                  type="date"
-                  value={filterDateFrom}
-                  onChange={(e) => { setFilterDateFrom(e.target.value); setPage(1); }}
-                  className="h-9"
-                />
-              </div>
-              <div className="space-y-1">
-                <Label className="text-xs">结束日期</Label>
-                <Input
-                  type="date"
-                  value={filterDateTo}
-                  onChange={(e) => { setFilterDateTo(e.target.value); setPage(1); }}
-                  className="h-9"
-                />
-              </div>
-              {hasActiveFilters && (
-                <div className="col-span-full">
-                  <Button variant="ghost" size="sm" onClick={clearFilters} className="gap-1 text-xs">
-                    <X className="h-3 w-3" />
-                    清除筛选
-                  </Button>
-                </div>
-              )}
+            <div className="space-y-1">
+              <Label className="text-[10px] text-muted-foreground">结束日期</Label>
+              <Input
+                type="date"
+                value={filterDateTo}
+                onChange={(e) => { setFilterDateTo(e.target.value); setPage(1); }}
+                className="h-8 text-xs"
+              />
             </div>
-          )}
+            {/* 客服名字 */}
+            <div className="space-y-1">
+              <Label className="text-[10px] text-muted-foreground">客服名字</Label>
+              <Input
+                placeholder="输入客服名"
+                value={filterStaffName}
+                onChange={(e) => { setFilterStaffName(e.target.value); setPage(1); }}
+                className="h-8 text-xs"
+              />
+            </div>
+            {/* 账号 */}
+            <div className="space-y-1">
+              <Label className="text-[10px] text-muted-foreground">账号</Label>
+              <Input
+                placeholder="输入账号"
+                value={filterAccount}
+                onChange={(e) => { setFilterAccount(e.target.value); setPage(1); }}
+                className="h-8 text-xs"
+              />
+            </div>
+            {/* 客户WhatsApp */}
+            <div className="space-y-1">
+              <Label className="text-[10px] text-muted-foreground">客户WhatsApp</Label>
+              <Input
+                placeholder="输入号码"
+                value={filterWhatsapp}
+                onChange={(e) => { setFilterWhatsapp(e.target.value); setPage(1); }}
+                className="h-8 text-xs"
+              />
+            </div>
+            {/* 客户属性 */}
+            <div className="space-y-1">
+              <Label className="text-[10px] text-muted-foreground">客户属性</Label>
+              <Select value={filterCustomerType} onValueChange={(v) => { setFilterCustomerType(v === "all" ? "" : v); setPage(1); }}>
+                <SelectTrigger className="h-8 text-xs">
+                  <SelectValue placeholder="全部" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">全部</SelectItem>
+                  {["新零售", "零售复购", "定金-新零售", "定金-零售复购"].map((t) => (
+                    <SelectItem key={t} value={t}>
+                      <span className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-medium border ${customerTypeColor(t)}`}>{t}</span>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            {/* 订单编号 */}
+            <div className="space-y-1">
+              <Label className="text-[10px] text-muted-foreground">订单编号</Label>
+              <Input
+                placeholder="输入编号"
+                value={filterOrderNumber}
+                onChange={(e) => { setFilterOrderNumber(e.target.value); setPage(1); }}
+                className="h-8 text-xs"
+              />
+            </div>
+            {/* 订单状态 */}
+            <div className="space-y-1">
+              <Label className="text-[10px] text-muted-foreground">订单状态</Label>
+              <Select value={filterStatus} onValueChange={(v) => { setFilterStatus(v === "all" ? "" : v); setPage(1); }}>
+                <SelectTrigger className="h-8 text-xs">
+                  <SelectValue placeholder="全部" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">全部</SelectItem>
+                  {ORDER_STATUSES.map((s) => (
+                    <SelectItem key={s} value={s}>
+                      <span className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-medium border ${statusColor(s)}`}>{s}</span>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            {/* 付款状态 */}
+            <div className="space-y-1">
+              <Label className="text-[10px] text-muted-foreground">付款状态</Label>
+              <Select value={filterPayment} onValueChange={(v) => { setFilterPayment(v === "all" ? "" : v); setPage(1); }}>
+                <SelectTrigger className="h-8 text-xs">
+                  <SelectValue placeholder="全部" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">全部</SelectItem>
+                  {PAYMENT_STATUSES.map((s) => (
+                    <SelectItem key={s} value={s}>
+                      <span className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-medium border ${paymentColor(s)}`}>{s}</span>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
         </CardContent>
       </Card>
 

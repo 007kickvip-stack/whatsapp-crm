@@ -269,6 +269,10 @@ export async function listOrders(params: {
   pageSize?: number;
   search?: string;
   staffId?: number;
+  staffName?: string;
+  account?: string;
+  customerType?: string;
+  orderNumber?: string;
   orderStatus?: string;
   paymentStatus?: string;
   customerWhatsapp?: string;
@@ -277,7 +281,7 @@ export async function listOrders(params: {
 }) {
   const db = await getDb();
   if (!db) return { data: [], total: 0 };
-  const { page = 1, pageSize = 20, search, staffId, orderStatus, paymentStatus, customerWhatsapp, dateFrom, dateTo } = params;
+  const { page = 1, pageSize = 20, search, staffId, staffName, account, customerType, orderNumber, orderStatus, paymentStatus, customerWhatsapp, dateFrom, dateTo } = params;
   const offset = (page - 1) * pageSize;
   const conditions: SQL[] = [];
   if (search) {
@@ -291,6 +295,18 @@ export async function listOrders(params: {
   }
   if (staffId) {
     conditions.push(eq(orders.staffId, staffId));
+  }
+  if (staffName) {
+    conditions.push(like(orders.staffName, `%${staffName}%`));
+  }
+  if (account) {
+    conditions.push(like(orders.account, `%${account}%`));
+  }
+  if (customerType) {
+    conditions.push(eq(orders.customerType, customerType));
+  }
+  if (orderNumber) {
+    conditions.push(like(orders.orderNumber, `%${orderNumber}%`));
   }
   if (orderStatus) {
     conditions.push(eq(orders.orderStatus, orderStatus));
@@ -514,6 +530,10 @@ export async function listAuditLogs(params: {
 export async function exportOrders(params: {
   staffId?: number;
   search?: string;
+  staffName?: string;
+  account?: string;
+  customerType?: string;
+  orderNumber?: string;
   orderStatus?: string;
   paymentStatus?: string;
   customerWhatsapp?: string;
@@ -522,7 +542,7 @@ export async function exportOrders(params: {
 }) {
   const db = await getDb();
   if (!db) return [];
-  const { search, staffId, orderStatus, paymentStatus, customerWhatsapp, dateFrom, dateTo } = params;
+  const { search, staffId, staffName, account, customerType, orderNumber, orderStatus, paymentStatus, customerWhatsapp, dateFrom, dateTo } = params;
   const conditions: SQL[] = [];
   if (search) {
     conditions.push(
@@ -535,6 +555,18 @@ export async function exportOrders(params: {
   }
   if (staffId) {
     conditions.push(eq(orders.staffId, staffId));
+  }
+  if (staffName) {
+    conditions.push(like(orders.staffName, `%${staffName}%`));
+  }
+  if (account) {
+    conditions.push(like(orders.account, `%${account}%`));
+  }
+  if (customerType) {
+    conditions.push(eq(orders.customerType, customerType));
+  }
+  if (orderNumber) {
+    conditions.push(like(orders.orderNumber, `%${orderNumber}%`));
   }
   if (orderStatus) {
     conditions.push(eq(orders.orderStatus, orderStatus));
