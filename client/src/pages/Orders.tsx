@@ -364,6 +364,7 @@ export default function OrdersPage() {
   const [previewImage, setPreviewImage] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
   const [pasteImportOpen, setPasteImportOpen] = useState(false);
+  const [clipboardData, setClipboardData] = useState<string | undefined>(undefined);
 
   const utils = trpc.useUtils();
   const queryInput = useMemo(
@@ -654,6 +655,32 @@ export default function OrdersPage() {
     remarks: string | null;
     paymentStatus: string | null;
   };
+
+  // Listen for paste events on the page to detect TSV data from Excel/Sheets
+  useEffect(() => {
+    const handleGlobalPaste = (e: ClipboardEvent) => {
+      // Don't intercept if user is typing in an input/textarea/contenteditable
+      const target = e.target as HTMLElement;
+      const tagName = target?.tagName?.toLowerCase();
+      if (tagName === "input" || tagName === "textarea" || target?.isContentEditable) {
+        return;
+      }
+
+      const text = e.clipboardData?.getData("text/plain");
+      if (!text) return;
+
+      // Check if it looks like TSV data (has tabs and multiple lines)
+      const lines = text.trim().split("\n");
+      if (lines.length >= 2 && lines[0].includes("\t")) {
+        e.preventDefault();
+        setClipboardData(text);
+        setPasteImportOpen(true);
+      }
+    };
+
+    document.addEventListener("paste", handleGlobalPaste);
+    return () => document.removeEventListener("paste", handleGlobalPaste);
+  }, []);
 
   // Auto-create initial item for orders that have no items
   const autoCreateRef = useRef<Set<number>>(new Set());
@@ -1499,8 +1526,12 @@ export default function OrdersPage() {
       {/* Paste Import Dialog */}
       <PasteImportDialog
         open={pasteImportOpen}
-        onOpenChange={setPasteImportOpen}
+        onOpenChange={(v) => {
+          setPasteImportOpen(v);
+          if (!v) setClipboardData(undefined);
+        }}
         onSuccess={() => utils.orders.list.invalidate()}
+        initialPasteData={clipboardData}
       />
 
       {/* Delete Confirmation */}

@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import {
   Dialog,
   DialogContent,
@@ -113,9 +113,10 @@ interface PasteImportDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onSuccess: () => void;
+  initialPasteData?: string; // Pre-filled paste data from external paste event
 }
 
-export default function PasteImportDialog({ open, onOpenChange, onSuccess }: PasteImportDialogProps) {
+export default function PasteImportDialog({ open, onOpenChange, onSuccess, initialPasteData }: PasteImportDialogProps) {
   const [step, setStep] = useState<"paste" | "mapping" | "preview">("paste");
   const [rawRows, setRawRows] = useState<string[][]>([]);
   const [headers, setHeaders] = useState<string[]>([]);
@@ -149,18 +150,18 @@ export default function PasteImportDialog({ open, onOpenChange, onSuccess }: Pas
     onOpenChange(false);
   }, [onOpenChange]);
 
-  // Parse pasted TSV data
-  const handlePaste = useCallback(() => {
-    const text = textareaRef.current?.value?.trim();
-    if (!text) {
+  // Parse TSV text into headers, rows, and auto-mapping
+  const parseTSV = useCallback((text: string): boolean => {
+    const trimmed = text.trim();
+    if (!trimmed) {
       toast.error("请先粘贴表格数据");
-      return;
+      return false;
     }
 
-    const lines = text.split("\n").map(line => line.split("\t"));
+    const lines = trimmed.split("\n").map(line => line.split("\t"));
     if (lines.length < 2) {
       toast.error("数据至少需要包含表头行和一行数据");
-      return;
+      return false;
     }
 
     const headerRow = lines[0].map(h => h.trim());
@@ -168,7 +169,7 @@ export default function PasteImportDialog({ open, onOpenChange, onSuccess }: Pas
 
     if (dataRows.length === 0) {
       toast.error("没有找到有效的数据行");
-      return;
+      return false;
     }
 
     // Auto-detect column mapping
@@ -181,7 +182,21 @@ export default function PasteImportDialog({ open, onOpenChange, onSuccess }: Pas
     setRawRows(dataRows);
     setColumnMapping(mapping);
     setStep("mapping");
+    return true;
   }, []);
+
+  // Parse pasted TSV data from textarea
+  const handlePaste = useCallback(() => {
+    const text = textareaRef.current?.value || "";
+    parseTSV(text);
+  }, [parseTSV]);
+
+  // Auto-parse when initialPasteData is provided
+  useEffect(() => {
+    if (open && initialPasteData && step === "paste") {
+      parseTSV(initialPasteData);
+    }
+  }, [open, initialPasteData, parseTSV]);
 
   // Apply column mapping and generate preview
   const applyMapping = useCallback(() => {
