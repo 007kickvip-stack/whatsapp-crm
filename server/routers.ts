@@ -15,6 +15,8 @@ import {
   createAuditLog, listAuditLogs, exportOrders,
   getCurrentExchangeRate, listExchangeRates, createExchangeRate,
   getProfitReport, getDistinctStaffNames,
+  getMonthlyProfitComparison, getQuarterlyProfitComparison,
+  getProfitAlertSetting, upsertProfitAlertSetting, getStaffProfitAlerts,
 } from "./db";
 import { sdk } from "./_core/sdk";
 import { ONE_YEAR_MS } from "@shared/const";
@@ -659,6 +661,40 @@ export const appRouter = router({
     }),
     staffNames: protectedProcedure.query(async () => {
       return await getDistinctStaffNames();
+    }),
+    monthlyComparison: adminProcedure.input(z.object({
+      staffName: z.string().optional(),
+    }).optional()).query(async ({ input }) => {
+      return await getMonthlyProfitComparison(input?.staffName);
+    }),
+    quarterlyComparison: adminProcedure.input(z.object({
+      staffName: z.string().optional(),
+    }).optional()).query(async ({ input }) => {
+      return await getQuarterlyProfitComparison(input?.staffName);
+    }),
+    // Profit alert settings
+    alertSetting: adminProcedure.query(async () => {
+      return await getProfitAlertSetting();
+    }),
+    updateAlertSetting: adminProcedure.input(z.object({
+      minProfitRate: z.number().min(0).max(1),
+      enabled: z.boolean(),
+    })).mutation(async ({ input, ctx }) => {
+      const result = await upsertProfitAlertSetting({
+        minProfitRate: input.minProfitRate.toFixed(6),
+        enabled: input.enabled ? 1 : 0,
+        updatedById: ctx.user.id,
+        updatedByName: ctx.user.name || "\u672a\u77e5",
+      });
+      await logAction(ctx, "update", "profitAlertSetting", result.id, `\u5229\u6da6\u9884\u8b66\u9608\u503c: ${(input.minProfitRate * 100).toFixed(1)}%`, JSON.stringify(input));
+      return result;
+    }),
+    staffAlerts: adminProcedure.query(async () => {
+      const setting = await getProfitAlertSetting();
+      if (!setting.enabled) return { alerts: [], setting };
+      const minRate = parseFloat(String(setting.minProfitRate));
+      const alerts = await getStaffProfitAlerts(minRate);
+      return { alerts, setting };
     }),
   }),
 });

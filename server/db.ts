@@ -1,6 +1,6 @@
 import { eq, like, and, sql, desc, or, SQL } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
-import { InsertUser, users, customers, orders, orderItems, InsertCustomer, InsertOrder, InsertOrderItem, auditLogs, InsertAuditLog, exchangeRates, InsertExchangeRate } from "../drizzle/schema";
+import { InsertUser, users, customers, orders, orderItems, InsertCustomer, InsertOrder, InsertOrderItem, auditLogs, InsertAuditLog, exchangeRates, InsertExchangeRate, profitAlertSettings, InsertProfitAlertSetting } from "../drizzle/schema";
 import { ENV } from './_core/env';
 import { nanoid } from 'nanoid';
 import { createHash, randomBytes } from 'crypto';
@@ -749,4 +749,202 @@ export async function getDistinctStaffNames() {
   if (!db) return [];
   const rows = await db.selectDistinct({ staffName: orders.staffName }).from(orders).where(sql`${orders.staffName} IS NOT NULL AND ${orders.staffName} != ''`);
   return rows.map(r => r.staffName).filter(Boolean) as string[];
+}
+
+// ============================================================
+// Monthly / Quarterly Comparison helpers
+// ============================================================
+
+export async function getMonthlyProfitComparison(staffName?: string) {
+  const db = await getDb();
+  if (!db) return [];
+
+  const staffFilter = staffName ? sql`AND o.staffName = ${staffName}` : sql``;
+
+  // Get monthly aggregated data for the last 24 months
+  const result = await db.execute(sql`
+    SELECT
+      DATE_FORMAT(o.orderDate, '%Y-%m') as period,
+      COUNT(DISTINCT o.id) as orderCount,
+      COALESCE(SUM(o.totalAmountCny), 0) as totalRevenueCny,
+      COALESCE(SUM(o.totalProfit), 0) as totalProfit,
+      COALESCE(AVG(CASE WHEN o.totalProfitRate > 0 THEN o.totalProfitRate ELSE NULL END), 0) as avgProfitRate
+    FROM orders o
+    WHERE o.orderDate IS NOT NULL
+      AND o.orderDate >= DATE_SUB(CURDATE(), INTERVAL 24 MONTH)
+      ${staffFilter}
+    GROUP BY DATE_FORMAT(o.orderDate, '%Y-%m')
+    ORDER BY period ASC
+  `);
+
+  const rows = ((result as any)[0] || []).map((r: any) => ({
+    period: r.period,
+    orderCount: Number(r.orderCount || 0),
+    totalRevenueCny: String(r.totalRevenueCny || "0"),
+    totalProfit: String(r.totalProfit || "0"),
+    avgProfitRate: String(r.avgProfitRate || "0"),
+  }));
+
+  // Calculate MoM (环比) and YoY (同比)
+  return rows.map((row: any, index: number) => {
+    const prevMonth = rows[index - 1];
+    const [year, month] = row.period.split("-").map(Number);
+    const lastYearPeriod = `${year - 1}-${String(month).padStart(2, "0")}`;
+    const lastYearRow = rows.find((r: any) => r.period === lastYearPeriod);
+
+    const currentProfit = parseFloat(row.totalProfit);
+    const currentRevenue = parseFloat(row.totalRevenueCny);
+
+    // MoM (环比)
+    let momProfitGrowth: number | null = null;
+    let momRevenueGrowth: number | null = null;
+    if (prevMonth) {
+      const prevProfit = parseFloat(prevMonth.totalProfit);
+      const prevRevenue = parseFloat(prevMonth.totalRevenueCny);
+      momProfitGrowth = prevProfit !== 0 ? (currentProfit - prevProfit) / Math.abs(prevProfit) : null;
+      momRevenueGrowth = prevRevenue !== 0 ? (currentRevenue - prevRevenue) / Math.abs(prevRevenue) : null;
+    }
+
+    // YoY (同比)
+    let yoyProfitGrowth: number | null = null;
+    let yoyRevenueGrowth: number | null = null;
+    if (lastYearRow) {
+      const lyProfit = parseFloat(lastYearRow.totalProfit);
+      const lyRevenue = parseFloat(lastYearRow.totalRevenueCny);
+      yoyProfitGrowth = lyProfit !== 0 ? (currentProfit - lyProfit) / Math.abs(lyProfit) : null;
+      yoyRevenueGrowth = lyRevenue !== 0 ? (currentRevenue - lyRevenue) / Math.abs(lyRevenue) : null;
+    }
+
+    return {
+      ...row,
+      momProfitGrowth,
+      momRevenueGrowth,
+      yoyProfitGrowth,
+      yoyRevenueGrowth,
+    };
+  });
+}
+
+export async function getQuarterlyProfitComparison(staffName?: string) {
+  const db = await getDb();
+  if (!db) return [];
+
+  const staffFilter = staffName ? sql`AND o.staffName = ${staffName}` : sql``;
+
+  const result = await db.execute(sql`
+    SELECT
+      CONCAT(YEAR(o.orderDate), '-Q', QUARTER(o.orderDate)) as period,
+      COUNT(DISTINCT o.id) as orderCount,
+      COALESCE(SUM(o.totalAmountCny), 0) as totalRevenueCny,
+      COALESCE(SUM(o.totalProfit), 0) as totalProfit,
+      COALESCE(AVG(CASE WHEN o.totalProfitRate > 0 THEN o.totalProfitRate ELSE NULL END), 0) as avgProfitRate
+    FROM orders o
+    WHERE o.orderDate IS NOT NULL
+      AND o.orderDate >= DATE_SUB(CURDATE(), INTERVAL 8 QUARTER)
+      ${staffFilter}
+    GROUP BY CONCAT(YEAR(o.orderDate), '-Q', QUARTER(o.orderDate)), YEAR(o.orderDate), QUARTER(o.orderDate)
+    ORDER BY YEAR(o.orderDate) ASC, QUARTER(o.orderDate) ASC
+  `);
+
+  const rows = ((result as any)[0] || []).map((r: any) => ({
+    period: r.period,
+    orderCount: Number(r.orderCount || 0),
+    totalRevenueCny: String(r.totalRevenueCny || "0"),
+    totalProfit: String(r.totalProfit || "0"),
+    avgProfitRate: String(r.avgProfitRate || "0"),
+  }));
+
+  // Calculate QoQ (环比) and YoY (同比)
+  return rows.map((row: any, index: number) => {
+    const prevQuarter = rows[index - 1];
+    // Parse period like "2026-Q1"
+    const match = row.period.match(/(\d{4})-Q(\d)/);
+    const year = match ? parseInt(match[1]) : 0;
+    const quarter = match ? parseInt(match[2]) : 0;
+    const lastYearPeriod = `${year - 1}-Q${quarter}`;
+    const lastYearRow = rows.find((r: any) => r.period === lastYearPeriod);
+
+    const currentProfit = parseFloat(row.totalProfit);
+    const currentRevenue = parseFloat(row.totalRevenueCny);
+
+    let qoqProfitGrowth: number | null = null;
+    let qoqRevenueGrowth: number | null = null;
+    if (prevQuarter) {
+      const prevProfit = parseFloat(prevQuarter.totalProfit);
+      const prevRevenue = parseFloat(prevQuarter.totalRevenueCny);
+      qoqProfitGrowth = prevProfit !== 0 ? (currentProfit - prevProfit) / Math.abs(prevProfit) : null;
+      qoqRevenueGrowth = prevRevenue !== 0 ? (currentRevenue - prevRevenue) / Math.abs(prevRevenue) : null;
+    }
+
+    let yoyProfitGrowth: number | null = null;
+    let yoyRevenueGrowth: number | null = null;
+    if (lastYearRow) {
+      const lyProfit = parseFloat(lastYearRow.totalProfit);
+      const lyRevenue = parseFloat(lastYearRow.totalRevenueCny);
+      yoyProfitGrowth = lyProfit !== 0 ? (currentProfit - lyProfit) / Math.abs(lyProfit) : null;
+      yoyRevenueGrowth = lyRevenue !== 0 ? (currentRevenue - lyRevenue) / Math.abs(lyRevenue) : null;
+    }
+
+    return {
+      ...row,
+      qoqProfitGrowth,
+      qoqRevenueGrowth,
+      yoyProfitGrowth,
+      yoyRevenueGrowth,
+    };
+  });
+}
+
+// ============================================================
+// Profit Alert Settings helpers
+// ============================================================
+
+export async function getProfitAlertSetting() {
+  const db = await getDb();
+  if (!db) return { id: 0, minProfitRate: "0.100000", enabled: 1, updatedByName: null };
+  const rows = await db.select().from(profitAlertSettings).orderBy(desc(profitAlertSettings.id)).limit(1);
+  if (rows.length === 0) {
+    return { id: 0, minProfitRate: "0.100000", enabled: 1, updatedByName: null };
+  }
+  return rows[0];
+}
+
+export async function upsertProfitAlertSetting(data: { minProfitRate: string; enabled: number; updatedById: number; updatedByName: string }) {
+  const db = await getDb();
+  if (!db) return { id: 0 };
+  // Always insert a new row to keep history
+  const result = await db.insert(profitAlertSettings).values({
+    minProfitRate: data.minProfitRate,
+    enabled: data.enabled,
+    updatedById: data.updatedById,
+    updatedByName: data.updatedByName,
+  });
+  return { id: Number(result[0].insertId) };
+}
+
+export async function getStaffProfitAlerts(minProfitRate: number) {
+  const db = await getDb();
+  if (!db) return [];
+
+  const result = await db.execute(sql`
+    SELECT
+      o.staffName,
+      COUNT(DISTINCT o.id) as orderCount,
+      COALESCE(SUM(o.totalAmountCny), 0) as totalRevenueCny,
+      COALESCE(SUM(o.totalProfit), 0) as totalProfit,
+      COALESCE(AVG(CASE WHEN o.totalProfitRate > 0 THEN o.totalProfitRate ELSE NULL END), 0) as avgProfitRate
+    FROM orders o
+    WHERE o.staffName IS NOT NULL AND o.staffName != ''
+    GROUP BY o.staffName
+    HAVING avgProfitRate < ${minProfitRate} AND avgProfitRate > 0
+    ORDER BY avgProfitRate ASC
+  `);
+
+  return ((result as any)[0] || []).map((r: any) => ({
+    staffName: r.staffName,
+    orderCount: Number(r.orderCount || 0),
+    totalRevenueCny: String(r.totalRevenueCny || "0"),
+    totalProfit: String(r.totalProfit || "0"),
+    avgProfitRate: String(r.avgProfitRate || "0"),
+  }));
 }

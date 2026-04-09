@@ -43,6 +43,13 @@
       "when": 1775719595871,
       "tag": "0005_huge_runaways",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "5",
+      "when": 1775721319752,
+      "tag": "0006_aberrant_synch",
+      "breakpoints": true
     }
   ]
 }

@@ -41,6 +41,16 @@ vi.mock("./db", () => ({
   createExchangeRate: vi.fn().mockResolvedValue({ id: 2 }),
   getProfitReport: vi.fn().mockResolvedValue({ summary: { orderCount: 0, totalRevenueCny: "0", totalProfit: "0", avgProfitRate: "0" }, byStaff: [], dailyTrend: [] }),
   getDistinctStaffNames: vi.fn().mockResolvedValue(["Staff A", "Staff B"]),
+  getMonthlyProfitComparison: vi.fn().mockResolvedValue([
+    { period: "2026-03", orderCount: 5, totalRevenueCny: "1000", totalProfit: "200", avgProfitRate: "0.2", momProfitGrowth: null, momRevenueGrowth: null, yoyProfitGrowth: null, yoyRevenueGrowth: null },
+    { period: "2026-04", orderCount: 8, totalRevenueCny: "1500", totalProfit: "350", avgProfitRate: "0.23", momProfitGrowth: 0.75, momRevenueGrowth: 0.5, yoyProfitGrowth: null, yoyRevenueGrowth: null },
+  ]),
+  getQuarterlyProfitComparison: vi.fn().mockResolvedValue([
+    { period: "2026-Q1", orderCount: 20, totalRevenueCny: "5000", totalProfit: "1000", avgProfitRate: "0.2", qoqProfitGrowth: null, qoqRevenueGrowth: null, yoyProfitGrowth: null, yoyRevenueGrowth: null },
+  ]),
+  getProfitAlertSetting: vi.fn().mockResolvedValue({ id: 1, minProfitRate: "0.100000", enabled: 1, updatedByName: "Admin" }),
+  upsertProfitAlertSetting: vi.fn().mockResolvedValue({ id: 2 }),
+  getStaffProfitAlerts: vi.fn().mockResolvedValue([{ staffName: "Staff C", orderCount: 3, totalRevenueCny: "500", totalProfit: "20", avgProfitRate: "0.04" }]),
 }));
 
 vi.mock("./storage", () => ({
@@ -628,5 +638,73 @@ describe("Profit Report", () => {
     const ctx = createUnauthContext();
     const caller = appRouter.createCaller(ctx);
     await expect(caller.profitReport.staffNames()).rejects.toThrow();
+  });
+
+  // Monthly/Quarterly Comparison Tests
+  it("admin can get monthly profit comparison", async () => {
+    const ctx = createAdminContext();
+    const caller = appRouter.createCaller(ctx);
+    const result = await caller.profitReport.monthlyComparison({});
+    expect(Array.isArray(result)).toBe(true);
+    expect(result.length).toBe(2);
+    expect(result[0].period).toBe("2026-03");
+    expect(result[1].momProfitGrowth).toBe(0.75);
+  });
+  it("admin can get monthly comparison with staff filter", async () => {
+    const ctx = createAdminContext();
+    const caller = appRouter.createCaller(ctx);
+    const result = await caller.profitReport.monthlyComparison({ staffName: "Staff A" });
+    expect(Array.isArray(result)).toBe(true);
+  });
+  it("staff cannot get monthly comparison", async () => {
+    const ctx = createStaffContext();
+    const caller = appRouter.createCaller(ctx);
+    await expect(caller.profitReport.monthlyComparison({})).rejects.toThrow();
+  });
+  it("admin can get quarterly profit comparison", async () => {
+    const ctx = createAdminContext();
+    const caller = appRouter.createCaller(ctx);
+    const result = await caller.profitReport.quarterlyComparison({});
+    expect(Array.isArray(result)).toBe(true);
+    expect(result.length).toBe(1);
+    expect(result[0].period).toBe("2026-Q1");
+  });
+  it("staff cannot get quarterly comparison", async () => {
+    const ctx = createStaffContext();
+    const caller = appRouter.createCaller(ctx);
+    await expect(caller.profitReport.quarterlyComparison({})).rejects.toThrow();
+  });
+
+  // Profit Alert Settings Tests
+  it("admin can get alert setting", async () => {
+    const ctx = createAdminContext();
+    const caller = appRouter.createCaller(ctx);
+    const result = await caller.profitReport.alertSetting();
+    expect(result.minProfitRate).toBe("0.100000");
+    expect(result.enabled).toBe(1);
+  });
+  it("admin can update alert setting", async () => {
+    const ctx = createAdminContext();
+    const caller = appRouter.createCaller(ctx);
+    const result = await caller.profitReport.updateAlertSetting({ minProfitRate: 0.15, enabled: true });
+    expect(result.id).toBe(2);
+  });
+  it("staff cannot update alert setting", async () => {
+    const ctx = createStaffContext();
+    const caller = appRouter.createCaller(ctx);
+    await expect(caller.profitReport.updateAlertSetting({ minProfitRate: 0.15, enabled: true })).rejects.toThrow();
+  });
+  it("admin can get staff alerts", async () => {
+    const ctx = createAdminContext();
+    const caller = appRouter.createCaller(ctx);
+    const result = await caller.profitReport.staffAlerts();
+    expect(result.alerts.length).toBe(1);
+    expect(result.alerts[0].staffName).toBe("Staff C");
+    expect(result.setting.enabled).toBe(1);
+  });
+  it("staff cannot get staff alerts", async () => {
+    const ctx = createStaffContext();
+    const caller = appRouter.createCaller(ctx);
+    await expect(caller.profitReport.staffAlerts()).rejects.toThrow();
   });
 });

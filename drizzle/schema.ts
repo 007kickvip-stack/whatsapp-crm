@@ -146,3 +146,19 @@ export const exchangeRates = mysqlTable("exchange_rates", {
 
 export type ExchangeRate = typeof exchangeRates.$inferSelect;
 export type InsertExchangeRate = typeof exchangeRates.$inferInsert;
+
+/**
+ * 利润预警阈值配置表
+ */
+export const profitAlertSettings = mysqlTable("profit_alert_settings", {
+  id: int("id").autoincrement().primaryKey(),
+  minProfitRate: decimal("minProfitRate", { precision: 8, scale: 6 }).notNull().default("0.100000"), // 默认10%
+  enabled: int("enabled").notNull().default(1), // 1=启用, 0=禁用
+  updatedById: int("updatedById").notNull(),
+  updatedByName: varchar("updatedByName", { length: 128 }),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type ProfitAlertSetting = typeof profitAlertSettings.$inferSelect;
+export type InsertProfitAlertSetting = typeof profitAlertSettings.$inferInsert;
