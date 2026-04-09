@@ -37,6 +37,7 @@ import {
   ArrowRightLeft,
   BarChart3,
   Target,
+  CalendarDays,
 } from "lucide-react";
 import { CSSProperties, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation } from "wouter";
@@ -64,6 +65,7 @@ const mainMenuItems: MenuItem[] = [
 
 // 客服和管理员都可见的数据分析菜单
 const dataMenuItems: MenuItem[] = [
+  { icon: CalendarDays, label: "每日数据", path: "/daily-data" },
   { icon: BarChart3, label: "利润报表", path: "/profit-report" },
   { icon: Target, label: "目标管理", path: "/staff-targets" },
 ];

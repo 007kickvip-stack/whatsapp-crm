@@ -19,6 +19,8 @@ import {
   getProfitAlertSetting, upsertProfitAlertSetting, getStaffProfitAlerts,
   listStaffMonthlyTargets, upsertStaffMonthlyTarget, deleteStaffMonthlyTarget,
   getStaffTargetProgress, getStaffList,
+  getDailyOrderSummary, listDailyData, createDailyData, updateDailyData, deleteDailyData,
+  getDailyDataById, getDailyReport, syncOrderDataToDailyData,
 } from "./db";
 import { sdk } from "./_core/sdk";
 import { ONE_YEAR_MS } from "@shared/const";
@@ -756,6 +758,153 @@ export const appRouter = router({
       return allProgress.filter(p => p.staffId === ctx.user.id);
     }),
     // 客服列表仅管理员可见
+    staffList: adminProcedure.query(async () => {
+      return await getStaffList();
+    }),
+  }),
+
+  // ==================== 每日数据 ====================
+  dailyData: router({
+    // 查询每日数据列表
+    list: protectedProcedure.input(z.object({
+      startDate: z.string().optional(),
+      endDate: z.string().optional(),
+      staffName: z.string().optional(),
+    })).query(async ({ input, ctx }) => {
+      const isAdmin = ctx.user.role === "admin";
+      const params: any = { ...input };
+      if (!isAdmin) {
+        // 客服只能看自己的数据
+        params.staffId = ctx.user.id;
+        params.staffName = ctx.user.name || undefined;
+      }
+      return await listDailyData(params);
+    }),
+
+    // 创建每日数据
+    create: protectedProcedure.input(z.object({
+      reportDate: z.string(),
+      whatsAccount: z.string().optional(),
+      messageCount: z.number().optional(),
+      newCustomerCount: z.number().optional(),
+      newIntentCount: z.number().optional(),
+      returnVisitCount: z.number().optional(),
+      newOrderCount: z.number().optional(),
+      oldOrderCount: z.number().optional(),
+      onlineOrderCount: z.number().optional(),
+      itemCount: z.number().optional(),
+      onlineRevenue: z.string().optional(),
+      telegramPraiseCount: z.number().optional(),
+      referralCount: z.number().optional(),
+      // 管理员可以为其他客服创建
+      staffId: z.number().optional(),
+      staffName: z.string().optional(),
+    })).mutation(async ({ input, ctx }) => {
+      const isAdmin = ctx.user.role === "admin";
+      const staffId = isAdmin && input.staffId ? input.staffId : ctx.user.id;
+      const staffName = isAdmin && input.staffName ? input.staffName : (ctx.user.name || "未知");
+
+      // 获取订单汇总数据
+      const summary = await getDailyOrderSummary(staffName, input.reportDate);
+      const totalRev = parseFloat(summary.totalRevenue) || 0;
+      const estProfit = parseFloat(summary.estimatedProfit) || 0;
+      const profitRate = totalRev > 0 ? (estProfit / totalRev).toFixed(6) : "0";
+
+      const result = await createDailyData({
+        reportDate: new Date(input.reportDate),
+        staffId,
+        staffName,
+        whatsAccount: input.whatsAccount || null,
+        messageCount: input.messageCount ?? 0,
+        newCustomerCount: input.newCustomerCount ?? 0,
+        newIntentCount: input.newIntentCount ?? 0,
+        returnVisitCount: input.returnVisitCount ?? 0,
+        newOrderCount: input.newOrderCount ?? 0,
+        oldOrderCount: input.oldOrderCount ?? 0,
+        onlineOrderCount: input.onlineOrderCount ?? 0,
+        itemCount: input.itemCount ?? 0,
+        totalRevenue: summary.totalRevenue,
+        onlineRevenue: input.onlineRevenue || "0",
+        productSellingPrice: summary.productSellingPrice,
+        shippingCharged: summary.shippingCharged,
+        estimatedProfit: summary.estimatedProfit,
+        estimatedProfitRate: profitRate,
+        telegramPraiseCount: input.telegramPraiseCount ?? 0,
+        referralCount: input.referralCount ?? 0,
+      });
+
+      await logAction(ctx, "create", "dailyData", result.id, `${staffName} ${input.reportDate}`);
+      return result;
+    }),
+
+    // 更新每日数据
+    update: protectedProcedure.input(z.object({
+      id: z.number(),
+      whatsAccount: z.string().optional(),
+      messageCount: z.number().optional(),
+      newCustomerCount: z.number().optional(),
+      newIntentCount: z.number().optional(),
+      returnVisitCount: z.number().optional(),
+      newOrderCount: z.number().optional(),
+      oldOrderCount: z.number().optional(),
+      onlineOrderCount: z.number().optional(),
+      itemCount: z.number().optional(),
+      onlineRevenue: z.string().optional(),
+      telegramPraiseCount: z.number().optional(),
+      referralCount: z.number().optional(),
+    })).mutation(async ({ input, ctx }) => {
+      const existing = await getDailyDataById(input.id);
+      if (!existing) throw new TRPCError({ code: "NOT_FOUND", message: "记录不存在" });
+
+      // 客服只能编辑自己的数据
+      if (ctx.user.role !== "admin" && existing.staffId !== ctx.user.id) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "无权编辑其他客服的数据" });
+      }
+
+      const { id, ...updateData } = input;
+      await updateDailyData(id, updateData);
+      await logAction(ctx, "update", "dailyData", id);
+      return { success: true };
+    }),
+
+    // 删除每日数据
+    delete: protectedProcedure.input(z.object({ id: z.number() })).mutation(async ({ input, ctx }) => {
+      const existing = await getDailyDataById(input.id);
+      if (!existing) throw new TRPCError({ code: "NOT_FOUND", message: "记录不存在" });
+
+      // 客服只能删除自己的数据
+      if (ctx.user.role !== "admin" && existing.staffId !== ctx.user.id) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "无权删除其他客服的数据" });
+      }
+
+      await deleteDailyData(input.id);
+      await logAction(ctx, "delete", "dailyData", input.id);
+      return { success: true };
+    }),
+
+    // 同步订单汇总数据
+    syncOrderData: protectedProcedure.input(z.object({ id: z.number() })).mutation(async ({ input, ctx }) => {
+      const existing = await getDailyDataById(input.id);
+      if (!existing) throw new TRPCError({ code: "NOT_FOUND", message: "记录不存在" });
+
+      if (ctx.user.role !== "admin" && existing.staffId !== ctx.user.id) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "无权操作" });
+      }
+
+      return await syncOrderDataToDailyData(input.id, existing.staffName, String(existing.reportDate));
+    }),
+
+    // 日报表
+    report: protectedProcedure.input(z.object({
+      reportDate: z.string(),
+      staffName: z.string().optional(),
+    })).query(async ({ input, ctx }) => {
+      const isAdmin = ctx.user.role === "admin";
+      const staffFilter = isAdmin ? input.staffName : (ctx.user.name || undefined);
+      return await getDailyReport(input.reportDate, staffFilter);
+    }),
+
+    // 获取客服列表（仅管理员）
     staffList: adminProcedure.query(async () => {
       return await getStaffList();
     }),

@@ -57,6 +57,13 @@
       "when": 1775721954418,
       "tag": "0007_icy_starfox",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "5",
+      "when": 1775725148410,
+      "tag": "0008_lucky_typhoid_mary",
+      "breakpoints": true
     }
   ]
 }

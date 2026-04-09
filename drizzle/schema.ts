@@ -181,3 +181,39 @@ export const staffMonthlyTargets = mysqlTable("staff_monthly_targets", {
 
 export type StaffMonthlyTarget = typeof staffMonthlyTargets.$inferSelect;
 export type InsertStaffMonthlyTarget = typeof staffMonthlyTargets.$inferInsert;
+
+/**
+ * 每日数据表 - 记录每个客服每天的工作数据
+ * 部分字段自动从订单表汇总，部分手动输入
+ */
+export const dailyData = mysqlTable("daily_data", {
+  id: int("id").autoincrement().primaryKey(),
+  reportDate: date("reportDate").notNull(),
+  staffId: int("staffId").notNull(),
+  staffName: varchar("staffName", { length: 128 }).notNull(),
+  whatsAccount: varchar("whatsAccount", { length: 64 }), // whats账号
+  // 手动输入字段
+  messageCount: int("messageCount").default(0), // 消息数
+  newCustomerCount: int("newCustomerCount").default(0), // 新客人数
+  newIntentCount: int("newIntentCount").default(0), // 新增意向客户
+  returnVisitCount: int("returnVisitCount").default(0), // 回访人数
+  newOrderCount: int("newOrderCount").default(0), // 新客单数
+  oldOrderCount: int("oldOrderCount").default(0), // 老客单数
+  onlineOrderCount: int("onlineOrderCount").default(0), // 线上订单
+  itemCount: int("itemCount").default(0), // 件数
+  // 自动汇总字段（从订单表计算）
+  totalRevenue: decimal("totalRevenue", { precision: 12, scale: 2 }).default("0"), // 总营业额 = orders.totalAmountCny
+  onlineRevenue: decimal("onlineRevenue", { precision: 12, scale: 2 }).default("0"), // 线上营业额（手动输入）
+  productSellingPrice: decimal("productSellingPrice", { precision: 12, scale: 2 }).default("0"), // 产品售价 = order_items.sellingPrice
+  shippingCharged: decimal("shippingCharged", { precision: 12, scale: 2 }).default("0"), // 收取运费 = order_items.shippingCharged
+  estimatedProfit: decimal("estimatedProfit", { precision: 12, scale: 2 }).default("0"), // 预估毛利润 = order_items.productProfit
+  estimatedProfitRate: decimal("estimatedProfitRate", { precision: 8, scale: 6 }).default("0"), // 预估利润率
+  // 其他手动输入字段
+  telegramPraiseCount: int("telegramPraiseCount").default(0), // 电报好评人数
+  referralCount: int("referralCount").default(0), // 周转介绍
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type DailyData = typeof dailyData.$inferSelect;
+export type InsertDailyData = typeof dailyData.$inferInsert;

@@ -1,6 +1,6 @@
 import { eq, like, and, sql, desc, or, SQL } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
-import { InsertUser, users, customers, orders, orderItems, InsertCustomer, InsertOrder, InsertOrderItem, auditLogs, InsertAuditLog, exchangeRates, InsertExchangeRate, profitAlertSettings, InsertProfitAlertSetting, staffMonthlyTargets, InsertStaffMonthlyTarget } from "../drizzle/schema";
+import { InsertUser, users, customers, orders, orderItems, InsertCustomer, InsertOrder, InsertOrderItem, auditLogs, InsertAuditLog, exchangeRates, InsertExchangeRate, profitAlertSettings, InsertProfitAlertSetting, staffMonthlyTargets, InsertStaffMonthlyTarget, dailyData, InsertDailyData } from "../drizzle/schema";
 import { ENV } from './_core/env';
 import { nanoid } from 'nanoid';
 import { createHash, randomBytes } from 'crypto';
@@ -1107,4 +1107,187 @@ export async function getStaffList() {
     staffId: Number(r.staffId),
     staffName: String(r.staffName),
   }));
+}
+
+// ==================== 每日数据 ====================
+
+/**
+ * 从订单表自动汇总某个客服某天的数据
+ */
+export async function getDailyOrderSummary(staffName: string, reportDate: string) {
+  const db = await getDb();
+  if (!db) return { totalRevenue: "0", productSellingPrice: "0", shippingCharged: "0", estimatedProfit: "0" };
+
+  const [rows] = await db.execute(sql`
+    SELECT
+      COALESCE(SUM(o.totalAmountCny), 0) as totalRevenue,
+      COALESCE((
+        SELECT SUM(oi.sellingPrice)
+        FROM order_items oi
+        JOIN orders o2 ON oi.orderId = o2.id
+        WHERE o2.staffName = ${staffName} AND o2.orderDate = ${reportDate}
+      ), 0) as productSellingPrice,
+      COALESCE((
+        SELECT SUM(oi.shippingCharged)
+        FROM order_items oi
+        JOIN orders o2 ON oi.orderId = o2.id
+        WHERE o2.staffName = ${staffName} AND o2.orderDate = ${reportDate}
+      ), 0) as shippingCharged,
+      COALESCE((
+        SELECT SUM(oi.productProfit)
+        FROM order_items oi
+        JOIN orders o2 ON oi.orderId = o2.id
+        WHERE o2.staffName = ${staffName} AND o2.orderDate = ${reportDate}
+      ), 0) as estimatedProfit
+    FROM orders o
+    WHERE o.staffName = ${staffName} AND o.orderDate = ${reportDate}
+  `);
+  const row = (rows as unknown as any[])[0] || {};
+  return {
+    totalRevenue: String(row.totalRevenue || "0"),
+    productSellingPrice: String(row.productSellingPrice || "0"),
+    shippingCharged: String(row.shippingCharged || "0"),
+    estimatedProfit: String(row.estimatedProfit || "0"),
+  };
+}
+
+/**
+ * 查询每日数据列表
+ */
+export async function listDailyData(params: {
+  startDate?: string;
+  endDate?: string;
+  staffName?: string;
+  staffId?: number;
+}) {
+  const db = await getDb();
+  if (!db) return [];
+
+  const conditions: SQL[] = [];
+  if (params.startDate) conditions.push(sql`d.reportDate >= ${params.startDate}`);
+  if (params.endDate) conditions.push(sql`d.reportDate <= ${params.endDate}`);
+  if (params.staffName) conditions.push(sql`d.staffName = ${params.staffName}`);
+  if (params.staffId) conditions.push(sql`d.staffId = ${params.staffId}`);
+
+  const whereClause = conditions.length > 0
+    ? sql`WHERE ${sql.join(conditions, sql` AND `)}`
+    : sql``;
+
+  const [rows] = await db.execute(sql`
+    SELECT * FROM daily_data d
+    ${whereClause}
+    ORDER BY d.reportDate DESC, d.staffName ASC
+  `);
+  return rows as unknown as any[];
+}
+
+/**
+ * 创建每日数据记录
+ */
+export async function createDailyData(data: InsertDailyData) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const result = await db.insert(dailyData).values(data);
+  return { id: result[0].insertId };
+}
+
+/**
+ * 更新每日数据记录
+ */
+export async function updateDailyData(id: number, data: Partial<InsertDailyData>) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.update(dailyData).set(data).where(eq(dailyData.id, id));
+  return { success: true };
+}
+
+/**
+ * 删除每日数据记录
+ */
+export async function deleteDailyData(id: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.delete(dailyData).where(eq(dailyData.id, id));
+  return { success: true };
+}
+
+/**
+ * 获取单条每日数据
+ */
+export async function getDailyDataById(id: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const rows = await db.select().from(dailyData).where(eq(dailyData.id, id));
+  return rows[0] || null;
+}
+
+/**
+ * 生成日报表数据 - 管理员汇总所有客服
+ */
+export async function getDailyReport(reportDate: string, staffName?: string) {
+  const db = await getDb();
+  if (!db) return { rows: [], totals: null };
+
+  const conditions: SQL[] = [sql`d.reportDate = ${reportDate}`];
+  if (staffName) conditions.push(sql`d.staffName = ${staffName}`);
+
+  const whereClause = sql`WHERE ${sql.join(conditions, sql` AND `)}`;
+
+  const [rows] = await db.execute(sql`
+    SELECT * FROM daily_data d
+    ${whereClause}
+    ORDER BY d.staffName ASC
+  `);
+
+  // 计算汇总
+  const [totalsRows] = await db.execute(sql`
+    SELECT
+      COUNT(*) as staffCount,
+      SUM(d.messageCount) as totalMessages,
+      SUM(d.newCustomerCount) as totalNewCustomers,
+      SUM(d.newIntentCount) as totalNewIntents,
+      SUM(d.returnVisitCount) as totalReturnVisits,
+      SUM(d.newOrderCount) as totalNewOrders,
+      SUM(d.oldOrderCount) as totalOldOrders,
+      SUM(d.onlineOrderCount) as totalOnlineOrders,
+      SUM(d.itemCount) as totalItems,
+      SUM(d.totalRevenue) as totalRevenue,
+      SUM(d.onlineRevenue) as totalOnlineRevenue,
+      SUM(d.productSellingPrice) as totalProductSellingPrice,
+      SUM(d.shippingCharged) as totalShippingCharged,
+      SUM(d.estimatedProfit) as totalEstimatedProfit,
+      CASE WHEN SUM(d.totalRevenue) > 0 
+        THEN SUM(d.estimatedProfit) / SUM(d.totalRevenue) 
+        ELSE 0 END as avgProfitRate,
+      SUM(d.telegramPraiseCount) as totalTelegramPraise,
+      SUM(d.referralCount) as totalReferrals
+    FROM daily_data d
+    ${whereClause}
+  `);
+
+  return {
+    rows: rows as unknown as any[],
+    totals: (totalsRows as unknown as any[])[0] || null,
+  };
+}
+
+/**
+ * 批量同步订单汇总数据到每日数据表
+ */
+export async function syncOrderDataToDailyData(id: number, staffName: string, reportDate: string) {
+  const summary = await getDailyOrderSummary(staffName, reportDate);
+  const totalRev = parseFloat(summary.totalRevenue) || 0;
+  const estProfit = parseFloat(summary.estimatedProfit) || 0;
+  const profitRate = totalRev > 0 ? (estProfit / totalRev).toFixed(6) : "0";
+
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.update(dailyData).set({
+    totalRevenue: summary.totalRevenue,
+    productSellingPrice: summary.productSellingPrice,
+    shippingCharged: summary.shippingCharged,
+    estimatedProfit: summary.estimatedProfit,
+    estimatedProfitRate: profitRate,
+  }).where(eq(dailyData.id, id));
+  return { success: true };
 }

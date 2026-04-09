@@ -56,6 +56,14 @@ vi.mock("./db", () => ({
   deleteStaffMonthlyTarget: vi.fn().mockResolvedValue(undefined),
   getStaffTargetProgress: vi.fn().mockResolvedValue([{ targetId: 1, staffId: 2, staffName: "Staff A", yearMonth: "2026-04", profitTarget: "5000", revenueTarget: "20000", actualProfit: "2500", actualRevenue: "12000", orderCount: 5, profitProgress: 0.5, revenueProgress: 0.6, profitGap: "2500.00", revenueGap: "8000.00" }]),
   getStaffList: vi.fn().mockResolvedValue([{ staffId: 1, staffName: "Admin" }, { staffId: 2, staffName: "Staff A" }]),
+  getDailyOrderSummary: vi.fn().mockResolvedValue({ totalRevenue: "500", productSellingPrice: "400", shippingCharged: "100", estimatedProfit: "150" }),
+  listDailyData: vi.fn().mockResolvedValue([{ id: 1, reportDate: "2026-04-09", staffId: 2, staffName: "Staff User", whatsAccount: "+123", messageCount: 50, newCustomerCount: 5, newIntentCount: 3, returnVisitCount: 2, newOrderCount: 4, oldOrderCount: 1, onlineOrderCount: 2, itemCount: 8, totalRevenue: "500", onlineRevenue: "200", productSellingPrice: "400", shippingCharged: "100", estimatedProfit: "150", estimatedProfitRate: "0.3", telegramPraiseCount: 1, referralCount: 0 }]),
+  createDailyData: vi.fn().mockResolvedValue({ id: 1 }),
+  updateDailyData: vi.fn().mockResolvedValue({ success: true }),
+  deleteDailyData: vi.fn().mockResolvedValue({ success: true }),
+  getDailyDataById: vi.fn().mockResolvedValue({ id: 1, reportDate: "2026-04-09", staffId: 2, staffName: "Staff User" }),
+  getDailyReport: vi.fn().mockResolvedValue({ rows: [{ id: 1, staffName: "Staff User", messageCount: 50, totalRevenue: "500" }], totals: { staffCount: 1, totalMessages: 50, totalRevenue: "500", totalEstimatedProfit: "150", avgProfitRate: "0.3" } }),
+  syncOrderDataToDailyData: vi.fn().mockResolvedValue({ success: true }),
 }));
 
 vi.mock("./storage", () => ({
@@ -793,5 +801,109 @@ describe("staffTargets", () => {
     const caller = appRouter.createCaller(ctx);
     await expect(caller.staffTargets.list({ yearMonth: "2026/04" })).rejects.toThrow();
     await expect(caller.staffTargets.list({ yearMonth: "bad" })).rejects.toThrow();
+  });
+});
+
+// ==================== Daily Data Tests ====================
+describe("dailyData", () => {
+  it("admin can list all daily data", async () => {
+    const ctx = createAdminContext();
+    const caller = appRouter.createCaller(ctx);
+    const result = await caller.dailyData.list({ startDate: "2026-04-01", endDate: "2026-04-09" });
+    expect(result).toBeDefined();
+    expect(Array.isArray(result)).toBe(true);
+  });
+
+  it("staff can list daily data (filtered to own)", async () => {
+    const ctx = createStaffContext();
+    const caller = appRouter.createCaller(ctx);
+    const result = await caller.dailyData.list({ startDate: "2026-04-01" });
+    expect(result).toBeDefined();
+  });
+
+  it("admin can create daily data for any staff", async () => {
+    const ctx = createAdminContext();
+    const caller = appRouter.createCaller(ctx);
+    const result = await caller.dailyData.create({
+      reportDate: "2026-04-09",
+      staffId: 2,
+      staffName: "Staff User",
+      messageCount: 50,
+      newCustomerCount: 5,
+    });
+    expect(result).toHaveProperty("id");
+  });
+
+  it("staff can create own daily data", async () => {
+    const ctx = createStaffContext();
+    const caller = appRouter.createCaller(ctx);
+    const result = await caller.dailyData.create({
+      reportDate: "2026-04-09",
+      messageCount: 30,
+    });
+    expect(result).toHaveProperty("id");
+  });
+
+  it("staff can update own daily data", async () => {
+    const ctx = createStaffContext();
+    const caller = appRouter.createCaller(ctx);
+    const result = await caller.dailyData.update({ id: 1, messageCount: 60 });
+    expect(result.success).toBe(true);
+  });
+
+  it("staff cannot update other staff data", async () => {
+    const { getDailyDataById } = await import("./db");
+    (getDailyDataById as any).mockResolvedValueOnce({ id: 1, reportDate: "2026-04-09", staffId: 999, staffName: "Other" });
+    const ctx = createStaffContext();
+    const caller = appRouter.createCaller(ctx);
+    await expect(caller.dailyData.update({ id: 1, messageCount: 60 })).rejects.toThrow();
+  });
+
+  it("staff can delete own daily data", async () => {
+    const ctx = createStaffContext();
+    const caller = appRouter.createCaller(ctx);
+    const result = await caller.dailyData.delete({ id: 1 });
+    expect(result.success).toBe(true);
+  });
+
+  it("staff cannot delete other staff data", async () => {
+    const { getDailyDataById } = await import("./db");
+    (getDailyDataById as any).mockResolvedValueOnce({ id: 1, reportDate: "2026-04-09", staffId: 999, staffName: "Other" });
+    const ctx = createStaffContext();
+    const caller = appRouter.createCaller(ctx);
+    await expect(caller.dailyData.delete({ id: 1 })).rejects.toThrow();
+  });
+
+  it("admin can sync order data", async () => {
+    const ctx = createAdminContext();
+    const caller = appRouter.createCaller(ctx);
+    const result = await caller.dailyData.syncOrderData({ id: 1 });
+    expect(result.success).toBe(true);
+  });
+
+  it("admin can get daily report", async () => {
+    const ctx = createAdminContext();
+    const caller = appRouter.createCaller(ctx);
+    const result = await caller.dailyData.report({ reportDate: "2026-04-09" });
+    expect(result).toHaveProperty("rows");
+    expect(result).toHaveProperty("totals");
+  });
+
+  it("staff can get own daily report", async () => {
+    const ctx = createStaffContext();
+    const caller = appRouter.createCaller(ctx);
+    const result = await caller.dailyData.report({ reportDate: "2026-04-09" });
+    expect(result).toHaveProperty("rows");
+  });
+
+  it("only admin can access staffList", async () => {
+    const staffCtx = createStaffContext();
+    const staffCaller = appRouter.createCaller(staffCtx);
+    await expect(staffCaller.dailyData.staffList()).rejects.toThrow();
+
+    const adminCtx = createAdminContext();
+    const adminCaller = appRouter.createCaller(adminCtx);
+    const result = await adminCaller.dailyData.staffList();
+    expect(Array.isArray(result)).toBe(true);
   });
 });

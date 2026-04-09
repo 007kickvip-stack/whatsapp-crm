@@ -1,18 +1,19 @@
 import mysql from 'mysql2/promise';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const migrationSQL = fs.readFileSync(
+  path.join(__dirname, 'drizzle/0008_lucky_typhoid_mary.sql'),
+  'utf-8'
+);
 
 const conn = await mysql.createConnection(process.env.DATABASE_URL);
-await conn.execute(`CREATE TABLE IF NOT EXISTS \`staff_monthly_targets\` (
-  \`id\` int AUTO_INCREMENT NOT NULL,
-  \`staffId\` int NOT NULL,
-  \`staffName\` varchar(128) NOT NULL,
-  \`yearMonth\` varchar(7) NOT NULL,
-  \`profitTarget\` decimal(12,2) NOT NULL DEFAULT '0',
-  \`revenueTarget\` decimal(12,2) NOT NULL DEFAULT '0',
-  \`setById\` int NOT NULL,
-  \`setByName\` varchar(128),
-  \`createdAt\` timestamp NOT NULL DEFAULT (now()),
-  \`updatedAt\` timestamp NOT NULL DEFAULT (now()) ON UPDATE CURRENT_TIMESTAMP,
-  CONSTRAINT \`staff_monthly_targets_id\` PRIMARY KEY(\`id\`)
-)`);
-console.log('Migration done: staff_monthly_targets table created');
+const statements = migrationSQL.split(';').filter(s => s.trim());
+for (const stmt of statements) {
+  await conn.execute(stmt);
+  console.log('Executed:', stmt.substring(0, 60) + '...');
+}
+console.log('Migration done: daily_data table created');
 await conn.end();
