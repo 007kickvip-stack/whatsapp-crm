@@ -272,7 +272,7 @@ function EditableCell({
 }
 
 // ============================================================
-// Image upload cell component (supports paste, delete key, remove)
+// Image upload cell component (supports paste, delete key, remove, drag & drop)
 // ============================================================
 function ImageUploadCell({
   imageUrl,
@@ -290,6 +290,8 @@ function ImageUploadCell({
   const fileRef = useRef<HTMLInputElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [isFocused, setIsFocused] = useState(false);
+  const [isDragOver, setIsDragOver] = useState(false);
+  const dragCounterRef = useRef(0);
 
   const handleFile = (file: File) => {
     if (file.size > 5 * 1024 * 1024) {
@@ -337,18 +339,66 @@ function ImageUploadCell({
     }
   }, [imageUrl, onRemove]);
 
+  // Drag & drop handlers
+  const handleDragEnter = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dragCounterRef.current++;
+    if (e.dataTransfer.types.includes("Files")) {
+      setIsDragOver(true);
+    }
+  }, []);
+
+  const handleDragLeave = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dragCounterRef.current--;
+    if (dragCounterRef.current === 0) {
+      setIsDragOver(false);
+    }
+  }, []);
+
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+  }, []);
+
+  const handleDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dragCounterRef.current = 0;
+    setIsDragOver(false);
+    const files = e.dataTransfer.files;
+    if (files.length > 0) {
+      const file = files[0];
+      if (file.type.startsWith("image/")) {
+        handleFile(file);
+      } else {
+        toast.error("请拖入图片文件");
+      }
+    }
+  }, []);
+
   return (
     <div
       ref={containerRef}
-      className={`flex items-center justify-center rounded p-0.5 transition-colors outline-none ${
-        isFocused ? "ring-1 ring-emerald-400 bg-emerald-50/50" : ""
+      className={`flex items-center justify-center rounded p-0.5 transition-all outline-none ${
+        isDragOver
+          ? "ring-2 ring-emerald-500 bg-emerald-100/70 scale-105"
+          : isFocused
+            ? "ring-1 ring-emerald-400 bg-emerald-50/50"
+            : ""
       }`}
       tabIndex={0}
       onFocus={() => setIsFocused(true)}
       onBlur={() => setIsFocused(false)}
       onPaste={handlePaste}
       onKeyDown={handleKeyDown}
-      title={imageUrl ? "点击查看大图 | 悬停显示删除 | 粘贴替换图片" : "点击上传或粘贴图片"}
+      onDragEnter={handleDragEnter}
+      onDragLeave={handleDragLeave}
+      onDragOver={handleDragOver}
+      onDrop={handleDrop}
+      title={imageUrl ? "点击查看大图 | 悬停显示删除 | 粘贴/拖拽替换图片" : "点击上传、粘贴或拖拽图片"}
     >
       <input
         ref={fileRef}
@@ -361,7 +411,11 @@ function ImageUploadCell({
           e.target.value = "";
         }}
       />
-      {imageUrl ? (
+      {isDragOver ? (
+        <div className="flex items-center justify-center h-10 w-10">
+          <ImageIcon className="h-5 w-5 text-emerald-500 animate-bounce" />
+        </div>
+      ) : imageUrl ? (
         <div className="relative group">
           <button onClick={() => onPreview(imageUrl)} className="inline-flex">
             <img src={imageUrl} alt="" className="h-10 w-10 rounded object-cover border border-emerald-200 hover:border-emerald-400 transition-colors cursor-pointer" />
@@ -380,7 +434,7 @@ function ImageUploadCell({
         <button
           onClick={() => fileRef.current?.click()}
           className="inline-flex items-center justify-center h-8 w-8 rounded border border-dashed border-gray-300 hover:border-emerald-400 hover:bg-emerald-50 transition-colors"
-          title="上传图片或粘贴"
+          title="上传、粘贴或拖拽图片"
         >
           {uploadMutation.isPending ? (
             <Loader2 className="h-3.5 w-3.5 animate-spin text-emerald-500" />
