@@ -260,6 +260,122 @@ export const appRouter = router({
       await logAction(ctx, "delete", "order", input.id);
       return { success: true };
     }),
+
+    bulkImport: protectedProcedure.input(z.object({
+      rows: z.array(z.object({
+        orderDate: z.string().optional(),
+        account: z.string().optional(),
+        customerWhatsapp: z.string().min(1),
+        customerType: z.string().optional(),
+        orderNumber: z.string().min(1),
+        orderStatus: z.string().optional(),
+        paymentStatus: z.string().optional(),
+        remarks: z.string().optional(),
+        // Item-level fields
+        size: z.string().optional(),
+        domesticTrackingNo: z.string().optional(),
+        sizeRecommendation: z.string().optional(),
+        contactInfo: z.string().optional(),
+        internationalTrackingNo: z.string().optional(),
+        shipDate: z.string().optional(),
+        quantity: z.number().optional(),
+        source: z.string().optional(),
+        amountUsd: z.string().optional(),
+        amountCny: z.string().optional(),
+        sellingPrice: z.string().optional(),
+        productCost: z.string().optional(),
+        shippingCharged: z.string().optional(),
+        shippingActual: z.string().optional(),
+      })),
+    })).mutation(async ({ input, ctx }) => {
+      const results: { orderId: number; orderNumber: string }[] = [];
+      // Group rows by orderNumber + customerWhatsapp to merge items under same order
+      const orderGroups = new Map<string, typeof input.rows>();
+      for (const row of input.rows) {
+        const key = `${row.orderNumber}||${row.customerWhatsapp}`;
+        if (!orderGroups.has(key)) orderGroups.set(key, []);
+        orderGroups.get(key)!.push(row);
+      }
+
+      for (const [, groupRows] of Array.from(orderGroups)) {
+        const first = groupRows[0];
+        // Auto-create customer if not exists
+        let existingCustomer = await getCustomerByWhatsapp(first.customerWhatsapp);
+        let customerId: number | undefined;
+        if (!existingCustomer) {
+          customerId = await createCustomer({
+            whatsapp: first.customerWhatsapp,
+            customerType: first.customerType || "新零售",
+            createdById: ctx.user.id,
+          });
+        } else {
+          customerId = existingCustomer.id;
+        }
+
+        // Create order
+        const orderId = await createOrder({
+          orderDate: first.orderDate ? new Date(first.orderDate) : null,
+          account: first.account || undefined,
+          customerWhatsapp: first.customerWhatsapp,
+          customerId,
+          customerType: first.customerType || "新零售",
+          orderNumber: first.orderNumber,
+          orderStatus: first.orderStatus || "已报货，待发货",
+          paymentStatus: first.paymentStatus || "未付款",
+          remarks: first.remarks || undefined,
+          staffId: ctx.user.id,
+          staffName: ctx.user.name || "未知客服",
+        });
+
+        // Create order items for each row in the group
+        for (const row of groupRows) {
+          const sellingPrice = parseFloat(row.sellingPrice || "0");
+          const productCost = parseFloat(row.productCost || "0");
+          const productProfit = sellingPrice - productCost;
+          const productProfitRate = sellingPrice > 0 ? productProfit / sellingPrice : 0;
+          const shippingCharged = parseFloat(row.shippingCharged || "0");
+          const shippingActual = parseFloat(row.shippingActual || "0");
+          const shippingProfit = shippingCharged - shippingActual;
+          const shippingProfitRate = shippingCharged > 0 ? shippingProfit / shippingCharged : 0;
+          const amountCny = parseFloat(row.amountCny || "0");
+          const totalProfit = productProfit + shippingProfit;
+          const profitRate = amountCny > 0 ? totalProfit / amountCny : 0;
+
+          await createOrderItem({
+            orderId,
+            orderNumber: row.orderNumber,
+            size: row.size || undefined,
+            domesticTrackingNo: row.domesticTrackingNo || undefined,
+            sizeRecommendation: row.sizeRecommendation || undefined,
+            contactInfo: row.contactInfo || undefined,
+            internationalTrackingNo: row.internationalTrackingNo || undefined,
+            shipDate: row.shipDate || undefined,
+            quantity: row.quantity || 1,
+            source: row.source || undefined,
+            amountUsd: row.amountUsd || "0",
+            amountCny: row.amountCny || "0",
+            sellingPrice: row.sellingPrice || "0",
+            productCost: row.productCost || "0",
+            shippingCharged: row.shippingCharged || "0",
+            shippingActual: row.shippingActual || "0",
+            productProfit: productProfit.toFixed(2),
+            productProfitRate: productProfitRate.toFixed(6),
+            shippingProfit: shippingProfit.toFixed(2),
+            shippingProfitRate: shippingProfitRate.toFixed(6),
+            totalProfit: totalProfit.toFixed(2),
+            profitRate: profitRate.toFixed(6),
+            remarks: row.remarks || undefined,
+            paymentStatus: row.paymentStatus || undefined,
+          });
+        }
+
+        await recalculateOrderTotals(orderId);
+        results.push({ orderId, orderNumber: first.orderNumber });
+      }
+
+      await logAction(ctx, "import", "order", undefined, `批量导入 ${results.length} 个订单`, JSON.stringify({ count: results.length, orderNumbers: results.map(r => r.orderNumber) }));
+      return { success: true, imported: results.length, orders: results };
+    }),
   }),
 
   // ==================== Order Items ====================

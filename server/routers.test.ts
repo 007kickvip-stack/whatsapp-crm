@@ -387,3 +387,148 @@ describe("File Upload", () => {
     ).rejects.toThrow();
   });
 });
+
+describe("Bulk Import Orders", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("staff can bulk import orders with auto customer creation", async () => {
+    const { createOrder, createOrderItem, recalculateOrderTotals, getCustomerByWhatsapp, createCustomer, createAuditLog } = await import("./db");
+    (getCustomerByWhatsapp as ReturnType<typeof vi.fn>).mockResolvedValue(null);
+    (createCustomer as ReturnType<typeof vi.fn>).mockResolvedValue(100);
+    (createOrder as ReturnType<typeof vi.fn>).mockResolvedValue(1);
+    (createOrderItem as ReturnType<typeof vi.fn>).mockResolvedValue(1);
+
+    const ctx = createStaffContext();
+    const caller = appRouter.createCaller(ctx);
+    const result = await caller.orders.bulkImport({
+      rows: [
+        {
+          customerWhatsapp: "+44 7312 035806",
+          orderNumber: "TEST-IMPORT-001",
+          orderDate: "2026-04-08",
+          sellingPrice: "100",
+          productCost: "60",
+          shippingCharged: "30",
+          shippingActual: "20",
+          amountCny: "130",
+        },
+      ],
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.imported).toBe(1);
+    expect(result.orders).toHaveLength(1);
+    expect(result.orders[0].orderNumber).toBe("TEST-IMPORT-001");
+
+    // Should auto-create customer
+    expect(createCustomer).toHaveBeenCalledWith(
+      expect.objectContaining({
+        whatsapp: "+44 7312 035806",
+      })
+    );
+
+    // Should create order
+    expect(createOrder).toHaveBeenCalledWith(
+      expect.objectContaining({
+        customerWhatsapp: "+44 7312 035806",
+        orderNumber: "TEST-IMPORT-001",
+        staffId: 2,
+      })
+    );
+
+    // Should create order item with profit calculation
+    expect(createOrderItem).toHaveBeenCalledWith(
+      expect.objectContaining({
+        orderId: 1,
+        productProfit: "40.00",
+        productProfitRate: "0.400000",
+        shippingProfit: "10.00",
+        totalProfit: "50.00",
+      })
+    );
+
+    // Should recalculate totals
+    expect(recalculateOrderTotals).toHaveBeenCalledWith(1);
+
+    // Should log the action
+    expect(createAuditLog).toHaveBeenCalled();
+  });
+
+  it("groups rows with same orderNumber into one order", async () => {
+    const { createOrder, createOrderItem, getCustomerByWhatsapp, createCustomer } = await import("./db");
+    (getCustomerByWhatsapp as ReturnType<typeof vi.fn>).mockResolvedValue(null);
+    (createCustomer as ReturnType<typeof vi.fn>).mockResolvedValue(100);
+    (createOrder as ReturnType<typeof vi.fn>).mockResolvedValue(1);
+    (createOrderItem as ReturnType<typeof vi.fn>).mockResolvedValue(1);
+
+    const ctx = createStaffContext();
+    const caller = appRouter.createCaller(ctx);
+    const result = await caller.orders.bulkImport({
+      rows: [
+        { customerWhatsapp: "+44 111", orderNumber: "ORDER-001", size: "M" },
+        { customerWhatsapp: "+44 111", orderNumber: "ORDER-001", size: "L" },
+        { customerWhatsapp: "+44 111", orderNumber: "ORDER-001", size: "XL" },
+      ],
+    });
+
+    expect(result.imported).toBe(1); // One order
+    expect(createOrder).toHaveBeenCalledTimes(1);
+    expect(createOrderItem).toHaveBeenCalledTimes(3); // Three items
+  });
+
+  it("uses existing customer when found", async () => {
+    const { getCustomerByWhatsapp, createCustomer, createOrder, createOrderItem } = await import("./db");
+    (getCustomerByWhatsapp as ReturnType<typeof vi.fn>).mockResolvedValue({ id: 50, whatsapp: "+44 222" });
+    (createOrder as ReturnType<typeof vi.fn>).mockResolvedValue(1);
+    (createOrderItem as ReturnType<typeof vi.fn>).mockResolvedValue(1);
+
+    const ctx = createStaffContext();
+    const caller = appRouter.createCaller(ctx);
+    await caller.orders.bulkImport({
+      rows: [
+        { customerWhatsapp: "+44 222", orderNumber: "ORDER-002" },
+      ],
+    });
+
+    // Should NOT create a new customer
+    expect(createCustomer).not.toHaveBeenCalled();
+
+    // Should use existing customer ID
+    expect(createOrder).toHaveBeenCalledWith(
+      expect.objectContaining({
+        customerId: 50,
+      })
+    );
+  });
+
+  it("rejects import with missing required fields", async () => {
+    const ctx = createStaffContext();
+    const caller = appRouter.createCaller(ctx);
+
+    // Missing customerWhatsapp
+    await expect(
+      caller.orders.bulkImport({
+        rows: [{ customerWhatsapp: "", orderNumber: "ORDER-003" }],
+      })
+    ).rejects.toThrow();
+
+    // Missing orderNumber
+    await expect(
+      caller.orders.bulkImport({
+        rows: [{ customerWhatsapp: "+44 333", orderNumber: "" }],
+      })
+    ).rejects.toThrow();
+  });
+
+  it("unauthenticated user cannot bulk import", async () => {
+    const ctx = createUnauthContext();
+    const caller = appRouter.createCaller(ctx);
+    await expect(
+      caller.orders.bulkImport({
+        rows: [{ customerWhatsapp: "+44 444", orderNumber: "ORDER-004" }],
+      })
+    ).rejects.toThrow();
+  });
+});

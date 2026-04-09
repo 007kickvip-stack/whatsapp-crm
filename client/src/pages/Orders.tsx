@@ -53,9 +53,11 @@ import {
   Image as ImageIcon,
   PlusCircle,
   Download,
+  ClipboardPaste,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useLocation } from "wouter";
+import PasteImportDialog from "@/components/PasteImportDialog";
 
 type OrderForm = {
   orderDate: string;
@@ -361,6 +363,7 @@ export default function OrdersPage() {
   const [filterWhatsapp, setFilterWhatsapp] = useState("");
   const [previewImage, setPreviewImage] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
+  const [pasteImportOpen, setPasteImportOpen] = useState(false);
 
   const utils = trpc.useUtils();
   const queryInput = useMemo(
@@ -1190,6 +1193,14 @@ export default function OrdersPage() {
             导出 Excel
           </Button>
           <Button
+            variant="outline"
+            onClick={() => setPasteImportOpen(true)}
+            className="gap-2"
+          >
+            <ClipboardPaste className="h-4 w-4" />
+            粘贴导入
+          </Button>
+          <Button
             onClick={() => {
               setEditingId(null);
               setForm(emptyOrderForm);
@@ -1484,6 +1495,13 @@ export default function OrdersPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Paste Import Dialog */}
+      <PasteImportDialog
+        open={pasteImportOpen}
+        onOpenChange={setPasteImportOpen}
+        onSuccess={() => utils.orders.list.invalidate()}
+      />
 
       {/* Delete Confirmation */}
       <AlertDialog open={deleteId !== null} onOpenChange={() => setDeleteId(null)}>
