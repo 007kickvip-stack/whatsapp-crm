@@ -651,30 +651,28 @@ export async function getProfitReport(params: {
   const db = await getDb();
   if (!db) return { summary: null, byStaff: [], dailyTrend: [] };
 
-  const conditions: SQL[] = [];
-  if (params.startDate) conditions.push(sql`${orders.orderDate} >= ${params.startDate}`);
-  if (params.endDate) conditions.push(sql`${orders.orderDate} <= ${params.endDate}`);
-  if (params.staffName) conditions.push(sql`${orders.staffName} = ${params.staffName}`);
+  // Build WHERE conditions for raw SQL
+  const whereParts: SQL[] = [];
+  if (params.startDate) whereParts.push(sql`o.orderDate >= ${params.startDate}`);
+  if (params.endDate) whereParts.push(sql`o.orderDate <= ${params.endDate}`);
+  if (params.staffName) whereParts.push(sql`o.staffName = ${params.staffName}`);
+  const whereSQL = whereParts.length > 0 ? sql`WHERE ${sql.join(whereParts, sql` AND `)}` : sql``;
 
-  const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
-
-  // Summary totals
-  const summaryRows = await db.select({
-    orderCount: sql<number>`count(DISTINCT ${orders.id})`,
-    totalRevenueCny: sql<string>`COALESCE(SUM(${orders.totalAmountCny}), 0)`,
-    totalRevenueUsd: sql<string>`COALESCE(SUM(${orders.totalAmountUsd}), 0)`,
-    totalProfit: sql<string>`COALESCE(SUM(${orders.totalProfit}), 0)`,
-    avgProfitRate: sql<string>`COALESCE(AVG(CASE WHEN ${orders.totalProfitRate} > 0 THEN ${orders.totalProfitRate} ELSE NULL END), 0)`,
-  }).from(orders).where(whereClause);
+  // Summary totals from orders table
+  const summaryResult = await db.execute(sql`
+    SELECT
+      COUNT(DISTINCT o.id) as orderCount,
+      COALESCE(SUM(o.totalAmountCny), 0) as totalRevenueCny,
+      COALESCE(SUM(o.totalAmountUsd), 0) as totalRevenueUsd,
+      COALESCE(SUM(o.totalProfit), 0) as totalProfit,
+      COALESCE(AVG(CASE WHEN o.totalProfitRate > 0 THEN o.totalProfitRate ELSE NULL END), 0) as avgProfitRate
+    FROM orders o
+    ${whereSQL}
+  `);
+  const summaryRow = (summaryResult as any)[0]?.[0] || {};
 
   // Sub-item level aggregation for product/shipping breakdown
-  const itemConditions: SQL[] = [];
-  if (params.startDate) itemConditions.push(sql`o.orderDate >= ${params.startDate}`);
-  if (params.endDate) itemConditions.push(sql`o.orderDate <= ${params.endDate}`);
-  if (params.staffName) itemConditions.push(sql`o.staffName = ${params.staffName}`);
-  const itemWhere = itemConditions.length > 0 ? sql`WHERE ${sql.join(itemConditions, sql` AND `)}` : sql``;
-
-  const breakdownRows = await db.execute(sql`
+  const breakdownResult = await db.execute(sql`
     SELECT
       COALESCE(SUM(i.sellingPrice), 0) as totalSellingPrice,
       COALESCE(SUM(i.productCost), 0) as totalProductCost,
@@ -685,39 +683,65 @@ export async function getProfitReport(params: {
       COALESCE(SUM(i.totalProfit), 0) as totalItemProfit
     FROM order_items i
     JOIN orders o ON i.orderId = o.id
-    ${itemWhere}
+    ${whereSQL}
   `);
-
-  const breakdown = (breakdownRows as any)[0]?.[0] || {};
+  const breakdown = (breakdownResult as any)[0]?.[0] || {};
 
   const summary = {
-    ...summaryRows[0],
-    totalSellingPrice: breakdown.totalSellingPrice || "0",
-    totalProductCost: breakdown.totalProductCost || "0",
-    totalProductProfit: breakdown.totalProductProfit || "0",
-    totalShippingCharged: breakdown.totalShippingCharged || "0",
-    totalShippingActual: breakdown.totalShippingActual || "0",
-    totalShippingProfit: breakdown.totalShippingProfit || "0",
+    orderCount: summaryRow.orderCount || 0,
+    totalRevenueCny: String(summaryRow.totalRevenueCny || "0"),
+    totalRevenueUsd: String(summaryRow.totalRevenueUsd || "0"),
+    totalProfit: String(summaryRow.totalProfit || "0"),
+    avgProfitRate: String(summaryRow.avgProfitRate || "0"),
+    totalSellingPrice: String(breakdown.totalSellingPrice || "0"),
+    totalProductCost: String(breakdown.totalProductCost || "0"),
+    totalProductProfit: String(breakdown.totalProductProfit || "0"),
+    totalShippingCharged: String(breakdown.totalShippingCharged || "0"),
+    totalShippingActual: String(breakdown.totalShippingActual || "0"),
+    totalShippingProfit: String(breakdown.totalShippingProfit || "0"),
   };
 
   // By staff
-  const byStaffRows = await db.select({
-    staffName: orders.staffName,
-    orderCount: sql<number>`count(DISTINCT ${orders.id})`,
-    totalRevenueCny: sql<string>`COALESCE(SUM(${orders.totalAmountCny}), 0)`,
-    totalProfit: sql<string>`COALESCE(SUM(${orders.totalProfit}), 0)`,
-    avgProfitRate: sql<string>`COALESCE(AVG(CASE WHEN ${orders.totalProfitRate} > 0 THEN ${orders.totalProfitRate} ELSE NULL END), 0)`,
-  }).from(orders).where(whereClause).groupBy(orders.staffName).orderBy(sql`totalProfit DESC`);
+  const byStaffResult = await db.execute(sql`
+    SELECT
+      o.staffName as staffName,
+      COUNT(DISTINCT o.id) as orderCount,
+      COALESCE(SUM(o.totalAmountCny), 0) as totalRevenueCny,
+      COALESCE(SUM(o.totalProfit), 0) as totalProfit,
+      COALESCE(AVG(CASE WHEN o.totalProfitRate > 0 THEN o.totalProfitRate ELSE NULL END), 0) as avgProfitRate
+    FROM orders o
+    ${whereSQL}
+    GROUP BY o.staffName
+    ORDER BY totalProfit DESC
+  `);
+  const byStaff = ((byStaffResult as any)[0] || []).map((r: any) => ({
+    staffName: r.staffName,
+    orderCount: r.orderCount,
+    totalRevenueCny: String(r.totalRevenueCny || "0"),
+    totalProfit: String(r.totalProfit || "0"),
+    avgProfitRate: String(r.avgProfitRate || "0"),
+  }));
 
   // Daily trend
-  const dailyTrendRows = await db.select({
-    date: sql<string>`DATE_FORMAT(${orders.orderDate}, '%Y-%m-%d')`,
-    orderCount: sql<number>`count(DISTINCT ${orders.id})`,
-    totalRevenueCny: sql<string>`COALESCE(SUM(${orders.totalAmountCny}), 0)`,
-    totalProfit: sql<string>`COALESCE(SUM(${orders.totalProfit}), 0)`,
-  }).from(orders).where(whereClause).groupBy(sql`DATE_FORMAT(${orders.orderDate}, '%Y-%m-%d')`).orderBy(sql`date ASC`);
+  const dailyTrendResult = await db.execute(sql`
+    SELECT
+      DATE_FORMAT(o.orderDate, '%Y-%m-%d') as date,
+      COUNT(DISTINCT o.id) as orderCount,
+      COALESCE(SUM(o.totalAmountCny), 0) as totalRevenueCny,
+      COALESCE(SUM(o.totalProfit), 0) as totalProfit
+    FROM orders o
+    ${whereSQL}
+    GROUP BY DATE_FORMAT(o.orderDate, '%Y-%m-%d')
+    ORDER BY date ASC
+  `);
+  const dailyTrend = ((dailyTrendResult as any)[0] || []).map((r: any) => ({
+    date: r.date,
+    orderCount: r.orderCount,
+    totalRevenueCny: String(r.totalRevenueCny || "0"),
+    totalProfit: String(r.totalProfit || "0"),
+  }));
 
-  return { summary, byStaff: byStaffRows, dailyTrend: dailyTrendRows };
+  return { summary, byStaff, dailyTrend };
 }
 
 export async function getDistinctStaffNames() {
