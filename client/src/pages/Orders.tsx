@@ -340,7 +340,7 @@ function ImageUploadCell({
   return (
     <div
       ref={containerRef}
-      className={`flex items-center justify-center gap-1 rounded p-0.5 transition-colors outline-none ${
+      className={`flex items-center justify-center rounded p-0.5 transition-colors outline-none ${
         isFocused ? "ring-1 ring-emerald-400 bg-emerald-50/50" : ""
       }`}
       tabIndex={0}
@@ -348,7 +348,7 @@ function ImageUploadCell({
       onBlur={() => setIsFocused(false)}
       onPaste={handlePaste}
       onKeyDown={handleKeyDown}
-      title={imageUrl ? "点击选中后按 Delete 删除图片，或粘贴新图片" : "点击选中后粘贴图片上传"}
+      title={imageUrl ? "点击查看大图 | 悬停显示删除 | 粘贴替换图片" : "点击上传或粘贴图片"}
     >
       <input
         ref={fileRef}
@@ -364,30 +364,31 @@ function ImageUploadCell({
       {imageUrl ? (
         <div className="relative group">
           <button onClick={() => onPreview(imageUrl)} className="inline-flex">
-            <img src={imageUrl} alt="" className="h-7 w-7 rounded object-cover border border-emerald-200 hover:border-emerald-400 transition-colors" />
+            <img src={imageUrl} alt="" className="h-10 w-10 rounded object-cover border border-emerald-200 hover:border-emerald-400 transition-colors cursor-pointer" />
           </button>
           {onRemove && (
             <button
               onClick={(e) => { e.stopPropagation(); onRemove(); }}
-              className="absolute -top-1 -right-1 h-3.5 w-3.5 rounded-full bg-red-500 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow-sm"
+              className="absolute -top-1.5 -right-1.5 h-4 w-4 rounded-full bg-red-500 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow-sm"
               title="删除图片"
             >
-              <X className="h-2 w-2" />
+              <X className="h-2.5 w-2.5" />
             </button>
           )}
         </div>
-      ) : null}
-      <button
-        onClick={() => fileRef.current?.click()}
-        className="inline-flex items-center justify-center h-6 w-6 rounded border border-dashed border-gray-300 hover:border-emerald-400 hover:bg-emerald-50 transition-colors"
-        title="上传图片或粘贴"
-      >
-        {uploadMutation.isPending ? (
-          <Loader2 className="h-3 w-3 animate-spin text-emerald-500" />
-        ) : (
-          <Upload className="h-3 w-3 text-gray-400" />
-        )}
-      </button>
+      ) : (
+        <button
+          onClick={() => fileRef.current?.click()}
+          className="inline-flex items-center justify-center h-8 w-8 rounded border border-dashed border-gray-300 hover:border-emerald-400 hover:bg-emerald-50 transition-colors"
+          title="上传图片或粘贴"
+        >
+          {uploadMutation.isPending ? (
+            <Loader2 className="h-3.5 w-3.5 animate-spin text-emerald-500" />
+          ) : (
+            <Upload className="h-3.5 w-3.5 text-gray-400" />
+          )}
+        </button>
+      )}
     </div>
   );
 }
