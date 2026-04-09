@@ -1187,8 +1187,8 @@ export default function OrdersPage() {
           ) : null}
         </td>
 
-        {/* 17. 总金额$ */}
-        <td className="py-1 px-1 border-r border-gray-100 text-right font-mono whitespace-nowrap text-[11px]">
+        {/* 17. 总金额$ - editable */}
+        <td className="py-1 px-1 border-r border-gray-100 text-center font-mono whitespace-nowrap text-[11px]">
           {hasItem ? (
             <EditableCell
               value={row.amountUsd || ""}
@@ -1201,22 +1201,13 @@ export default function OrdersPage() {
           )}
         </td>
 
-        {/* 18. 总金额¥ */}
-        <td className="py-1 px-1 border-r border-gray-100 text-right font-mono whitespace-nowrap text-[11px]">
-          {hasItem ? (
-            <EditableCell
-              value={row.amountCny || ""}
-              type="number"
-              onSave={(v) => saveItemField(row.itemId!, row.orderId, "amountCny", v)}
-              placeholder="0"
-            />
-          ) : (
-            fmtNum(row.amountCny) ? `¥${fmtNum(row.amountCny)}` : ""
-          )}
+        {/* 18. 总金额¥ - auto: 总金额$ × 6.4 */}
+        <td className="py-1 px-1 border-r border-gray-100 text-center font-mono whitespace-nowrap text-[11px] bg-gray-50/50">
+          {fmtNum(row.amountCny) ? `¥${fmtNum(row.amountCny)}` : ""}
         </td>
 
-        {/* 19. 售价 */}
-        <td className="py-1 px-1 border-r border-gray-100 text-right font-mono whitespace-nowrap text-[11px]">
+        {/* 19. 售价 - editable */}
+        <td className="py-1 px-1 border-r border-gray-100 text-center font-mono whitespace-nowrap text-[11px]">
           {hasItem ? (
             <EditableCell
               value={row.sellingPrice || ""}
@@ -1227,8 +1218,8 @@ export default function OrdersPage() {
           ) : null}
         </td>
 
-        {/* 20. 产品成本 */}
-        <td className="py-1 px-1 border-r border-gray-100 text-right font-mono whitespace-nowrap text-[11px]">
+        {/* 20. 产品成本 - editable */}
+        <td className="py-1 px-1 border-r border-gray-100 text-center font-mono whitespace-nowrap text-[11px]">
           {hasItem ? (
             <EditableCell
               value={row.productCost || ""}
@@ -1239,30 +1230,23 @@ export default function OrdersPage() {
           ) : null}
         </td>
 
-        {/* 21. 产品毛利润 - auto calculated, read only */}
-        <td className={`py-1 px-1 border-r border-gray-100 text-right font-mono whitespace-nowrap text-[11px] ${profitColor(row.productProfit)}`}>
+        {/* 21. 产品毛利润 - auto: 售价 - 产品成本 */}
+        <td className={`py-1 px-1 border-r border-gray-100 text-center font-mono whitespace-nowrap text-[11px] bg-gray-50/50 ${profitColor(row.productProfit)}`}>
           {fmtNum(row.productProfit)}
         </td>
 
-        {/* 22. 产品毛利率 - auto calculated, read only */}
-        <td className={`py-1 px-1 border-r border-gray-100 text-right font-mono whitespace-nowrap text-[11px] ${profitColor(row.productProfitRate)}`}>
+        {/* 22. 产品毛利率 - auto: 产品毛利润 ÷ 售价 */}
+        <td className={`py-1 px-1 border-r border-gray-100 text-center font-mono whitespace-nowrap text-[11px] bg-gray-50/50 ${profitColor(row.productProfitRate)}`}>
           {fmtPct(row.productProfitRate)}
         </td>
 
-        {/* 23. 收取运费(¥) */}
-        <td className="py-1 px-1 border-r border-gray-100 text-right font-mono whitespace-nowrap text-[11px]">
-          {hasItem ? (
-            <EditableCell
-              value={row.shippingCharged || ""}
-              type="number"
-              onSave={(v) => saveItemField(row.itemId!, row.orderId, "shippingCharged", v)}
-              placeholder="0"
-            />
-          ) : null}
+        {/* 23. 收取运费(¥) - auto: 总金额¥ - 售价 */}
+        <td className="py-1 px-1 border-r border-gray-100 text-center font-mono whitespace-nowrap text-[11px] bg-gray-50/50">
+          {fmtNum(row.shippingCharged)}
         </td>
 
-        {/* 24. 实际运费 */}
-        <td className="py-1 px-1 border-r border-gray-100 text-right font-mono whitespace-nowrap text-[11px]">
+        {/* 24. 实际运费 - editable */}
+        <td className="py-1 px-1 border-r border-gray-100 text-center font-mono whitespace-nowrap text-[11px]">
           {hasItem ? (
             <EditableCell
               value={row.shippingActual || ""}
@@ -1273,23 +1257,23 @@ export default function OrdersPage() {
           ) : null}
         </td>
 
-        {/* 25. 运费利润 - auto calculated */}
-        <td className={`py-1 px-1 border-r border-gray-100 text-right font-mono whitespace-nowrap text-[11px] ${profitColor(row.shippingProfit)}`}>
+        {/* 25. 运费利润 - auto: 收取运费 - 实际运费 */}
+        <td className={`py-1 px-1 border-r border-gray-100 text-center font-mono whitespace-nowrap text-[11px] bg-gray-50/50 ${profitColor(row.shippingProfit)}`}>
           {fmtNum(row.shippingProfit)}
         </td>
 
-        {/* 26. 运费利润率 - auto calculated */}
-        <td className={`py-1 px-1 border-r border-gray-100 text-right font-mono whitespace-nowrap text-[11px] ${profitColor(row.shippingProfitRate)}`}>
+        {/* 26. 运费利润率 - auto: 运费利润 ÷ 收取运费 */}
+        <td className={`py-1 px-1 border-r border-gray-100 text-center font-mono whitespace-nowrap text-[11px] bg-gray-50/50 ${profitColor(row.shippingProfitRate)}`}>
           {fmtPct(row.shippingProfitRate)}
         </td>
 
-        {/* 27. 总利润 - auto calculated */}
-        <td className={`py-1 px-1 border-r border-gray-100 text-right font-mono whitespace-nowrap text-[11px] font-medium ${profitColor(row.totalProfit)}`}>
+        {/* 27. 总利润 - auto: 产品毛利润 + 运费利润 */}
+        <td className={`py-1 px-1 border-r border-gray-100 text-center font-mono whitespace-nowrap text-[11px] font-medium bg-gray-50/50 ${profitColor(row.totalProfit)}`}>
           {fmtNum(row.totalProfit)}
         </td>
 
-        {/* 28. 利润率 - auto calculated */}
-        <td className={`py-1 px-1 border-r border-gray-100 text-right font-mono whitespace-nowrap text-[11px] ${profitColor(row.profitRate)}`}>
+        {/* 28. 利润率 - auto: 总利润 ÷ 总金额¥ */}
+        <td className={`py-1 px-1 border-r border-gray-100 text-center font-mono whitespace-nowrap text-[11px] bg-gray-50/50 ${profitColor(row.profitRate)}`}>
           {fmtPct(row.profitRate)}
         </td>
 

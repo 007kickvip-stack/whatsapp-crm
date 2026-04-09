@@ -9,7 +9,7 @@ import {
   getUserByUsername, verifyPassword, updateUserPassword, updateUserUsername,
   createCustomer, updateCustomer, deleteCustomer, getCustomerById, getCustomerByWhatsapp, listCustomers,
   createOrder, updateOrder, deleteOrder, getOrderById, getOrderWithItems, listOrders,
-  createOrderItem, updateOrderItem, deleteOrderItem, getOrderItemsByOrderId, recalculateOrderTotals,
+  createOrderItem, updateOrderItem, deleteOrderItem, getOrderItemById, getOrderItemsByOrderId, recalculateOrderTotals,
   getOrderStats, getOrderStatusDistribution, getPaymentStatusDistribution,
   getStaffPerformance, getRecentOrders, getCustomerStats, getDailyOrderTrend,
   createAuditLog, listAuditLogs, exportOrders,
@@ -214,6 +214,8 @@ export const appRouter = router({
       await createOrderItem({
         orderId: id,
         orderNumber: rest.orderNumber,
+        amountCny: "0.00",
+        shippingCharged: "0.00",
         productProfit: "0.00",
         productProfitRate: "0.000000",
         shippingProfit: "0.00",
@@ -333,15 +335,16 @@ export const appRouter = router({
 
         // Create order items for each row in the group
         for (const row of groupRows) {
+          const amountUsd = parseFloat(row.amountUsd || "0");
+          const amountCny = amountUsd * 6.4;
           const sellingPrice = parseFloat(row.sellingPrice || "0");
           const productCost = parseFloat(row.productCost || "0");
           const productProfit = sellingPrice - productCost;
           const productProfitRate = sellingPrice > 0 ? productProfit / sellingPrice : 0;
-          const shippingCharged = parseFloat(row.shippingCharged || "0");
+          const shippingCharged = amountCny - sellingPrice;
           const shippingActual = parseFloat(row.shippingActual || "0");
           const shippingProfit = shippingCharged - shippingActual;
           const shippingProfitRate = shippingCharged > 0 ? shippingProfit / shippingCharged : 0;
-          const amountCny = parseFloat(row.amountCny || "0");
           const totalProfit = productProfit + shippingProfit;
           const profitRate = amountCny > 0 ? totalProfit / amountCny : 0;
 
@@ -357,10 +360,10 @@ export const appRouter = router({
             quantity: row.quantity || 1,
             source: row.source || undefined,
             amountUsd: row.amountUsd || "0",
-            amountCny: row.amountCny || "0",
+            amountCny: amountCny.toFixed(2),
             sellingPrice: row.sellingPrice || "0",
             productCost: row.productCost || "0",
-            shippingCharged: row.shippingCharged || "0",
+            shippingCharged: shippingCharged.toFixed(2),
             shippingActual: row.shippingActual || "0",
             productProfit: productProfit.toFixed(2),
             productProfitRate: productProfitRate.toFixed(6),
@@ -409,23 +412,24 @@ export const appRouter = router({
       remarks: z.string().optional(),
       paymentStatus: z.string().optional(),
     })).mutation(async ({ input }) => {
-      // Auto-calculate profit fields
+      // Auto-calculate derived fields using formulas
+      const amountUsd = parseFloat(input.amountUsd || "0");
+      const amountCny = amountUsd * 6.4; // 总金额¥ = 总金额$ × 6.4
       const sellingPrice = parseFloat(input.sellingPrice || "0");
       const productCost = parseFloat(input.productCost || "0");
-      const productProfit = sellingPrice - productCost;
+      const productProfit = sellingPrice - productCost; // 产品毛利润
       const productProfitRate = sellingPrice > 0 ? productProfit / sellingPrice : 0;
-
-      const shippingCharged = parseFloat(input.shippingCharged || "0");
+      const shippingCharged = amountCny - sellingPrice; // 收取运费(¥) = 总金额¥ - 售价
       const shippingActual = parseFloat(input.shippingActual || "0");
-      const shippingProfit = shippingCharged - shippingActual;
+      const shippingProfit = shippingCharged - shippingActual; // 运费利润
       const shippingProfitRate = shippingCharged > 0 ? shippingProfit / shippingCharged : 0;
-
-      const amountCny = parseFloat(input.amountCny || "0");
-      const totalProfit = productProfit + shippingProfit;
-      const profitRate = amountCny > 0 ? totalProfit / amountCny : 0;
+      const totalProfit = productProfit + shippingProfit; // 总利润
+      const profitRate = amountCny > 0 ? totalProfit / amountCny : 0; // 利润率
 
       const id = await createOrderItem({
         ...input,
+        amountCny: amountCny.toFixed(2),
+        shippingCharged: shippingCharged.toFixed(2),
         productProfit: productProfit.toFixed(2),
         productProfitRate: productProfitRate.toFixed(6),
         shippingProfit: shippingProfit.toFixed(2),
@@ -464,23 +468,33 @@ export const appRouter = router({
       paymentStatus: z.string().optional(),
     })).mutation(async ({ input }) => {
       const { id, orderId, ...data } = input;
-      // Auto-calculate profit fields
-      const sellingPrice = parseFloat(data.sellingPrice || "0");
-      const productCost = parseFloat(data.productCost || "0");
-      const productProfit = sellingPrice - productCost;
-      const productProfitRate = sellingPrice > 0 ? productProfit / sellingPrice : 0;
+      // Fetch current item to merge partial updates
+      const currentItem = await getOrderItemById(id);
+      const merged = {
+        amountUsd: data.amountUsd ?? currentItem?.amountUsd ?? "0",
+        sellingPrice: data.sellingPrice ?? currentItem?.sellingPrice ?? "0",
+        productCost: data.productCost ?? currentItem?.productCost ?? "0",
+        shippingActual: data.shippingActual ?? currentItem?.shippingActual ?? "0",
+      };
 
-      const shippingCharged = parseFloat(data.shippingCharged || "0");
-      const shippingActual = parseFloat(data.shippingActual || "0");
-      const shippingProfit = shippingCharged - shippingActual;
-      const shippingProfitRate = shippingCharged > 0 ? shippingProfit / shippingCharged : 0;
-
-      const amountCny = parseFloat(data.amountCny || "0");
-      const totalProfit = productProfit + shippingProfit;
-      const profitRate = amountCny > 0 ? totalProfit / amountCny : 0;
+      // Auto-calculate derived fields using formulas
+      const amountUsd = parseFloat(merged.amountUsd || "0");
+      const amountCny = amountUsd * 6.4; // 总金额¥ = 总金额$ × 6.4
+      const sellingPrice = parseFloat(merged.sellingPrice || "0");
+      const productCost = parseFloat(merged.productCost || "0");
+      const productProfit = sellingPrice - productCost; // 产品毛利润 = 售价 - 产品成本
+      const productProfitRate = sellingPrice > 0 ? productProfit / sellingPrice : 0; // 产品毛利率
+      const shippingCharged = amountCny - sellingPrice; // 收取运费(¥) = 总金额¥ - 售价
+      const shippingActual = parseFloat(merged.shippingActual || "0");
+      const shippingProfit = shippingCharged - shippingActual; // 运费利润
+      const shippingProfitRate = shippingCharged > 0 ? shippingProfit / shippingCharged : 0; // 运费利润率
+      const totalProfit = productProfit + shippingProfit; // 总利润
+      const profitRate = amountCny > 0 ? totalProfit / amountCny : 0; // 利润率
 
       await updateOrderItem(id, {
         ...data,
+        amountCny: amountCny.toFixed(2),
+        shippingCharged: shippingCharged.toFixed(2),
         productProfit: productProfit.toFixed(2),
         productProfitRate: productProfitRate.toFixed(6),
         shippingProfit: shippingProfit.toFixed(2),

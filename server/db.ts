@@ -366,6 +366,13 @@ export async function deleteOrderItem(id: number) {
   await db.delete(orderItems).where(eq(orderItems.id, id));
 }
 
+export async function getOrderItemById(id: number) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const rows = await db.select().from(orderItems).where(eq(orderItems.id, id)).limit(1);
+  return rows[0];
+}
+
 export async function getOrderItemsByOrderId(orderId: number) {
   const db = await getDb();
   if (!db) return [];

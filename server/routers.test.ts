@@ -23,6 +23,7 @@ vi.mock("./db", () => ({
   createOrderItem: vi.fn().mockResolvedValue(1),
   updateOrderItem: vi.fn().mockResolvedValue(undefined),
   deleteOrderItem: vi.fn().mockResolvedValue(undefined),
+  getOrderItemById: vi.fn().mockResolvedValue(undefined),
   getOrderItemsByOrderId: vi.fn().mockResolvedValue([]),
   recalculateOrderTotals: vi.fn().mockResolvedValue(undefined),
   getOrderStats: vi.fn().mockResolvedValue({ totalOrders: 5, totalRevenueCny: "1000", totalProfit: "200" }),
@@ -262,6 +263,7 @@ describe("Order Items with Profit Calculation", () => {
     const ctx = createStaffContext();
     const caller = appRouter.createCaller(ctx);
 
+    // amountUsd=20 => amountCny=20*6.4=128, shippingCharged=128-100=28
     await caller.orderItems.create({
       orderId: 1,
       orderNumber: "TEST-001",
@@ -269,20 +271,20 @@ describe("Order Items with Profit Calculation", () => {
       quantity: 1,
       sellingPrice: "100",
       productCost: "60",
-      shippingCharged: "30",
       shippingActual: "20",
-      amountCny: "130",
-      amountUsd: "18",
+      amountUsd: "20",
     });
 
     expect(createOrderItem).toHaveBeenCalledWith(
       expect.objectContaining({
+        amountCny: "128.00",
+        shippingCharged: "28.00",
         productProfit: "40.00",
         productProfitRate: "0.400000",
-        shippingProfit: "10.00",
-        shippingProfitRate: "0.333333",
-        totalProfit: "50.00",
-        profitRate: "0.384615",
+        shippingProfit: "8.00",
+        shippingProfitRate: "0.285714",
+        totalProfit: "48.00",
+        profitRate: "0.375000",
       })
     );
   });
@@ -297,13 +299,14 @@ describe("Order Items with Profit Calculation", () => {
       orderNumber: "TEST-002",
       sellingPrice: "0",
       productCost: "0",
-      shippingCharged: "0",
       shippingActual: "0",
-      amountCny: "0",
+      amountUsd: "0",
     });
 
     expect(createOrderItem).toHaveBeenCalledWith(
       expect.objectContaining({
+        amountCny: "0.00",
+        shippingCharged: "0.00",
         productProfit: "0.00",
         productProfitRate: "0.000000",
         shippingProfit: "0.00",
@@ -410,9 +413,8 @@ describe("Bulk Import Orders", () => {
           orderDate: "2026-04-08",
           sellingPrice: "100",
           productCost: "60",
-          shippingCharged: "30",
           shippingActual: "20",
-          amountCny: "130",
+          amountUsd: "20",
         },
       ],
     });
@@ -438,14 +440,17 @@ describe("Bulk Import Orders", () => {
       })
     );
 
-    // Should create order item with profit calculation
+    // Should create order item with auto-calculated fields
+    // amountUsd=20 => amountCny=128, shippingCharged=128-100=28
     expect(createOrderItem).toHaveBeenCalledWith(
       expect.objectContaining({
         orderId: 1,
+        amountCny: "128.00",
+        shippingCharged: "28.00",
         productProfit: "40.00",
         productProfitRate: "0.400000",
-        shippingProfit: "10.00",
-        totalProfit: "50.00",
+        shippingProfit: "8.00",
+        totalProfit: "48.00",
       })
     );
 
