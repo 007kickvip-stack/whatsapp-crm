@@ -1030,13 +1030,20 @@ export async function getStaffTargetProgress(yearMonth: string) {
   if (targets.length === 0) return [];
 
   // Get actual performance for each staff in this month
+  // 营收从 orders 表获取，利润使用 order_items 的产品毛利润（productProfit）之和
   const result = await db.execute(sql`
     SELECT
       o.staffName,
       o.staffId,
-      COUNT(DISTINCT o.id) as orderCount,
+      COUNT(o.id) as orderCount,
       COALESCE(SUM(o.totalAmountCny), 0) as actualRevenue,
-      COALESCE(SUM(o.totalProfit), 0) as actualProfit
+      COALESCE((
+        SELECT SUM(i.productProfit)
+        FROM order_items i
+        INNER JOIN orders o2 ON i.orderId = o2.id
+        WHERE DATE_FORMAT(o2.orderDate, '%Y-%m') = ${yearMonth}
+          AND o2.staffId = o.staffId
+      ), 0) as actualProfit
     FROM orders o
     WHERE DATE_FORMAT(o.orderDate, '%Y-%m') = ${yearMonth}
       AND o.staffId IS NOT NULL
