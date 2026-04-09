@@ -1,6 +1,6 @@
 import { eq, like, and, sql, desc, or, SQL } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
-import { InsertUser, users, customers, orders, orderItems, InsertCustomer, InsertOrder, InsertOrderItem, auditLogs, InsertAuditLog } from "../drizzle/schema";
+import { InsertUser, users, customers, orders, orderItems, InsertCustomer, InsertOrder, InsertOrderItem, auditLogs, InsertAuditLog, exchangeRates, InsertExchangeRate } from "../drizzle/schema";
 import { ENV } from './_core/env';
 import { nanoid } from 'nanoid';
 import { createHash, randomBytes } from 'crypto';
@@ -607,4 +607,122 @@ export async function exportOrders(params: {
     }
   }
   return data.map(o => ({ ...o, items: itemsMap[o.id] || [] }));
+}
+
+
+// ============================================================
+// Exchange Rate helpers
+// ============================================================
+
+export async function getCurrentExchangeRate() {
+  const db = await getDb();
+  if (!db) return { rate: "6.4000" };
+  const rows = await db.select().from(exchangeRates).orderBy(desc(exchangeRates.id)).limit(1);
+  return rows[0] || { rate: "6.4000" };
+}
+
+export async function listExchangeRates(page = 1, pageSize = 20) {
+  const db = await getDb();
+  if (!db) return { data: [], total: 0 };
+  const offset = (page - 1) * pageSize;
+  const [data, countResult] = await Promise.all([
+    db.select().from(exchangeRates).orderBy(desc(exchangeRates.id)).limit(pageSize).offset(offset),
+    db.select({ count: sql<number>`count(*)` }).from(exchangeRates),
+  ]);
+  return { data, total: countResult[0]?.count || 0 };
+}
+
+export async function createExchangeRate(data: InsertExchangeRate) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const result = await db.insert(exchangeRates).values(data);
+  return { id: result[0].insertId };
+}
+
+// ============================================================
+// Profit Report helpers
+// ============================================================
+
+export async function getProfitReport(params: {
+  startDate?: string;
+  endDate?: string;
+  staffName?: string;
+}) {
+  const db = await getDb();
+  if (!db) return { summary: null, byStaff: [], dailyTrend: [] };
+
+  const conditions: SQL[] = [];
+  if (params.startDate) conditions.push(sql`${orders.orderDate} >= ${params.startDate}`);
+  if (params.endDate) conditions.push(sql`${orders.orderDate} <= ${params.endDate}`);
+  if (params.staffName) conditions.push(sql`${orders.staffName} = ${params.staffName}`);
+
+  const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
+
+  // Summary totals
+  const summaryRows = await db.select({
+    orderCount: sql<number>`count(DISTINCT ${orders.id})`,
+    totalRevenueCny: sql<string>`COALESCE(SUM(${orders.totalAmountCny}), 0)`,
+    totalRevenueUsd: sql<string>`COALESCE(SUM(${orders.totalAmountUsd}), 0)`,
+    totalProfit: sql<string>`COALESCE(SUM(${orders.totalProfit}), 0)`,
+    avgProfitRate: sql<string>`COALESCE(AVG(CASE WHEN ${orders.totalProfitRate} > 0 THEN ${orders.totalProfitRate} ELSE NULL END), 0)`,
+  }).from(orders).where(whereClause);
+
+  // Sub-item level aggregation for product/shipping breakdown
+  const itemConditions: SQL[] = [];
+  if (params.startDate) itemConditions.push(sql`o.orderDate >= ${params.startDate}`);
+  if (params.endDate) itemConditions.push(sql`o.orderDate <= ${params.endDate}`);
+  if (params.staffName) itemConditions.push(sql`o.staffName = ${params.staffName}`);
+  const itemWhere = itemConditions.length > 0 ? sql`WHERE ${sql.join(itemConditions, sql` AND `)}` : sql``;
+
+  const breakdownRows = await db.execute(sql`
+    SELECT
+      COALESCE(SUM(i.sellingPrice), 0) as totalSellingPrice,
+      COALESCE(SUM(i.productCost), 0) as totalProductCost,
+      COALESCE(SUM(i.productProfit), 0) as totalProductProfit,
+      COALESCE(SUM(i.shippingCharged), 0) as totalShippingCharged,
+      COALESCE(SUM(i.shippingActual), 0) as totalShippingActual,
+      COALESCE(SUM(i.shippingProfit), 0) as totalShippingProfit,
+      COALESCE(SUM(i.totalProfit), 0) as totalItemProfit
+    FROM order_items i
+    JOIN orders o ON i.orderId = o.id
+    ${itemWhere}
+  `);
+
+  const breakdown = (breakdownRows as any)[0]?.[0] || {};
+
+  const summary = {
+    ...summaryRows[0],
+    totalSellingPrice: breakdown.totalSellingPrice || "0",
+    totalProductCost: breakdown.totalProductCost || "0",
+    totalProductProfit: breakdown.totalProductProfit || "0",
+    totalShippingCharged: breakdown.totalShippingCharged || "0",
+    totalShippingActual: breakdown.totalShippingActual || "0",
+    totalShippingProfit: breakdown.totalShippingProfit || "0",
+  };
+
+  // By staff
+  const byStaffRows = await db.select({
+    staffName: orders.staffName,
+    orderCount: sql<number>`count(DISTINCT ${orders.id})`,
+    totalRevenueCny: sql<string>`COALESCE(SUM(${orders.totalAmountCny}), 0)`,
+    totalProfit: sql<string>`COALESCE(SUM(${orders.totalProfit}), 0)`,
+    avgProfitRate: sql<string>`COALESCE(AVG(CASE WHEN ${orders.totalProfitRate} > 0 THEN ${orders.totalProfitRate} ELSE NULL END), 0)`,
+  }).from(orders).where(whereClause).groupBy(orders.staffName).orderBy(sql`totalProfit DESC`);
+
+  // Daily trend
+  const dailyTrendRows = await db.select({
+    date: sql<string>`DATE_FORMAT(${orders.orderDate}, '%Y-%m-%d')`,
+    orderCount: sql<number>`count(DISTINCT ${orders.id})`,
+    totalRevenueCny: sql<string>`COALESCE(SUM(${orders.totalAmountCny}), 0)`,
+    totalProfit: sql<string>`COALESCE(SUM(${orders.totalProfit}), 0)`,
+  }).from(orders).where(whereClause).groupBy(sql`DATE_FORMAT(${orders.orderDate}, '%Y-%m-%d')`).orderBy(sql`date ASC`);
+
+  return { summary, byStaff: byStaffRows, dailyTrend: dailyTrendRows };
+}
+
+export async function getDistinctStaffNames() {
+  const db = await getDb();
+  if (!db) return [];
+  const rows = await db.selectDistinct({ staffName: orders.staffName }).from(orders).where(sql`${orders.staffName} IS NOT NULL AND ${orders.staffName} != ''`);
+  return rows.map(r => r.staffName).filter(Boolean) as string[];
 }

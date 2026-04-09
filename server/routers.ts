@@ -13,6 +13,8 @@ import {
   getOrderStats, getOrderStatusDistribution, getPaymentStatusDistribution,
   getStaffPerformance, getRecentOrders, getCustomerStats, getDailyOrderTrend,
   createAuditLog, listAuditLogs, exportOrders,
+  getCurrentExchangeRate, listExchangeRates, createExchangeRate,
+  getProfitReport, getDistinctStaffNames,
 } from "./db";
 import { sdk } from "./_core/sdk";
 import { ONE_YEAR_MS } from "@shared/const";
@@ -334,9 +336,11 @@ export const appRouter = router({
         });
 
         // Create order items for each row in the group
+        const currentRate = await getCurrentExchangeRate();
+        const exchangeRateVal = parseFloat(String(currentRate.rate));
         for (const row of groupRows) {
           const amountUsd = parseFloat(row.amountUsd || "0");
-          const amountCny = amountUsd * 6.4;
+          const amountCny = amountUsd * exchangeRateVal;
           const sellingPrice = parseFloat(row.sellingPrice || "0");
           const productCost = parseFloat(row.productCost || "0");
           const productProfit = sellingPrice - productCost;
@@ -413,8 +417,10 @@ export const appRouter = router({
       paymentStatus: z.string().optional(),
     })).mutation(async ({ input }) => {
       // Auto-calculate derived fields using formulas
+      const rateObj = await getCurrentExchangeRate();
+      const exchangeRateVal = parseFloat(String(rateObj.rate));
       const amountUsd = parseFloat(input.amountUsd || "0");
-      const amountCny = amountUsd * 6.4; // 总金额¥ = 总金额$ × 6.4
+      const amountCny = amountUsd * exchangeRateVal; // 总金额¥ = 总金额$ × 汇率
       const sellingPrice = parseFloat(input.sellingPrice || "0");
       const productCost = parseFloat(input.productCost || "0");
       const productProfit = sellingPrice - productCost; // 产品毛利润
@@ -478,8 +484,10 @@ export const appRouter = router({
       };
 
       // Auto-calculate derived fields using formulas
+      const rateObj2 = await getCurrentExchangeRate();
+      const exchangeRateVal2 = parseFloat(String(rateObj2.rate));
       const amountUsd = parseFloat(merged.amountUsd || "0");
-      const amountCny = amountUsd * 6.4; // 总金额¥ = 总金额$ × 6.4
+      const amountCny = amountUsd * exchangeRateVal2; // 总金额¥ = 总金额$ × 汇率
       const sellingPrice = parseFloat(merged.sellingPrice || "0");
       const productCost = parseFloat(merged.productCost || "0");
       const productProfit = sellingPrice - productCost; // 产品毛利润 = 售价 - 产品成本
@@ -605,6 +613,52 @@ export const appRouter = router({
         details: JSON.stringify({ filters: input, count: data.length }),
       });
       return data;
+    }),
+  }),
+
+  // ==================== Exchange Rate Management ====================
+  exchangeRate: router({
+    current: protectedProcedure.query(async () => {
+      return await getCurrentExchangeRate();
+    }),
+    list: adminProcedure.input(z.object({
+      page: z.number().default(1),
+      pageSize: z.number().default(20),
+    }).optional()).query(async ({ input }) => {
+      return await listExchangeRates(input?.page || 1, input?.pageSize || 20);
+    }),
+    update: adminProcedure.input(z.object({
+      rate: z.number().min(0.0001).max(9999),
+      reason: z.string().optional(),
+    })).mutation(async ({ ctx, input }) => {
+      const current = await getCurrentExchangeRate();
+      const result = await createExchangeRate({
+        rate: String(input.rate),
+        previousRate: current.rate,
+        changedById: ctx.user.id,
+        changedByName: ctx.user.name || "未知",
+        reason: input.reason || undefined,
+      });
+      await logAction(ctx, "update", "exchangeRate", result.id, `汇率变更: ${current.rate} → ${input.rate}`, JSON.stringify({ previousRate: current.rate, newRate: input.rate, reason: input.reason }));
+      return { id: result.id, rate: input.rate };
+    }),
+  }),
+
+  // ==================== Profit Report ====================
+  profitReport: router({
+    summary: adminProcedure.input(z.object({
+      startDate: z.string().optional(),
+      endDate: z.string().optional(),
+      staffName: z.string().optional(),
+    }).optional()).query(async ({ input }) => {
+      return await getProfitReport({
+        startDate: input?.startDate,
+        endDate: input?.endDate,
+        staffName: input?.staffName,
+      });
+    }),
+    staffNames: protectedProcedure.query(async () => {
+      return await getDistinctStaffNames();
     }),
   }),
 });

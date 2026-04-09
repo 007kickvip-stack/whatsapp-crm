@@ -34,6 +34,8 @@ import {
   MessageSquare,
   Shield,
   ClipboardList,
+  ArrowRightLeft,
+  BarChart3,
 } from "lucide-react";
 import { CSSProperties, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation } from "wouter";
@@ -61,6 +63,8 @@ const mainMenuItems: MenuItem[] = [
 
 const adminMenuItems: MenuItem[] = [
   { icon: UserCog, label: "用户管理", path: "/users", adminOnly: true },
+  { icon: ArrowRightLeft, label: "汇率管理", path: "/exchange-rate", adminOnly: true },
+  { icon: BarChart3, label: "利润报表", path: "/profit-report", adminOnly: true },
   { icon: ClipboardList, label: "操作日志", path: "/audit-logs", adminOnly: true },
 ];
 

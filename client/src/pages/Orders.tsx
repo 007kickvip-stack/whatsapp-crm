@@ -1202,7 +1202,7 @@ export default function OrdersPage() {
           )}
         </td>
 
-        {/* 18. 总金额¥ - auto: 总金额$ × 6.4 */}
+        {/* 18. 总金额¥ - auto: 总金额$ × 汇率 */}
         <td className="py-1 px-1 border-r border-gray-100 text-center font-mono whitespace-nowrap text-[11px] bg-gray-50/50">
           {fmtNum(row.amountCny) ? `¥${fmtNum(row.amountCny)}` : ""}
         </td>

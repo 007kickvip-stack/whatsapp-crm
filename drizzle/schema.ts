@@ -130,3 +130,19 @@ export const auditLogs = mysqlTable("audit_logs", {
 
 export type AuditLog = typeof auditLogs.$inferSelect;
 export type InsertAuditLog = typeof auditLogs.$inferInsert;
+
+/**
+ * 汇率表 - 记录汇率变更历史
+ */
+export const exchangeRates = mysqlTable("exchange_rates", {
+  id: int("id").autoincrement().primaryKey(),
+  rate: decimal("rate", { precision: 10, scale: 4 }).notNull(),
+  previousRate: decimal("previousRate", { precision: 10, scale: 4 }),
+  changedById: int("changedById").notNull(),
+  changedByName: varchar("changedByName", { length: 128 }),
+  reason: text("reason"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type ExchangeRate = typeof exchangeRates.$inferSelect;
+export type InsertExchangeRate = typeof exchangeRates.$inferInsert;

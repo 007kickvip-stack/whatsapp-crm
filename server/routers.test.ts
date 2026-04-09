@@ -36,6 +36,11 @@ vi.mock("./db", () => ({
   createAuditLog: vi.fn().mockResolvedValue(undefined),
   listAuditLogs: vi.fn().mockResolvedValue({ data: [], total: 0 }),
   exportOrders: vi.fn().mockResolvedValue([]),
+  getCurrentExchangeRate: vi.fn().mockResolvedValue({ id: 1, rate: "6.4", previousRate: null, changedById: null, changedByName: null, reason: null, createdAt: new Date() }),
+  listExchangeRates: vi.fn().mockResolvedValue({ data: [], total: 0 }),
+  createExchangeRate: vi.fn().mockResolvedValue({ id: 2 }),
+  getProfitReport: vi.fn().mockResolvedValue({ summary: { orderCount: 0, totalRevenueCny: "0", totalProfit: "0", avgProfitRate: "0" }, byStaff: [], dailyTrend: [] }),
+  getDistinctStaffNames: vi.fn().mockResolvedValue(["Staff A", "Staff B"]),
 }));
 
 vi.mock("./storage", () => ({
@@ -535,5 +540,93 @@ describe("Bulk Import Orders", () => {
         rows: [{ customerWhatsapp: "+44 444", orderNumber: "ORDER-004" }],
       })
     ).rejects.toThrow();
+  });
+});
+
+describe("Exchange Rate Management", () => {
+  it("any authenticated user can get current exchange rate", async () => {
+    const ctx = createStaffContext();
+    const caller = appRouter.createCaller(ctx);
+    const result = await caller.exchangeRate.current();
+    expect(result).toHaveProperty("rate");
+    expect(result.rate).toBe("6.4");
+  });
+
+  it("admin can list exchange rate history", async () => {
+    const ctx = createAdminContext();
+    const caller = appRouter.createCaller(ctx);
+    const result = await caller.exchangeRate.list({ page: 1, pageSize: 20 });
+    expect(result).toHaveProperty("data");
+    expect(result).toHaveProperty("total");
+  });
+
+  it("staff cannot list exchange rate history", async () => {
+    const ctx = createStaffContext();
+    const caller = appRouter.createCaller(ctx);
+    await expect(caller.exchangeRate.list({ page: 1, pageSize: 20 })).rejects.toThrow();
+  });
+
+  it("admin can update exchange rate", async () => {
+    const ctx = createAdminContext();
+    const caller = appRouter.createCaller(ctx);
+    const result = await caller.exchangeRate.update({ rate: 7.25, reason: "市场调整" });
+    expect(result).toHaveProperty("id");
+    expect(result).toHaveProperty("rate");
+    expect(result.rate).toBe(7.25);
+  });
+
+  it("staff cannot update exchange rate", async () => {
+    const ctx = createStaffContext();
+    const caller = appRouter.createCaller(ctx);
+    await expect(caller.exchangeRate.update({ rate: 7.25 })).rejects.toThrow();
+  });
+
+  it("unauthenticated user cannot get exchange rate", async () => {
+    const ctx = createUnauthContext();
+    const caller = appRouter.createCaller(ctx);
+    await expect(caller.exchangeRate.current()).rejects.toThrow();
+  });
+});
+
+describe("Profit Report", () => {
+  it("admin can get profit report summary", async () => {
+    const ctx = createAdminContext();
+    const caller = appRouter.createCaller(ctx);
+    const result = await caller.profitReport.summary({});
+    expect(result).toHaveProperty("summary");
+    expect(result).toHaveProperty("byStaff");
+    expect(result).toHaveProperty("dailyTrend");
+  });
+
+  it("admin can get profit report with filters", async () => {
+    const ctx = createAdminContext();
+    const caller = appRouter.createCaller(ctx);
+    const result = await caller.profitReport.summary({
+      startDate: "2026-01-01",
+      endDate: "2026-12-31",
+      staffName: "Staff A",
+    });
+    expect(result).toHaveProperty("summary");
+  });
+
+  it("staff cannot get profit report", async () => {
+    const ctx = createStaffContext();
+    const caller = appRouter.createCaller(ctx);
+    await expect(caller.profitReport.summary({})).rejects.toThrow();
+  });
+
+  it("any authenticated user can get staff names", async () => {
+    const ctx = createStaffContext();
+    const caller = appRouter.createCaller(ctx);
+    const result = await caller.profitReport.staffNames();
+    expect(Array.isArray(result)).toBe(true);
+    expect(result).toContain("Staff A");
+    expect(result).toContain("Staff B");
+  });
+
+  it("unauthenticated user cannot get staff names", async () => {
+    const ctx = createUnauthContext();
+    const caller = appRouter.createCaller(ctx);
+    await expect(caller.profitReport.staffNames()).rejects.toThrow();
   });
 });
