@@ -1,5 +1,6 @@
 import { useState, useMemo, useRef, useEffect, useCallback } from "react";
 import { trpc } from "@/lib/trpc";
+import html2canvas from "html2canvas";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -10,7 +11,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { toast } from "sonner";
 import {
   CalendarDays, Plus, Trash2, RefreshCw, FileText,
-  MessageSquare, Users, ShoppingCart, Package, DollarSign, TrendingUp
+  MessageSquare, Users, ShoppingCart, Package, DollarSign, TrendingUp,
+  Download, Image as ImageIcon
 } from "lucide-react";
 import AccountSelect from "@/components/AccountSelect";
 
@@ -130,6 +132,8 @@ export default function DailyData() {
   const [staffFilter, setStaffFilter] = useState("__all__");
   const [reportDialogOpen, setReportDialogOpen] = useState(false);
   const [reportDate, setReportDate] = useState(today);
+  const [exporting, setExporting] = useState(false);
+  const reportContentRef = useRef<HTMLDivElement>(null);
 
   // New record creation state
   const [showNewRow, setShowNewRow] = useState(false);
@@ -232,6 +236,30 @@ export default function DailyData() {
       ...(isAdmin && newRowStaffId ? { staffId: newRowStaffId, staffName: newRowStaffName } : {}),
       ...(newRowAccount ? { whatsAccount: newRowAccount } : {}),
     });
+  }
+
+  // 导出日报表为图片
+  async function exportReportAsImage() {
+    if (!reportContentRef.current) return;
+    setExporting(true);
+    try {
+      const canvas = await html2canvas(reportContentRef.current, {
+        backgroundColor: "#ffffff",
+        scale: 2,
+        useCORS: true,
+        logging: false,
+      });
+      const link = document.createElement("a");
+      link.download = `日报表_${reportDate}.png`;
+      link.href = canvas.toDataURL("image/png");
+      link.click();
+      toast.success("图片已保存");
+    } catch (err) {
+      console.error(err);
+      toast.error("导出失败，请重试");
+    } finally {
+      setExporting(false);
+    }
   }
 
   // 汇总当前列表数据
@@ -363,7 +391,7 @@ export default function DailyData() {
                 <tr className="border-b bg-rose-50 text-gray-700">
                   <th className={`${thClass} sticky left-0 bg-rose-50 z-10 min-w-[80px]`}>日期</th>
                   <th className={`${thClass} min-w-[60px]`}>名字</th>
-                  <th className={`${thClass} min-w-[120px]`}>whats账号</th>
+                  <th className={`${thClass} min-w-[120px]`}>账号</th>
                   <th className={`${thClass} min-w-[55px]`}>消息数</th>
                   <th className={`${thClass} min-w-[60px]`}>新客人数</th>
                   <th className={`${thClass} min-w-[60px]`}>新增意向</th>
@@ -414,7 +442,7 @@ export default function DailyData() {
                         <span className="text-gray-500">{user?.name || "-"}</span>
                       )}
                     </td>
-                    {/* whats账号 - 可搜索下拉选择 */}
+                    {/* 账号 - 可搜索下拉选择 */}
                     <td className={tdClass}>
                       <AccountSelect
                         value={newRowAccount}
@@ -465,7 +493,7 @@ export default function DailyData() {
                         <td className={`${tdClass} font-medium`}>
                           {row.staffName}
                         </td>
-                        {/* whats账号 - 可搜索下拉选择，选择后自动同步 */}
+                        {/* 账号 - 可搜索下拉选择，选择后自动同步 */}
                         <td className={tdClass}>
                           <AccountSelect
                             value={row.whatsAccount || ""}
@@ -689,6 +717,16 @@ export default function DailyData() {
                 </Select>
               </div>
             )}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={exportReportAsImage}
+              disabled={exporting || !reportQuery.data || reportQuery.data.rows.length === 0}
+              className="ml-auto"
+            >
+              {exporting ? <RefreshCw className="w-4 h-4 mr-1 animate-spin" /> : <Download className="w-4 h-4 mr-1" />}
+              {exporting ? "导出中..." : "保存为图片"}
+            </Button>
           </div>
 
           {reportQuery.isLoading ? (
@@ -696,7 +734,12 @@ export default function DailyData() {
           ) : !reportQuery.data || reportQuery.data.rows.length === 0 ? (
             <div className="p-8 text-center text-muted-foreground">该日期暂无数据</div>
           ) : (
-            <div className="space-y-4">
+            <div ref={reportContentRef} className="space-y-4 p-4 -m-4">
+              {/* 导出图片标题 */}
+              <div className="text-center pb-2 border-b">
+                <h3 className="text-lg font-bold">{isAdmin ? "团队日报表" : "个人日报表"}</h3>
+                <p className="text-sm text-muted-foreground">{reportDate}</p>
+              </div>
               {/* 汇总卡片 */}
               {reportQuery.data.totals && (
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
@@ -733,7 +776,7 @@ export default function DailyData() {
                   <thead>
                     <tr className="border-b bg-rose-50">
                       <th className={thClass}>名字</th>
-                      <th className={thClass}>whats账号</th>
+                      <th className={thClass}>账号</th>
                       <th className={thClass}>消息数</th>
                       <th className={thClass}>新客人数</th>
                       <th className={thClass}>新增意向</th>
