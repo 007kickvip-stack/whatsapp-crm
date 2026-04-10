@@ -54,11 +54,16 @@ import {
   PlusCircle,
   Download,
   ClipboardPaste,
+  ChevronDown,
+  ChevronUp,
+  Layers,
+  ChevronsUpDown,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useLocation } from "wouter";
 import PasteImportDialog from "@/components/PasteImportDialog";
 import AccountSelect from "@/components/AccountSelect";
+import BulkAddItemsDialog from "@/components/BulkAddItemsDialog";
 
 type OrderForm = {
   orderDate: string;
@@ -474,6 +479,24 @@ export default function OrdersPage() {
   const [exporting, setExporting] = useState(false);
   const [pasteImportOpen, setPasteImportOpen] = useState(false);
   const [clipboardData, setClipboardData] = useState<string | undefined>(undefined);
+  // Bulk add items dialog state
+  const [bulkAddOpen, setBulkAddOpen] = useState(false);
+  const [bulkAddOrderId, setBulkAddOrderId] = useState<number>(0);
+  const [bulkAddOrderNumber, setBulkAddOrderNumber] = useState("");
+  // Collapse/expand state: set of collapsed order IDs
+  const [collapsedOrders, setCollapsedOrders] = useState<Set<number>>(new Set());
+
+  const toggleCollapse = useCallback((orderId: number) => {
+    setCollapsedOrders((prev) => {
+      const next = new Set(prev);
+      if (next.has(orderId)) {
+        next.delete(orderId);
+      } else {
+        next.add(orderId);
+      }
+      return next;
+    });
+  }, []);
 
   const utils = trpc.useUtils();
   const queryInput = useMemo(
@@ -495,6 +518,18 @@ export default function OrdersPage() {
   );
 
   const { data, isLoading } = trpc.orders.list.useQuery(queryInput);
+
+  const toggleAllCollapse = useCallback(() => {
+    if (!data?.data) return;
+    const multiItemOrders = data.data.filter((o: any) => (o.items?.length || 0) > 1);
+    if (collapsedOrders.size >= multiItemOrders.length && multiItemOrders.length > 0) {
+      // All collapsed -> expand all
+      setCollapsedOrders(new Set());
+    } else {
+      // Collapse all multi-item orders
+      setCollapsedOrders(new Set(multiItemOrders.map((o: any) => o.id)));
+    }
+  }, [data, collapsedOrders]);
 
   const uploadMutation = trpc.upload.image.useMutation();
 
@@ -754,6 +789,9 @@ export default function OrdersPage() {
     orderId: number;
     isFirstRow: boolean;
     itemCount: number;
+    visibleItemCount: number; // for rowSpan when collapsed
+    totalItemCount: number; // total items in the order
+    isCollapsed: boolean;
     orderDate: string | null;
     staffName: string | null;
     account: string | null;
@@ -836,12 +874,17 @@ export default function OrdersPage() {
     const rows: FlatRow[] = [];
     for (const order of data.data) {
       const items = (order as any).items || [];
+      const isCollapsed = collapsedOrders.has(order.id);
+      const totalItemCount = items.length;
       if (items.length === 0) {
         // Temporary placeholder row while auto-creating item
         rows.push({
           orderId: order.id,
           isFirstRow: true,
           itemCount: 0,
+          visibleItemCount: 1,
+          totalItemCount: 0,
+          isCollapsed: false,
           orderDate: order.orderDate ? new Date(order.orderDate).toISOString().split("T")[0] : null,
           staffName: order.staffName,
           account: order.account,
@@ -876,11 +919,17 @@ export default function OrdersPage() {
           paymentStatus: order.paymentStatus,
         });
       } else {
-        items.forEach((item: any, idx: number) => {
+        // When collapsed, only show the first item row
+        const visibleItems = isCollapsed ? [items[0]] : items;
+        const visibleItemCount = visibleItems.length;
+        visibleItems.forEach((item: any, idx: number) => {
           rows.push({
             orderId: order.id,
             isFirstRow: idx === 0,
             itemCount: items.length,
+            visibleItemCount,
+            totalItemCount,
+            isCollapsed,
             orderDate: idx === 0 ? (order.orderDate ? new Date(order.orderDate).toISOString().split("T")[0] : null) : null,
             staffName: idx === 0 ? order.staffName : null,
             account: idx === 0 ? order.account : null,
@@ -919,7 +968,7 @@ export default function OrdersPage() {
       }
     }
     return rows;
-  }, [data]);
+  }, [data, collapsedOrders]);
 
   // Render a single table row
   const renderRow = (row: FlatRow, rowIdx: number) => {
@@ -937,6 +986,28 @@ export default function OrdersPage() {
         <td className="py-1 px-1 text-center border-r border-gray-100 sticky left-0 bg-inherit z-[5]">
           {row.isFirstRow ? (
             <div className="flex items-center justify-center gap-0.5">
+              {/* Collapse/expand toggle for multi-item orders */}
+              {row.totalItemCount > 1 && (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-6 w-6 text-gray-500 hover:text-gray-700"
+                      onClick={() => toggleCollapse(row.orderId)}
+                    >
+                      {row.isCollapsed ? (
+                        <ChevronDown className="h-3 w-3" />
+                      ) : (
+                        <ChevronUp className="h-3 w-3" />
+                      )}
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    {row.isCollapsed ? `展开 (${row.totalItemCount} 个子项)` : "折叠子项"}
+                  </TooltipContent>
+                </Tooltip>
+              )}
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => setLocation(`/orders/${row.orderId}`)}>
@@ -971,6 +1042,23 @@ export default function OrdersPage() {
                 </TooltipTrigger>
                 <TooltipContent>添加子项</TooltipContent>
               </Tooltip>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-6 w-6 text-blue-600 hover:text-blue-700"
+                    onClick={() => {
+                      setBulkAddOrderId(row.orderId);
+                      setBulkAddOrderNumber(row.orderNumber);
+                      setBulkAddOpen(true);
+                    }}
+                  >
+                    <Layers className="h-3 w-3" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>批量添加子项</TooltipContent>
+              </Tooltip>
             </div>
           ) : hasItem ? (
             <div className="flex items-center justify-center">
@@ -994,7 +1082,7 @@ export default function OrdersPage() {
         {/* 1-4: 日期、客服名字、账号、客户WhatsApp - 使用 rowSpan 合并单元格并垂直居中 */}
         {row.isFirstRow && (
           <>
-            <td className="py-1 px-1 border-r border-gray-100 whitespace-nowrap text-center text-[11px] align-middle" rowSpan={row.itemCount || 1}>
+            <td className="py-1 px-1 border-r border-gray-100 whitespace-nowrap text-center text-[11px] align-middle" rowSpan={row.visibleItemCount || 1}>
               <EditableCell
                 value={row.orderDate || ""}
                 type="date"
@@ -1002,10 +1090,10 @@ export default function OrdersPage() {
                 className="font-medium text-gray-700"
               />
             </td>
-            <td className="py-1 px-1 border-r border-gray-100 whitespace-nowrap text-center text-[11px] align-middle" rowSpan={row.itemCount || 1}>
+            <td className="py-1 px-1 border-r border-gray-100 whitespace-nowrap text-center text-[11px] align-middle" rowSpan={row.visibleItemCount || 1}>
               {row.staffName || ""}
             </td>
-            <td className="py-1 px-1 border-r border-gray-100 whitespace-nowrap text-center text-[11px] align-middle" rowSpan={row.itemCount || 1}>
+            <td className="py-1 px-1 border-r border-gray-100 whitespace-nowrap text-center text-[11px] align-middle" rowSpan={row.visibleItemCount || 1}>
               <AccountSelect
                 value={row.account || ""}
                 onValueChange={(v) => saveOrderField(row.orderId, "account", v)}
@@ -1013,7 +1101,7 @@ export default function OrdersPage() {
                 compact
               />
             </td>
-            <td className="py-1 px-1 border-r border-gray-100 whitespace-nowrap text-center text-[11px] align-middle" rowSpan={row.itemCount || 1}>
+            <td className="py-1 px-1 border-r border-gray-100 whitespace-nowrap text-center text-[11px] align-middle" rowSpan={row.visibleItemCount || 1}>
               <EditableCell
                 value={row.customerWhatsapp}
                 onSave={(v) => saveOrderField(row.orderId, "customerWhatsapp", v)}
@@ -1105,7 +1193,7 @@ export default function OrdersPage() {
 
         {/* 11. 联系方式 - 使用 rowSpan 合并单元格并垂直居中 */}
         {row.isFirstRow && (
-          <td className="py-1 px-1 border-r border-gray-100 text-center text-[11px] max-w-[200px] align-middle" rowSpan={row.itemCount || 1}>
+          <td className="py-1 px-1 border-r border-gray-100 text-center text-[11px] max-w-[200px] align-middle" rowSpan={row.visibleItemCount || 1}>
             {hasItem ? (
               <EditableCell
                 value={row.contactInfo || ""}
@@ -1515,8 +1603,21 @@ export default function OrdersPage() {
                 <table className="w-max min-w-full text-xs border-collapse">
                   <thead className="sticky top-0 z-10">
                     <tr className="bg-emerald-600 text-white">
-                      <th className="py-2 px-2 text-center font-medium border-r border-emerald-500 whitespace-nowrap sticky left-0 bg-emerald-600 z-20" style={{ width: "90px" }}>
-                        操作
+                      <th className="py-2 px-2 text-center font-medium border-r border-emerald-500 whitespace-nowrap sticky left-0 bg-emerald-600 z-20" style={{ width: "110px" }}>
+                        <div className="flex items-center justify-center gap-1">
+                          <span>操作</span>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <button
+                                onClick={toggleAllCollapse}
+                                className="inline-flex items-center justify-center h-5 w-5 rounded hover:bg-emerald-500 transition-colors"
+                              >
+                                <ChevronsUpDown className="h-3 w-3" />
+                              </button>
+                            </TooltipTrigger>
+                            <TooltipContent>全部折叠/展开</TooltipContent>
+                          </Tooltip>
+                        </div>
                       </th>
                       {columns.map((col) => (
                         <th
@@ -1687,6 +1788,15 @@ export default function OrdersPage() {
         }}
         onSuccess={() => utils.orders.list.invalidate()}
         initialPasteData={clipboardData}
+      />
+
+      {/* Bulk Add Items Dialog */}
+      <BulkAddItemsDialog
+        open={bulkAddOpen}
+        onOpenChange={setBulkAddOpen}
+        orderId={bulkAddOrderId}
+        orderNumber={bulkAddOrderNumber}
+        onSuccess={() => utils.orders.list.invalidate()}
       />
 
       {/* Delete Order Confirmation */}

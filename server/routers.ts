@@ -530,6 +530,64 @@ export const appRouter = router({
       await recalculateOrderTotals(input.orderId);
       return { success: true };
     }),
+
+    bulkCreate: protectedProcedure.input(z.object({
+      orderId: z.number(),
+      items: z.array(z.object({
+        orderNumber: z.string().optional(),
+        size: z.string().optional(),
+        domesticTrackingNo: z.string().optional(),
+        sizeRecommendation: z.string().optional(),
+        contactInfo: z.string().optional(),
+        internationalTrackingNo: z.string().optional(),
+        shipDate: z.string().optional(),
+        quantity: z.number().optional(),
+        source: z.string().optional(),
+        itemStatus: z.string().optional(),
+        amountUsd: z.string().optional(),
+        sellingPrice: z.string().optional(),
+        productCost: z.string().optional(),
+        shippingActual: z.string().optional(),
+        remarks: z.string().optional(),
+        paymentStatus: z.string().optional(),
+      })),
+    })).mutation(async ({ input }) => {
+      const rateObj = await getCurrentExchangeRate();
+      const exchangeRateVal = parseFloat(String(rateObj.rate));
+      const ids: number[] = [];
+
+      for (const item of input.items) {
+        const amountUsd = parseFloat(item.amountUsd || "0");
+        const amountCny = amountUsd * exchangeRateVal;
+        const sellingPrice = parseFloat(item.sellingPrice || "0");
+        const productCost = parseFloat(item.productCost || "0");
+        const productProfit = sellingPrice - productCost;
+        const productProfitRate = sellingPrice > 0 ? productProfit / sellingPrice : 0;
+        const shippingCharged = amountCny - sellingPrice;
+        const shippingActual = parseFloat(item.shippingActual || "0");
+        const shippingProfit = shippingCharged - shippingActual;
+        const shippingProfitRate = shippingCharged > 0 ? shippingProfit / shippingCharged : 0;
+        const totalProfit = productProfit + shippingProfit;
+        const profitRate = amountCny > 0 ? totalProfit / amountCny : 0;
+
+        const id = await createOrderItem({
+          orderId: input.orderId,
+          ...item,
+          amountCny: amountCny.toFixed(2),
+          shippingCharged: shippingCharged.toFixed(2),
+          productProfit: productProfit.toFixed(2),
+          productProfitRate: productProfitRate.toFixed(6),
+          shippingProfit: shippingProfit.toFixed(2),
+          shippingProfitRate: shippingProfitRate.toFixed(6),
+          totalProfit: totalProfit.toFixed(2),
+          profitRate: profitRate.toFixed(6),
+        });
+        ids.push(id);
+      }
+
+      await recalculateOrderTotals(input.orderId);
+      return { ids, count: ids.length };
+    }),
   }),
 
   // ==================== File Upload ====================
