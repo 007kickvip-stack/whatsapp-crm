@@ -1241,9 +1241,9 @@ export async function getDailyDataById(id: number) {
 }
 
 /**
- * 生成日报表数据 - 管理员汇总所有客服
+ * 生成日报表数据 - 管理员按客服维度汇总（合并同一客服的所有账号数据）
  */
-export async function getDailyReport(reportDate: string, staffName?: string) {
+export async function getDailyReportByStaff(reportDate: string, staffName?: string) {
   const db = await getDb();
   if (!db) return { rows: [], totals: null };
 
@@ -1252,16 +1252,39 @@ export async function getDailyReport(reportDate: string, staffName?: string) {
 
   const whereClause = sql`WHERE ${sql.join(conditions, sql` AND `)}`;
 
+  // 按客服维度汇总
   const [rows] = await db.execute(sql`
-    SELECT * FROM daily_data d
+    SELECT
+      d.staffId,
+      d.staffName,
+      SUM(d.messageCount) as messageCount,
+      SUM(d.newCustomerCount) as newCustomerCount,
+      SUM(d.newIntentCount) as newIntentCount,
+      SUM(d.returnVisitCount) as returnVisitCount,
+      SUM(d.newOrderCount) as newOrderCount,
+      SUM(d.oldOrderCount) as oldOrderCount,
+      SUM(d.onlineOrderCount) as onlineOrderCount,
+      SUM(d.itemCount) as itemCount,
+      SUM(d.totalRevenue) as totalRevenue,
+      SUM(d.onlineRevenue) as onlineRevenue,
+      SUM(d.productSellingPrice) as productSellingPrice,
+      SUM(d.shippingCharged) as shippingCharged,
+      SUM(d.estimatedProfit) as estimatedProfit,
+      CASE WHEN SUM(d.totalRevenue) > 0
+        THEN SUM(d.estimatedProfit) / SUM(d.totalRevenue)
+        ELSE 0 END as estimatedProfitRate,
+      SUM(d.telegramPraiseCount) as telegramPraiseCount,
+      SUM(d.referralCount) as referralCount
+    FROM daily_data d
     ${whereClause}
+    GROUP BY d.staffId, d.staffName
     ORDER BY d.staffName ASC
   `);
 
   // 计算汇总
   const [totalsRows] = await db.execute(sql`
     SELECT
-      COUNT(*) as staffCount,
+      COUNT(DISTINCT d.staffId) as staffCount,
       SUM(d.messageCount) as totalMessages,
       SUM(d.newCustomerCount) as totalNewCustomers,
       SUM(d.newIntentCount) as totalNewIntents,
@@ -1282,6 +1305,53 @@ export async function getDailyReport(reportDate: string, staffName?: string) {
       SUM(d.referralCount) as totalReferrals
     FROM daily_data d
     ${whereClause}
+  `);
+
+  return {
+    rows: rows as unknown as any[],
+    totals: (totalsRows as unknown as any[])[0] || null,
+  };
+}
+
+/**
+ * 生成日报表数据 - 客服按账号维度展示（每行一个账号的数据）
+ */
+export async function getDailyReportByAccount(reportDate: string, staffName: string) {
+  const db = await getDb();
+  if (!db) return { rows: [], totals: null };
+
+  const [rows] = await db.execute(sql`
+    SELECT * FROM daily_data d
+    WHERE DATE(d.reportDate) = ${reportDate}
+      AND d.staffName = ${staffName}
+    ORDER BY d.whatsAccount ASC
+  `);
+
+  // 计算汇总
+  const [totalsRows] = await db.execute(sql`
+    SELECT
+      COUNT(*) as accountCount,
+      SUM(d.messageCount) as totalMessages,
+      SUM(d.newCustomerCount) as totalNewCustomers,
+      SUM(d.newIntentCount) as totalNewIntents,
+      SUM(d.returnVisitCount) as totalReturnVisits,
+      SUM(d.newOrderCount) as totalNewOrders,
+      SUM(d.oldOrderCount) as totalOldOrders,
+      SUM(d.onlineOrderCount) as totalOnlineOrders,
+      SUM(d.itemCount) as totalItems,
+      SUM(d.totalRevenue) as totalRevenue,
+      SUM(d.onlineRevenue) as totalOnlineRevenue,
+      SUM(d.productSellingPrice) as totalProductSellingPrice,
+      SUM(d.shippingCharged) as totalShippingCharged,
+      SUM(d.estimatedProfit) as totalEstimatedProfit,
+      CASE WHEN SUM(d.totalRevenue) > 0 
+        THEN SUM(d.estimatedProfit) / SUM(d.totalRevenue) 
+        ELSE 0 END as avgProfitRate,
+      SUM(d.telegramPraiseCount) as totalTelegramPraise,
+      SUM(d.referralCount) as totalReferrals
+    FROM daily_data d
+    WHERE DATE(d.reportDate) = ${reportDate}
+      AND d.staffName = ${staffName}
   `);
 
   return {

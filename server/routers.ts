@@ -20,7 +20,7 @@ import {
   listStaffMonthlyTargets, upsertStaffMonthlyTarget, deleteStaffMonthlyTarget,
   getStaffTargetProgress, getStaffList,
   getDailyOrderSummary, listDailyData, createDailyData, updateDailyData, deleteDailyData,
-  getDailyDataById, getDailyReport, syncOrderDataToDailyData, getDistinctOrderAccounts,
+  getDailyDataById, getDailyReportByStaff, getDailyReportByAccount, syncOrderDataToDailyData, getDistinctOrderAccounts,
   listAccounts, createAccount, updateAccount, deleteAccount, reorderAccounts,
 } from "./db";
 import { sdk } from "./_core/sdk";
@@ -970,14 +970,21 @@ export const appRouter = router({
       return await getDistinctOrderAccounts();
     }),
 
-    // 日报表
+    // 日报表 - 管理员按客服维度，客服按账号维度
     report: protectedProcedure.input(z.object({
       reportDate: z.string(),
       staffName: z.string().optional(),
     })).query(async ({ input, ctx }) => {
       const isAdmin = ctx.user.role === "admin";
-      const staffFilter = isAdmin ? input.staffName : (ctx.user.name || undefined);
-      return await getDailyReport(input.reportDate, staffFilter);
+      if (isAdmin) {
+        // 管理员：按客服维度汇总（合并同一客服的所有账号数据）
+        const staffFilter = input.staffName || undefined;
+        return await getDailyReportByStaff(input.reportDate, staffFilter);
+      } else {
+        // 客服：按账号维度展示（每行一个账号的数据）
+        const staffName = ctx.user.name || "";
+        return await getDailyReportByAccount(input.reportDate, staffName);
+      }
     }),
 
     // 获取客服列表（仅管理员）

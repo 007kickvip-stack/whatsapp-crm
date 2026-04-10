@@ -265,9 +265,9 @@ export default function DailyData() {
       const rows = data.rows as any[];
       const totalsData = data.totals as any;
 
-      // 定义列配置
-      const cols = ["名字", "账号", "消息数", "新客人数", "新意向", "回访人数", "新客单数", "老客单数", "件数", "总营业额", "产品售价", "收取运费", "预估毛利润", "利润率"];
-      const colWidths = [90, 130, 60, 70, 60, 70, 70, 70, 50, 100, 90, 90, 100, 70];
+      // 定义列配置 - 管理员显示客服名字，客服显示账号
+      const cols = [isAdmin ? "客服名字" : "账号", "消息数", "新客人数", "新意向", "回访人数", "新客单数", "老客单数", "件数", "总营业额", "产品售价", "收取运费", "预估毛利润", "利润率"];
+      const colWidths = [120, 60, 70, 60, 70, 70, 70, 50, 100, 90, 90, 100, 70];
       const tableWidth = colWidths.reduce((a, b) => a + b, 0);
       const padding = 32;
       const totalWidth = tableWidth + padding * 2;
@@ -313,7 +313,7 @@ export default function DailyData() {
           { label: "总营业额", value: `¥${Number(totalsData.totalRevenue || 0).toLocaleString('zh-CN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`, color: "#059669" },
           { label: "预估毛利润", value: `¥${Number(totalsData.totalEstimatedProfit || 0).toLocaleString('zh-CN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`, color: "#2563eb" },
           { label: "平均利润率", value: `${(Number(totalsData.avgProfitRate || 0) * 100).toFixed(1)}%`, color: "#7c3aed" },
-          { label: "客服人数", value: String(totalsData.staffCount || 0), color: "#111827" },
+          { label: isAdmin ? "客服人数" : "账号数", value: String(isAdmin ? (totalsData.staffCount || 0) : (totalsData.accountCount || 0)), color: "#111827" },
         ];
         const cardCount = cards.length;
         const cardW = (totalWidth - padding * 2 - (cardCount - 1) * cardGap) / cardCount;
@@ -371,7 +371,7 @@ export default function DailyData() {
         ctx.font = "12px 'Noto Sans SC', sans-serif";
         ctx.textAlign = "center";
         const vals = [
-          row.staffName || "-", row.whatsAccount || "-",
+          isAdmin ? (row.staffName || "-") : (row.whatsAccount || "-"),
           String(row.messageCount || 0), String(row.newCustomerCount || 0),
           String(row.newIntentCount || 0), String(row.returnVisitCount || 0),
           String(row.newOrderCount || 0), String(row.oldOrderCount || 0),
@@ -385,7 +385,7 @@ export default function DailyData() {
         let cx = padding;
         vals.forEach((v, i) => {
           // 利润为负数时标红
-          if (i === 12 && Number(row.estimatedProfit || 0) < 0) {
+          if (i === 11 && Number(row.estimatedProfit || 0) < 0) {
             ctx.fillStyle = "#dc2626";
           } else {
             ctx.fillStyle = "#111827";
@@ -411,7 +411,7 @@ export default function DailyData() {
         ctx.font = "bold 12px 'Noto Sans SC', sans-serif";
         ctx.textAlign = "center";
         const tvals = [
-          "合计", "",
+          "合计",
           String(totalsData.totalMessages || 0), String(totalsData.totalNewCustomers || 0),
           String(totalsData.totalNewIntents || 0), String(totalsData.totalReturnVisits || 0),
           String(totalsData.totalNewOrders || 0), String(totalsData.totalOldOrders || 0),
@@ -877,6 +877,9 @@ export default function DailyData() {
               <CalendarDays className="w-5 h-5" />
               {isAdmin ? "团队日报表" : "个人日报表"}
             </DialogTitle>
+            <p className="text-xs text-muted-foreground mt-1">
+              {isAdmin ? "按客服维度汇总（每行显示一个客服的总数据）" : "按账号维度展示（每行显示一个账号的数据）"}
+            </p>
           </DialogHeader>
           <div className="flex items-end gap-4 mb-4">
             <div>
@@ -943,8 +946,8 @@ export default function DailyData() {
                   </Card>
                   <Card>
                     <CardContent className="p-3">
-                      <p className="text-xs text-muted-foreground">客服人数</p>
-                      <p className="text-xl font-bold">{reportQuery.data.totals.staffCount}</p>
+                      <p className="text-xs text-muted-foreground">{isAdmin ? "客服人数" : "账号数"}</p>
+                      <p className="text-xl font-bold">{isAdmin ? reportQuery.data.totals.staffCount : reportQuery.data.totals.accountCount}</p>
                     </CardContent>
                   </Card>
                 </div>
@@ -955,8 +958,8 @@ export default function DailyData() {
                 <table className="w-full text-[11px]">
                   <thead>
                     <tr className="border-b bg-rose-50">
-                      <th className={thClass}>名字</th>
-                      <th className={thClass}>账号</th>
+                      {/* 管理员：显示客服名字列（无账号列）；客服：显示账号列（无名字列） */}
+                      <th className={thClass}>{isAdmin ? "客服名字" : "账号"}</th>
                       <th className={thClass}>消息数</th>
                       <th className={thClass}>新客人数</th>
                       <th className={thClass}>新增意向</th>
@@ -972,10 +975,10 @@ export default function DailyData() {
                     </tr>
                   </thead>
                   <tbody>
-                    {reportQuery.data.rows.map((row: any) => (
-                      <tr key={row.id} className="border-b hover:bg-muted/30">
-                        <td className={`${tdClass} font-medium`}>{row.staffName}</td>
-                        <td className={tdClass}>{row.whatsAccount || "-"}</td>
+                    {reportQuery.data.rows.map((row: any, idx: number) => (
+                      <tr key={isAdmin ? (row.staffId || idx) : (row.id || idx)} className="border-b hover:bg-muted/30">
+                        {/* 管理员显示客服名字，客服显示账号 */}
+                        <td className={`${tdClass} font-medium`}>{isAdmin ? row.staffName : (row.whatsAccount || "-")}</td>
                         <td className={tdClass}>{row.messageCount || 0}</td>
                         <td className={tdClass}>{row.newCustomerCount || 0}</td>
                         <td className={tdClass}>{row.newIntentCount || 0}</td>
@@ -994,7 +997,6 @@ export default function DailyData() {
                     {reportQuery.data.totals && (
                       <tr className="border-t-2 bg-amber-50/50 font-bold">
                         <td className={`${tdClass} font-bold`}>合计</td>
-                        <td className={tdClass}></td>
                         <td className={`${tdClass} font-bold`}>{reportQuery.data.totals.totalMessages}</td>
                         <td className={`${tdClass} font-bold`}>{reportQuery.data.totals.totalNewCustomers}</td>
                         <td className={`${tdClass} font-bold`}>{reportQuery.data.totals.totalNewIntents}</td>

@@ -63,7 +63,8 @@ vi.mock("./db", () => ({
   deleteDailyData: vi.fn().mockResolvedValue({ success: true }),
   getDailyDataById: vi.fn().mockResolvedValue({ id: 1, reportDate: "2026-04-09", staffId: 2, staffName: "Staff User", whatsAccount: "M1 BUY-4254" }),
   getDistinctOrderAccounts: vi.fn().mockResolvedValue(["M1 BUY-4254", "K-ONE-1718", "UMI BUY-3264"]),
-  getDailyReport: vi.fn().mockResolvedValue({ rows: [{ id: 1, staffName: "Staff User", messageCount: 50, totalRevenue: "500" }], totals: { staffCount: 1, totalMessages: 50, totalRevenue: "500", totalEstimatedProfit: "150", avgProfitRate: "0.3" } }),
+  getDailyReportByStaff: vi.fn().mockResolvedValue({ rows: [{ staffId: 2, staffName: "Staff User", messageCount: 50, totalRevenue: "500" }], totals: { staffCount: 1, totalMessages: 50, totalRevenue: "500", totalEstimatedProfit: "150", avgProfitRate: "0.3" } }),
+  getDailyReportByAccount: vi.fn().mockResolvedValue({ rows: [{ id: 1, staffName: "Staff User", whatsAccount: "M1 BUY-4254", messageCount: 50, totalRevenue: "500" }], totals: { accountCount: 1, totalMessages: 50, totalRevenue: "500", totalEstimatedProfit: "150", avgProfitRate: "0.3" } }),
   syncOrderDataToDailyData: vi.fn().mockResolvedValue({ success: true }),
   listAccounts: vi.fn().mockResolvedValue([{ id: 1, name: "M1 BUY-4254", color: "#f87171", sortOrder: 0 }, { id: 2, name: "K-ONE-1718", color: "#fb923c", sortOrder: 1 }]),
   createAccount: vi.fn().mockResolvedValue({ id: 3 }),
@@ -887,19 +888,32 @@ describe("dailyData", () => {
     expect(result.success).toBe(true);
   });
 
-  it("admin can get daily report", async () => {
+  it("admin gets daily report by staff dimension (getDailyReportByStaff)", async () => {
+    const { getDailyReportByStaff } = await import("./db");
     const ctx = createAdminContext();
     const caller = appRouter.createCaller(ctx);
     const result = await caller.dailyData.report({ reportDate: "2026-04-09" });
     expect(result).toHaveProperty("rows");
     expect(result).toHaveProperty("totals");
+    expect(getDailyReportByStaff).toHaveBeenCalledWith("2026-04-09", undefined);
   });
 
-  it("staff can get own daily report", async () => {
+  it("admin can filter daily report by staff name", async () => {
+    const { getDailyReportByStaff } = await import("./db");
+    const ctx = createAdminContext();
+    const caller = appRouter.createCaller(ctx);
+    const result = await caller.dailyData.report({ reportDate: "2026-04-09", staffName: "Staff User" });
+    expect(result).toHaveProperty("rows");
+    expect(getDailyReportByStaff).toHaveBeenCalledWith("2026-04-09", "Staff User");
+  });
+
+  it("staff gets daily report by account dimension (getDailyReportByAccount)", async () => {
+    const { getDailyReportByAccount } = await import("./db");
     const ctx = createStaffContext();
     const caller = appRouter.createCaller(ctx);
     const result = await caller.dailyData.report({ reportDate: "2026-04-09" });
     expect(result).toHaveProperty("rows");
+    expect(getDailyReportByAccount).toHaveBeenCalledWith("2026-04-09", "Staff User");
   });
 
   it("only admin can access staffList", async () => {
