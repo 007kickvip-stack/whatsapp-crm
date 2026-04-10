@@ -27,6 +27,7 @@ import {
   ArrowRight,
   Package,
   Download,
+  RefreshCw,
 } from "lucide-react";
 import { toast } from "sonner";
 import { trpc } from "@/lib/trpc";
@@ -39,29 +40,28 @@ interface ExcelImportDialogProps {
 
 // The fields we display in the preview
 const PREVIEW_FIELDS = [
-  { key: "orderDate", label: "日期" },
-  { key: "account", label: "账号" },
-  { key: "customerWhatsapp", label: "客户WhatsApp" },
-  { key: "customerType", label: "客户属性" },
   { key: "orderNumber", label: "订单编号" },
+  { key: "originalOrderNo", label: "原订单号" },
   { key: "size", label: "Size" },
   { key: "domesticTrackingNo", label: "国内单号" },
   { key: "internationalTrackingNo", label: "国际跟踪单号" },
-  { key: "originalOrderNo", label: "原订单号" },
   { key: "source", label: "货源" },
+  { key: "shipDate", label: "发出日期" },
   { key: "amountUsd", label: "总金额$" },
   { key: "sellingPrice", label: "售价" },
   { key: "productCost", label: "产品成本" },
   { key: "shippingActual", label: "实际运费" },
-  { key: "remarks", label: "备注" },
+  { key: "orderStatus", label: "订单状态" },
   { key: "paymentStatus", label: "付款状态" },
+  { key: "remarks", label: "备注" },
 ];
 
-type ImportResult = {
+type UpdateResult = {
   success: boolean;
-  imported: number;
+  updated: number;
+  skipped: number;
   totalRows: number;
-  orders: { orderId: number; orderNumber: string }[];
+  updatedItems: { itemId: number; orderNumber: string; fieldsUpdated: string[] }[];
   errors?: string[];
   detectedHeaders: string[];
   mapping: { header: string; field: string }[];
@@ -73,7 +73,7 @@ export default function ExcelImportDialog({ open, onOpenChange, onSuccess }: Exc
   const [importing, setImporting] = useState(false);
   const [previewData, setPreviewData] = useState<Record<string, string>[]>([]);
   const [mappingInfo, setMappingInfo] = useState<{ header: string; field: string }[]>([]);
-  const [importResult, setImportResult] = useState<ImportResult | null>(null);
+  const [importResult, setImportResult] = useState<UpdateResult | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const utils = trpc.useUtils();
 
@@ -91,7 +91,6 @@ export default function ExcelImportDialog({ open, onOpenChange, onSuccess }: Exc
     const selected = e.target.files?.[0];
     if (!selected) return;
 
-    // Validate file type
     const validTypes = [
       "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
       "application/vnd.ms-excel",
@@ -113,7 +112,7 @@ export default function ExcelImportDialog({ open, onOpenChange, onSuccess }: Exc
     setFile(selected);
   }, []);
 
-  // Parse file client-side for preview using xlsx
+  // Parse file client-side for preview
   const handlePreview = useCallback(async () => {
     if (!file) {
       toast.error("请先选择文件");
@@ -141,7 +140,6 @@ export default function ExcelImportDialog({ open, onOpenChange, onSuccess }: Exc
       const headerRow = rawData[0].map(String);
       const dataRows = rawData.slice(1).filter((row) => row.some((cell) => String(cell).trim()));
 
-      // Simple client-side header mapping for preview
       const HEADER_MAP: Record<string, string> = {
         "日期": "orderDate", "订单日期": "orderDate",
         "账号": "account",
@@ -161,6 +159,7 @@ export default function ExcelImportDialog({ open, onOpenChange, onSuccess }: Exc
         "总金额$": "amountUsd",
         "售价": "sellingPrice",
         "产品成本": "productCost", "成本": "productCost",
+        "收取运费": "shippingCharged", "收取运费(¥)": "shippingCharged",
         "实际运费": "shippingActual",
         "备注": "remarks",
         "付款状态": "paymentStatus",
@@ -174,10 +173,16 @@ export default function ExcelImportDialog({ open, onOpenChange, onSuccess }: Exc
         return "_skip";
       });
 
+      const hasOrderNumber = fieldMapping.includes("orderNumber");
+      const hasOriginalOrderNo = fieldMapping.includes("originalOrderNo");
+      if (!hasOrderNumber && !hasOriginalOrderNo) {
+        toast.error("Excel 文件必须包含「订单编号」或「原订单号」列（至少一个）");
+        return;
+      }
+
       const mapping = headerRow.map((h, i) => ({ header: h, field: fieldMapping[i] }));
       setMappingInfo(mapping);
 
-      // Parse rows
       const parsed = dataRows.map((row) => {
         const obj: Record<string, string> = {};
         fieldMapping.forEach((field, idx) => {
@@ -201,7 +206,7 @@ export default function ExcelImportDialog({ open, onOpenChange, onSuccess }: Exc
     }
   }, [file]);
 
-  // Upload file to server for actual import
+  // Upload file to server for matching & updating
   const handleImport = useCallback(async () => {
     if (!file) return;
 
@@ -225,7 +230,11 @@ export default function ExcelImportDialog({ open, onOpenChange, onSuccess }: Exc
 
       setImportResult(result);
       setStep("result");
-      toast.success(`成功导入 ${result.imported} 个订单`);
+      if (result.updated > 0) {
+        toast.success(`成功更新 ${result.updated} 条订单数据`);
+      } else {
+        toast.warning("没有匹配到已有订单，未进行更新");
+      }
       utils.orders.list.invalidate();
       utils.stats.overview.invalidate();
       onSuccess();
@@ -241,26 +250,23 @@ export default function ExcelImportDialog({ open, onOpenChange, onSuccess }: Exc
     try {
       const XLSX = await import("xlsx");
       const headers = [
-        "日期", "账号", "客户WhatsApp", "客户属性", "订单编号",
-        "Size", "国内单号", "推荐码数", "联系方式", "国际跟踪单号",
-        "原订单号", "发出日期", "件数", "货源", "订单状态",
-        "总金额$", "售价", "产品成本", "实际运费", "备注", "付款状态",
+        "订单编号", "原订单号", "Size", "国内单号", "国际跟踪单号",
+        "发出日期", "件数", "货源", "订单状态",
+        "总金额$", "售价", "产品成本", "收取运费", "实际运费",
+        "备注", "付款状态",
       ];
       const ws = XLSX.utils.aoa_to_sheet([headers]);
       const wb = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(wb, ws, "订单导入模板");
-
-      // Set column widths
+      XLSX.utils.book_append_sheet(wb, ws, "订单更新模板");
       ws["!cols"] = headers.map(() => ({ wch: 15 }));
-
-      XLSX.writeFile(wb, "订单导入模板.xlsx");
+      XLSX.writeFile(wb, "订单更新模板.xlsx");
       toast.success("模板已下载");
     } catch {
       toast.error("下载模板失败");
     }
   }, []);
 
-  const uniqueOrders = new Set(previewData.map((r) => `${r.orderNumber || r.originalOrderNo || ""}||${r.customerWhatsapp || ""}`)).size;
+  const totalRows = previewData.length;
 
   return (
     <Dialog open={open} onOpenChange={(v) => { if (!v) handleClose(); else onOpenChange(v); }}>
@@ -268,10 +274,10 @@ export default function ExcelImportDialog({ open, onOpenChange, onSuccess }: Exc
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <FileSpreadsheet className="h-5 w-5" />
-            导入 Excel 订单
+            导入 Excel 更新订单
           </DialogTitle>
           <DialogDescription>
-            上传 Excel 文件（.xlsx, .xls）或 CSV 文件，系统将自动识别列名并批量导入订单
+            上传 Excel 文件，系统通过订单编号或原订单号匹配已有订单，自动更新对应字段
           </DialogDescription>
         </DialogHeader>
 
@@ -281,7 +287,7 @@ export default function ExcelImportDialog({ open, onOpenChange, onSuccess }: Exc
           <ArrowRight className="h-3 w-3" />
           <Badge variant={step === "preview" ? "default" : "secondary"} className="text-[10px]">2. 预览数据</Badge>
           <ArrowRight className="h-3 w-3" />
-          <Badge variant={step === "result" ? "default" : "secondary"} className="text-[10px]">3. 导入结果</Badge>
+          <Badge variant={step === "result" ? "default" : "secondary"} className="text-[10px]">3. 更新结果</Badge>
         </div>
 
         {/* Step 1: Upload */}
@@ -293,8 +299,8 @@ export default function ExcelImportDialog({ open, onOpenChange, onSuccess }: Exc
                 <p className="font-medium">使用方法</p>
                 <p className="text-muted-foreground mt-1">
                   1. 准备包含订单数据的 Excel 文件（第一行为表头）<br />
-                  2. 必须包含「订单编号」或「原订单号」列（至少包含其中一个）<br />
-                  3. 系统会自动识别列名并映射到对应字段<br />
+                  2. 必须包含「订单编号」或「原订单号」列（至少一个，用于匹配已有订单）<br />
+                  3. 系统会自动识别列名并将数据更新到匹配的订单字段<br />
                   4. 不确定格式？可以先下载模板填写
                 </p>
               </div>
@@ -329,10 +335,9 @@ export default function ExcelImportDialog({ open, onOpenChange, onSuccess }: Exc
               )}
             </div>
 
-            {/* Download template button */}
             <Button variant="outline" size="sm" onClick={handleDownloadTemplate} className="gap-2 self-start">
               <Download className="h-4 w-4" />
-              下载导入模板
+              下载更新模板
             </Button>
           </div>
         )}
@@ -342,12 +347,8 @@ export default function ExcelImportDialog({ open, onOpenChange, onSuccess }: Exc
           <div className="flex-1 flex flex-col gap-3 min-h-0">
             <div className="flex items-center gap-4 text-sm">
               <div className="flex items-center gap-1.5">
-                <CheckCircle2 className="h-4 w-4 text-emerald-500" />
-                <span>将导入 <span className="font-bold text-emerald-600">{uniqueOrders}</span> 个订单</span>
-              </div>
-              <div className="flex items-center gap-1.5">
-                <Package className="h-4 w-4 text-blue-500" />
-                <span>共 <span className="font-bold text-blue-600">{previewData.length}</span> 条子项</span>
+                <RefreshCw className="h-4 w-4 text-blue-500" />
+                <span>将通过订单编号/原订单号匹配并更新 <span className="font-bold text-blue-600">{totalRows}</span> 条数据</span>
               </div>
             </div>
 
@@ -399,15 +400,16 @@ export default function ExcelImportDialog({ open, onOpenChange, onSuccess }: Exc
           <div className="flex-1 flex flex-col gap-4 min-h-0 items-center justify-center">
             <CheckCircle2 className="h-16 w-16 text-emerald-500" />
             <div className="text-center">
-              <p className="text-lg font-semibold">导入完成</p>
+              <p className="text-lg font-semibold">更新完成</p>
               <p className="text-sm text-muted-foreground mt-1">
-                成功导入 <span className="font-bold text-emerald-600">{importResult.imported}</span> 个订单，
-                共 <span className="font-bold text-blue-600">{importResult.totalRows}</span> 条数据行
+                成功更新 <span className="font-bold text-emerald-600">{importResult.updated}</span> 条，
+                跳过 <span className="font-bold text-gray-500">{importResult.skipped}</span> 条，
+                共 <span className="font-bold text-blue-600">{importResult.totalRows}</span> 条数据
               </p>
             </div>
             {importResult.errors && importResult.errors.length > 0 && (
-              <div className="w-full p-3 rounded-lg bg-red-50 border border-red-200">
-                <p className="text-sm font-medium text-red-700 mb-1">部分数据导入失败：</p>
+              <div className="w-full p-3 rounded-lg bg-red-50 border border-red-200 max-h-[200px] overflow-auto">
+                <p className="text-sm font-medium text-red-700 mb-1">部分数据未匹配或更新失败：</p>
                 <ul className="text-xs text-red-600 space-y-0.5">
                   {importResult.errors.map((err, i) => (
                     <li key={i}>• {err}</li>
@@ -435,12 +437,12 @@ export default function ExcelImportDialog({ open, onOpenChange, onSuccess }: Exc
                 {importing ? (
                   <>
                     <Loader2 className="h-4 w-4 animate-spin" />
-                    导入中...
+                    更新中...
                   </>
                 ) : (
                   <>
-                    <CheckCircle2 className="h-4 w-4" />
-                    确认导入 {uniqueOrders} 个订单
+                    <RefreshCw className="h-4 w-4" />
+                    确认更新 {totalRows} 条数据
                   </>
                 )}
               </Button>

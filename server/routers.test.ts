@@ -80,6 +80,8 @@ vi.mock("./db", () => ({
   updateAccount: vi.fn().mockResolvedValue({ success: true }),
   deleteAccount: vi.fn().mockResolvedValue({ success: true }),
   reorderAccounts: vi.fn().mockResolvedValue({ success: true }),
+  findOrderItemsByOrderNumbers: vi.fn().mockResolvedValue([]),
+  findOrderItemsByOriginalOrderNos: vi.fn().mockResolvedValue([]),
 }));
 
 vi.mock("./storage", () => ({

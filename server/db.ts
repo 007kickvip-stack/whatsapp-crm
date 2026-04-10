@@ -1,4 +1,4 @@
-import { eq, like, and, sql, desc, or, SQL } from "drizzle-orm";
+import { eq, like, and, sql, desc, or, SQL, inArray } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import { InsertUser, users, customers, orders, orderItems, InsertCustomer, InsertOrder, InsertOrderItem, auditLogs, InsertAuditLog, exchangeRates, InsertExchangeRate, profitAlertSettings, InsertProfitAlertSetting, staffMonthlyTargets, InsertStaffMonthlyTarget, dailyData, InsertDailyData, accounts, InsertAccount, dailyReportNotes, InsertDailyReportNote } from "../drizzle/schema";
 import { ENV } from './_core/env';
@@ -378,6 +378,24 @@ export async function getOrderItemById(id: number) {
   if (!db) return undefined;
   const rows = await db.select().from(orderItems).where(eq(orderItems.id, id)).limit(1);
   return rows[0];
+}
+
+export async function findOrderItemsByOrderNumbers(orderNums: string[]) {
+  const db = await getDb();
+  if (!db || orderNums.length === 0) return [];
+  return db.select({
+    item: orderItems,
+    orderId: orderItems.orderId,
+  }).from(orderItems).where(inArray(orderItems.orderNumber, orderNums));
+}
+
+export async function findOrderItemsByOriginalOrderNos(origNos: string[]) {
+  const db = await getDb();
+  if (!db || origNos.length === 0) return [];
+  return db.select({
+    item: orderItems,
+    orderId: orderItems.orderId,
+  }).from(orderItems).where(inArray(orderItems.originalOrderNo, origNos));
 }
 
 export async function getOrderItemsByOrderId(orderId: number) {

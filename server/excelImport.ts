@@ -3,11 +3,10 @@ import multer from "multer";
 import * as XLSX from "xlsx";
 import { sdk } from "./_core/sdk";
 import {
-  createOrder,
-  createOrderItem,
-  createCustomer,
-  getCustomerByWhatsapp,
-  getCurrentExchangeRate,
+  findOrderItemsByOrderNumbers,
+  findOrderItemsByOriginalOrderNos,
+  updateOrderItem,
+  updateOrder,
   recalculateOrderTotals,
   createAuditLog,
 } from "./db";
@@ -67,6 +66,19 @@ const HEADER_MAP: Record<string, string> = {
   "操作": "_skip",
 };
 
+// Fields on order_items that can be updated from Excel
+const UPDATABLE_ITEM_FIELDS = [
+  "size", "domesticTrackingNo", "sizeRecommendation", "contactInfo",
+  "internationalTrackingNo", "originalOrderNo", "shipDate", "quantity",
+  "source", "amountUsd", "amountCny", "sellingPrice", "productCost",
+  "shippingCharged", "shippingActual", "remarks", "paymentStatus", "itemStatus",
+];
+
+// Fields on orders table that can be updated from Excel
+const UPDATABLE_ORDER_FIELDS = [
+  "orderStatus", "paymentStatus", "remarks", "customerType", "account",
+];
+
 function normalizeHeader(h: string): string {
   return h.trim().toLowerCase().replace(/\s+/g, "");
 }
@@ -74,7 +86,6 @@ function normalizeHeader(h: string): string {
 function mapHeaders(rawHeaders: string[]): string[] {
   return rawHeaders.map((h) => {
     const normalized = normalizeHeader(h);
-    // Try exact match first, then normalized
     if (HEADER_MAP[h.trim()]) return HEADER_MAP[h.trim()];
     for (const [key, val] of Object.entries(HEADER_MAP)) {
       if (normalizeHeader(key) === normalized) return val;
@@ -150,108 +161,143 @@ export function registerExcelImportRoute(app: Express) {
         return;
       }
 
-      // Group rows by orderNumber (or originalOrderNo if no orderNumber) + customerWhatsapp
-      const orderGroups = new Map<string, Record<string, string>[]>();
-      for (const row of parsedRows) {
-        const orderKey = row.orderNumber || row.originalOrderNo || "";
-        const key = `${orderKey}||${row.customerWhatsapp || ""}`;
-        if (!orderGroups.has(key)) orderGroups.set(key, []);
-        orderGroups.get(key)!.push(row);
+      // ========== Match existing order items ==========
+      // Collect all orderNumbers and originalOrderNos from parsed rows
+      const orderNumbers = Array.from(new Set(parsedRows.map((r) => r.orderNumber).filter(Boolean)));
+      const originalOrderNos = Array.from(new Set(parsedRows.map((r) => r.originalOrderNo).filter(Boolean)));
+
+      // Query existing items by orderNumber and originalOrderNo
+      const [itemsByOrderNum, itemsByOrigNo] = await Promise.all([
+        findOrderItemsByOrderNumbers(orderNumbers),
+        findOrderItemsByOriginalOrderNos(originalOrderNos),
+      ]);
+
+      // Build lookup maps: key → { itemId, orderId }
+      // orderNumber → list of matching items
+      const orderNumMap = new Map<string, { itemId: number; orderId: number }[]>();
+      for (const row of itemsByOrderNum) {
+        const key = row.item.orderNumber || "";
+        if (!orderNumMap.has(key)) orderNumMap.set(key, []);
+        orderNumMap.get(key)!.push({ itemId: row.item.id, orderId: row.item.orderId });
       }
 
-      // Import orders
-      const results: { orderId: number; orderNumber: string }[] = [];
+      // originalOrderNo → list of matching items
+      const origNoMap = new Map<string, { itemId: number; orderId: number }[]>();
+      for (const row of itemsByOrigNo) {
+        const key = row.item.originalOrderNo || "";
+        if (!origNoMap.has(key)) origNoMap.set(key, []);
+        origNoMap.get(key)!.push({ itemId: row.item.id, orderId: row.item.orderId });
+      }
+
+      // Process each row: match and update
+      let updatedCount = 0;
+      let skippedCount = 0;
       const errors: string[] = [];
+      const affectedOrderIds = new Set<number>();
+      const updatedItems: { itemId: number; orderNumber: string; fieldsUpdated: string[] }[] = [];
 
-      const currentRate = await getCurrentExchangeRate();
-      const exchangeRateVal = parseFloat(String(currentRate.rate));
-
-      for (const [, groupRows] of Array.from(orderGroups)) {
+      for (const row of parsedRows) {
         try {
-          const first = groupRows[0];
+          // Try to match: first by orderNumber, then by originalOrderNo
+          let matchedItems: { itemId: number; orderId: number }[] = [];
 
-          // Auto-create customer if WhatsApp is provided
-          let customerId: number | undefined;
-          if (first.customerWhatsapp) {
-            let existingCustomer = await getCustomerByWhatsapp(first.customerWhatsapp);
-            if (!existingCustomer) {
-              customerId = await createCustomer({
-                whatsapp: first.customerWhatsapp,
-                customerType: first.customerType || "新零售",
-                createdById: user.id,
-              });
-            } else {
-              customerId = existingCustomer.id;
+          if (row.orderNumber && orderNumMap.has(row.orderNumber)) {
+            matchedItems = orderNumMap.get(row.orderNumber)!;
+          } else if (row.originalOrderNo && origNoMap.has(row.originalOrderNo)) {
+            matchedItems = origNoMap.get(row.originalOrderNo)!;
+          }
+
+          if (matchedItems.length === 0) {
+            skippedCount++;
+            const identifier = row.orderNumber || row.originalOrderNo || "未知";
+            errors.push(`未找到匹配的订单子项: ${identifier}`);
+            continue;
+          }
+
+          // Build update data from the row (only non-empty updatable fields)
+          const itemUpdateData: Record<string, any> = {};
+          const orderUpdateData: Record<string, any> = {};
+
+          for (const [field, value] of Object.entries(row)) {
+            if (!value) continue;
+            if (UPDATABLE_ITEM_FIELDS.includes(field)) {
+              // Handle numeric fields
+              if (["quantity"].includes(field)) {
+                const parsed = parseInt(value);
+                if (!isNaN(parsed)) itemUpdateData[field] = parsed;
+              } else if (["amountUsd", "amountCny", "sellingPrice", "productCost", "shippingCharged", "shippingActual"].includes(field)) {
+                const parsed = parseFloat(value);
+                if (!isNaN(parsed)) itemUpdateData[field] = parsed.toFixed(2);
+              } else {
+                itemUpdateData[field] = value;
+              }
+            }
+            if (UPDATABLE_ORDER_FIELDS.includes(field)) {
+              orderUpdateData[field] = value;
             }
           }
 
-          // Use orderNumber or fallback to originalOrderNo
-          const effectiveOrderNumber = first.orderNumber || first.originalOrderNo || "";
+          // Recalculate profit fields if financial data changed
+          if (itemUpdateData.sellingPrice !== undefined || itemUpdateData.productCost !== undefined ||
+              itemUpdateData.amountCny !== undefined || itemUpdateData.shippingActual !== undefined ||
+              itemUpdateData.amountUsd !== undefined || itemUpdateData.shippingCharged !== undefined) {
+            const sp = parseFloat(itemUpdateData.sellingPrice || row.sellingPrice || "0");
+            const pc = parseFloat(itemUpdateData.productCost || row.productCost || "0");
+            const productProfit = sp - pc;
+            const productProfitRate = sp > 0 ? productProfit / sp : 0;
 
-          // Create order
-          const orderId = await createOrder({
-            orderDate: first.orderDate ? new Date(first.orderDate) : null,
-            account: first.account || undefined,
-            customerWhatsapp: first.customerWhatsapp || "",
-            customerId,
-            customerType: first.customerType || "新零售",
-            orderNumber: effectiveOrderNumber,
-            orderStatus: first.orderStatus || "已报货，待发货",
-            paymentStatus: first.paymentStatus || "未付款",
-            remarks: first.remarks || undefined,
-            staffId: user.id,
-            staffName: user.name || "未知客服",
-          });
+            const sc = parseFloat(itemUpdateData.shippingCharged || row.shippingCharged || "0");
+            const sa = parseFloat(itemUpdateData.shippingActual || row.shippingActual || "0");
+            const shippingProfit = sc - sa;
+            const shippingProfitRate = sc > 0 ? shippingProfit / sc : 0;
 
-          // Create order items
-          for (const row of groupRows) {
-            const amountUsd = parseFloat(row.amountUsd || "0");
-            const amountCny = amountUsd * exchangeRateVal;
-            const sellingPrice = parseFloat(row.sellingPrice || "0");
-            const productCost = parseFloat(row.productCost || "0");
-            const productProfit = sellingPrice - productCost;
-            const productProfitRate = sellingPrice > 0 ? productProfit / sellingPrice : 0;
-            const shippingCharged = amountCny - sellingPrice;
-            const shippingActual = parseFloat(row.shippingActual || "0");
-            const shippingProfit = shippingCharged - shippingActual;
-            const shippingProfitRate = shippingCharged > 0 ? shippingProfit / shippingCharged : 0;
             const totalProfit = productProfit + shippingProfit;
-            const profitRate = amountCny > 0 ? totalProfit / amountCny : 0;
+            const aCny = parseFloat(itemUpdateData.amountCny || row.amountCny || "0");
+            const profitRate = aCny > 0 ? totalProfit / aCny : 0;
 
-            await createOrderItem({
-              orderId,
-              orderNumber: row.orderNumber || effectiveOrderNumber,
-              size: row.size || undefined,
-              domesticTrackingNo: row.domesticTrackingNo || undefined,
-              sizeRecommendation: row.sizeRecommendation || undefined,
-              contactInfo: row.contactInfo || undefined,
-              internationalTrackingNo: row.internationalTrackingNo || undefined,
-              originalOrderNo: row.originalOrderNo || undefined,
-              shipDate: row.shipDate || undefined,
-              quantity: row.quantity ? parseInt(row.quantity) || 1 : 1,
-              source: row.source || undefined,
-              amountUsd: row.amountUsd || "0",
-              amountCny: amountCny.toFixed(2),
-              sellingPrice: row.sellingPrice || "0",
-              productCost: row.productCost || "0",
-              shippingCharged: shippingCharged.toFixed(2),
-              shippingActual: row.shippingActual || "0",
-              productProfit: productProfit.toFixed(2),
-              productProfitRate: productProfitRate.toFixed(6),
-              shippingProfit: shippingProfit.toFixed(2),
-              shippingProfitRate: shippingProfitRate.toFixed(6),
-              totalProfit: totalProfit.toFixed(2),
-              profitRate: profitRate.toFixed(6),
-              remarks: row.remarks || undefined,
-              paymentStatus: row.paymentStatus || undefined,
-            });
+            itemUpdateData.productProfit = productProfit.toFixed(2);
+            itemUpdateData.productProfitRate = productProfitRate.toFixed(6);
+            itemUpdateData.shippingProfit = shippingProfit.toFixed(2);
+            itemUpdateData.shippingProfitRate = shippingProfitRate.toFixed(6);
+            itemUpdateData.totalProfit = totalProfit.toFixed(2);
+            itemUpdateData.profitRate = profitRate.toFixed(6);
           }
 
-          await recalculateOrderTotals(orderId);
-          results.push({ orderId, orderNumber: effectiveOrderNumber });
+          const fieldsUpdated = Object.keys(itemUpdateData);
+
+          if (fieldsUpdated.length === 0 && Object.keys(orderUpdateData).length === 0) {
+            skippedCount++;
+            continue;
+          }
+
+          // Update all matched items
+          for (const matched of matchedItems) {
+            if (fieldsUpdated.length > 0) {
+              await updateOrderItem(matched.itemId, itemUpdateData);
+            }
+            affectedOrderIds.add(matched.orderId);
+
+            // Update order-level fields if present
+            if (Object.keys(orderUpdateData).length > 0) {
+              await updateOrder(matched.orderId, orderUpdateData);
+            }
+          }
+
+          updatedCount++;
+          updatedItems.push({
+            itemId: matchedItems[0].itemId,
+            orderNumber: row.orderNumber || row.originalOrderNo || "",
+            fieldsUpdated,
+          });
         } catch (err: any) {
-          errors.push(`订单 ${groupRows[0].orderNumber}: ${err.message}`);
+          const identifier = row.orderNumber || row.originalOrderNo || "未知";
+          errors.push(`更新 ${identifier} 失败: ${err.message}`);
         }
+      }
+
+      // Recalculate totals for all affected orders
+      for (const orderId of Array.from(affectedOrderIds)) {
+        await recalculateOrderTotals(orderId);
       }
 
       // Log the import action
@@ -261,19 +307,21 @@ export function registerExcelImportRoute(app: Express) {
         userRole: user.role,
         action: "import",
         targetType: "order",
-        targetName: `Excel导入 ${results.length} 个订单`,
+        targetName: `Excel导入更新 ${updatedCount} 条子项`,
         details: JSON.stringify({
-          count: results.length,
+          updated: updatedCount,
+          skipped: skippedCount,
           errors: errors.length,
-          orderNumbers: results.map((r) => r.orderNumber),
+          affectedOrders: Array.from(affectedOrderIds),
         }),
       });
 
       res.json({
         success: true,
-        imported: results.length,
+        updated: updatedCount,
+        skipped: skippedCount,
         totalRows: parsedRows.length,
-        orders: results,
+        updatedItems,
         errors: errors.length > 0 ? errors : undefined,
         detectedHeaders: headerRow,
         mapping: fieldMapping.map((f, i) => ({ header: headerRow[i], field: f })),
