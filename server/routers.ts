@@ -311,6 +311,7 @@ export const appRouter = router({
         productCost: z.string().optional(),
         shippingCharged: z.string().optional(),
         shippingActual: z.string().optional(),
+        originalOrderNo: z.string().optional(),
       })),
     })).mutation(async ({ input, ctx }) => {
       const results: { orderId: number; orderNumber: string }[] = [];
@@ -394,6 +395,7 @@ export const appRouter = router({
             profitRate: profitRate.toFixed(6),
             remarks: row.remarks || undefined,
             paymentStatus: row.paymentStatus || undefined,
+            originalOrderNo: row.originalOrderNo || undefined,
           });
         }
 
@@ -419,6 +421,7 @@ export const appRouter = router({
       sizeRecommendation: z.string().optional(),
       contactInfo: z.string().optional(),
       internationalTrackingNo: z.string().optional(),
+      originalOrderNo: z.string().optional(),
       shipDate: z.string().optional(),
       quantity: z.number().optional(),
       source: z.string().optional(),
@@ -476,6 +479,7 @@ export const appRouter = router({
       sizeRecommendation: z.string().optional(),
       contactInfo: z.string().optional(),
       internationalTrackingNo: z.string().optional(),
+      originalOrderNo: z.string().optional(),
       shipDate: z.string().optional(),
       quantity: z.number().optional(),
       source: z.string().optional(),
@@ -550,6 +554,7 @@ export const appRouter = router({
         sizeRecommendation: z.string().optional(),
         contactInfo: z.string().optional(),
         internationalTrackingNo: z.string().optional(),
+        originalOrderNo: z.string().optional(),
         shipDate: z.string().optional(),
         quantity: z.number().optional(),
         source: z.string().optional(),

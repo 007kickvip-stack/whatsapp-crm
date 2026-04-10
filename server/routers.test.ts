@@ -580,6 +580,86 @@ describe("Bulk Import Orders", () => {
       })
     ).rejects.toThrow();
   });
+
+  it("bulk import passes originalOrderNo to createOrderItem", async () => {
+    const { createOrder, createOrderItem, getCustomerByWhatsapp, createCustomer, recalculateOrderTotals, createAuditLog } = await import("./db");
+    (getCustomerByWhatsapp as ReturnType<typeof vi.fn>).mockResolvedValue(null);
+    (createCustomer as ReturnType<typeof vi.fn>).mockResolvedValue(100);
+    (createOrder as ReturnType<typeof vi.fn>).mockResolvedValue(1);
+    (createOrderItem as ReturnType<typeof vi.fn>).mockResolvedValue(1);
+
+    const ctx = createStaffContext();
+    const caller = appRouter.createCaller(ctx);
+    await caller.orders.bulkImport({
+      rows: [
+        {
+          customerWhatsapp: "+44 555",
+          orderNumber: "ORDER-ORIG-001",
+          originalOrderNo: "ORIG-999",
+          sellingPrice: "50",
+          productCost: "30",
+          amountUsd: "10",
+        },
+      ],
+    });
+
+    expect(createOrderItem).toHaveBeenCalledWith(
+      expect.objectContaining({
+        orderId: 1,
+        originalOrderNo: "ORIG-999",
+      })
+    );
+  });
+});
+
+describe("Order Items originalOrderNo field", () => {
+  it("orderItems.create accepts originalOrderNo", async () => {
+    const { createOrderItem } = await import("./db");
+    const ctx = createStaffContext();
+    const caller = appRouter.createCaller(ctx);
+
+    await caller.orderItems.create({
+      orderId: 1,
+      orderNumber: "TEST-ORIG-001",
+      originalOrderNo: "ORIG-ABC",
+      sellingPrice: "100",
+      productCost: "60",
+      shippingActual: "20",
+      amountUsd: "20",
+    });
+
+    expect(createOrderItem).toHaveBeenCalledWith(
+      expect.objectContaining({
+        originalOrderNo: "ORIG-ABC",
+      })
+    );
+  });
+
+  it("orderItems.update accepts originalOrderNo", async () => {
+    const { updateOrderItem, getOrderItemById } = await import("./db");
+    (getOrderItemById as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: 10,
+      orderId: 1,
+      orderNumber: "TEST-001",
+      originalOrderNo: null,
+    });
+
+    const ctx = createStaffContext();
+    const caller = appRouter.createCaller(ctx);
+
+    await caller.orderItems.update({
+      id: 10,
+      orderId: 1,
+      originalOrderNo: "ORIG-XYZ",
+    });
+
+    expect(updateOrderItem).toHaveBeenCalledWith(
+      10,
+      expect.objectContaining({
+        originalOrderNo: "ORIG-XYZ",
+      })
+    );
+  });
 });
 
 describe("Exchange Rate Management", () => {

@@ -53,7 +53,7 @@ import {
   Image as ImageIcon,
   PlusCircle,
   Download,
-  ClipboardPaste,
+  FileSpreadsheet,
   ChevronDown,
   ChevronUp,
   Layers,
@@ -61,7 +61,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { useLocation } from "wouter";
-import PasteImportDialog from "@/components/PasteImportDialog";
+import ExcelImportDialog from "@/components/ExcelImportDialog";
 import AccountSelect from "@/components/AccountSelect";
 import BulkAddItemsDialog from "@/components/BulkAddItemsDialog";
 
@@ -477,8 +477,7 @@ export default function OrdersPage() {
   const [filterPayment, setFilterPayment] = useState<string>("");
   const [previewImage, setPreviewImage] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
-  const [pasteImportOpen, setPasteImportOpen] = useState(false);
-  const [clipboardData, setClipboardData] = useState<string | undefined>(undefined);
+  const [excelImportOpen, setExcelImportOpen] = useState(false);
   // Bulk add items dialog state
   const [bulkAddOpen, setBulkAddOpen] = useState(false);
   const [bulkAddOrderId, setBulkAddOrderId] = useState<number>(0);
@@ -690,7 +689,7 @@ export default function OrdersPage() {
       // Build CSV with BOM for Excel compatibility
       const headers = [
         "日期","客服名字","账号","客户WhatsApp","客户属性","订单编号","Size","国内单号",
-        "推荐码数","联系方式","国际跟踪单号","发出日期","件数","货源","订单状态",
+        "推荐码数","联系方式","国际跟踪单号","原订单号","发出日期","件数","货源","订单状态",
         "总金额$","总金额￥","售价","产品成本","产品毛利润","产品毛利率",
         "收取运费","实际运费","运费利润","运费利润率","总利润","利润率","备注","付款状态"
       ];
@@ -710,6 +709,7 @@ export default function OrdersPage() {
             item.sizeRecommendation || "",
             item.contactInfo || "",
             item.internationalTrackingNo || "",
+            item.originalOrderNo || "",
             item.shipDate || "",
             String(item.quantity || ""),
             item.source || "",
@@ -763,6 +763,7 @@ export default function OrdersPage() {
     { key: "sizeRec", label: "推荐码数", width: "120px" },
     { key: "contactInfo", label: "联系方式", width: "200px" },
     { key: "intlTracking", label: "国际跟踪单号", width: "140px" },
+    { key: "originalOrderNo", label: "原订单号", width: "140px" },
     { key: "shipDate", label: "发出日期", width: "100px" },
     { key: "quantity", label: "件数", width: "50px" },
     { key: "source", label: "货源", width: "120px" },
@@ -806,6 +807,7 @@ export default function OrdersPage() {
     sizeRecommendation: string | null;
     contactInfo: string | null;
     internationalTrackingNo: string | null;
+    originalOrderNo: string | null;
     shipDate: string | null;
     quantity: string | null;
     source: string | null;
@@ -826,32 +828,6 @@ export default function OrdersPage() {
     remarks: string | null;
     paymentStatus: string | null;
   };
-
-  // Listen for paste events on the page to detect TSV data from Excel/Sheets
-  useEffect(() => {
-    const handleGlobalPaste = (e: ClipboardEvent) => {
-      // Don't intercept if user is typing in an input/textarea/contenteditable
-      const target = e.target as HTMLElement;
-      const tagName = target?.tagName?.toLowerCase();
-      if (tagName === "input" || tagName === "textarea" || target?.isContentEditable) {
-        return;
-      }
-
-      const text = e.clipboardData?.getData("text/plain");
-      if (!text) return;
-
-      // Check if it looks like TSV data (has tabs and multiple lines)
-      const lines = text.trim().split("\n");
-      if (lines.length >= 2 && lines[0].includes("\t")) {
-        e.preventDefault();
-        setClipboardData(text);
-        setPasteImportOpen(true);
-      }
-    };
-
-    document.addEventListener("paste", handleGlobalPaste);
-    return () => document.removeEventListener("paste", handleGlobalPaste);
-  }, []);
 
   // Auto-create initial item for orders that have no items
   const autoCreateRef = useRef<Set<number>>(new Set());
@@ -898,6 +874,7 @@ export default function OrdersPage() {
           sizeRecommendation: null,
           contactInfo: null,
           internationalTrackingNo: null,
+          originalOrderNo: null,
           shipDate: null,
           quantity: null,
           source: null,
@@ -943,6 +920,7 @@ export default function OrdersPage() {
             sizeRecommendation: item.sizeRecommendation,
             contactInfo: item.contactInfo || (idx === 0 ? null : null),
             internationalTrackingNo: item.internationalTrackingNo,
+            originalOrderNo: item.originalOrderNo || null,
             shipDate: item.shipDate,
             quantity: item.quantity?.toString() || null,
             source: item.source,
@@ -1216,6 +1194,17 @@ export default function OrdersPage() {
           ) : null}
         </td>
 
+        {/* 12.5. 原订单号 */}
+        <td className="py-1 px-1 border-r border-gray-100 whitespace-nowrap text-center text-[11px]">
+          {hasItem ? (
+            <EditableCell
+              value={row.originalOrderNo || ""}
+              onSave={(v) => saveItemField(row.itemId!, row.orderId, "originalOrderNo", v)}
+              placeholder="原订单号"
+            />
+          ) : null}
+        </td>
+
         {/* 13. 发出日期 */}
         <td className="py-1 px-1 border-r border-gray-100 whitespace-nowrap text-center text-[11px]">
           {hasItem ? (
@@ -1440,11 +1429,11 @@ export default function OrdersPage() {
           </Button>
           <Button
             variant="outline"
-            onClick={() => setPasteImportOpen(true)}
+            onClick={() => setExcelImportOpen(true)}
             className="gap-2"
           >
-            <ClipboardPaste className="h-4 w-4" />
-            粘贴导入
+            <FileSpreadsheet className="h-4 w-4" />
+            导入 Excel
           </Button>
           <Button
             onClick={() => {
@@ -1779,15 +1768,11 @@ export default function OrdersPage() {
         </DialogContent>
       </Dialog>
 
-      {/* Paste Import Dialog */}
-      <PasteImportDialog
-        open={pasteImportOpen}
-        onOpenChange={(v) => {
-          setPasteImportOpen(v);
-          if (!v) setClipboardData(undefined);
-        }}
+      {/* Excel Import Dialog */}
+      <ExcelImportDialog
+        open={excelImportOpen}
+        onOpenChange={setExcelImportOpen}
         onSuccess={() => utils.orders.list.invalidate()}
-        initialPasteData={clipboardData}
       />
 
       {/* Bulk Add Items Dialog */}

@@ -85,6 +85,7 @@ export const orderItems = mysqlTable("order_items", {
   sizeRecommendation: text("sizeRecommendation"),
   contactInfo: text("contactInfo"),
   internationalTrackingNo: varchar("internationalTrackingNo", { length: 128 }),
+  originalOrderNo: varchar("originalOrderNo", { length: 128 }),
   shipDate: varchar("shipDate", { length: 128 }),
   quantity: int("quantity").default(1),
   source: varchar("source", { length: 128 }),

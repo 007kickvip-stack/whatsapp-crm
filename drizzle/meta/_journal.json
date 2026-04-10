@@ -85,6 +85,13 @@
       "when": 1775812650952,
       "tag": "0011_worried_giant_man",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "5",
+      "when": 1775830220765,
+      "tag": "0012_chubby_northstar",
+      "breakpoints": true
     }
   ]
 }

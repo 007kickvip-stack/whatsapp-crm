@@ -56,6 +56,7 @@ type ItemForm = {
   sizeRecommendation: string;
   contactInfo: string;
   internationalTrackingNo: string;
+  originalOrderNo: string;
   shipDate: string;
   quantity: number;
   source: string;
@@ -79,6 +80,7 @@ const emptyItemForm: ItemForm = {
   sizeRecommendation: "",
   contactInfo: "",
   internationalTrackingNo: "",
+  originalOrderNo: "",
   shipDate: "",
   quantity: 1,
   source: "",
@@ -180,6 +182,7 @@ export default function OrderDetailPage() {
       sizeRecommendation: item.sizeRecommendation || "",
       contactInfo: item.contactInfo || "",
       internationalTrackingNo: item.internationalTrackingNo || "",
+      originalOrderNo: item.originalOrderNo || "",
       shipDate: item.shipDate || "",
       quantity: item.quantity || 1,
       source: item.source || "",
@@ -386,6 +389,7 @@ export default function OrderDetailPage() {
                     <th className="text-left py-3 px-4 font-medium text-muted-foreground">尺码</th>
                     <th className="text-left py-3 px-4 font-medium text-muted-foreground">国内单号</th>
                     <th className="text-left py-3 px-4 font-medium text-muted-foreground">国际单号</th>
+                    <th className="text-left py-3 px-4 font-medium text-muted-foreground">原订单号</th>
                     <th className="text-left py-3 px-4 font-medium text-muted-foreground">货源</th>
                     <th className="text-right py-3 px-4 font-medium text-muted-foreground">金额 $</th>
                     <th className="text-right py-3 px-4 font-medium text-muted-foreground">金额 ¥</th>
@@ -404,6 +408,7 @@ export default function OrderDetailPage() {
                       <td className="py-3 px-4">{item.size || "-"}</td>
                       <td className="py-3 px-4 text-xs max-w-[120px] truncate">{item.domesticTrackingNo || "-"}</td>
                       <td className="py-3 px-4 text-xs max-w-[120px] truncate">{item.internationalTrackingNo || "-"}</td>
+                      <td className="py-3 px-4 text-xs max-w-[120px] truncate">{(item as any).originalOrderNo || "-"}</td>
                       <td className="py-3 px-4">{item.source || "-"}</td>
                       <td className="py-3 px-4 text-right font-mono">${Number(item.amountUsd).toFixed(2)}</td>
                       <td className="py-3 px-4 text-right font-mono">¥{Number(item.amountCny).toFixed(2)}</td>
@@ -504,6 +509,10 @@ export default function OrderDetailPage() {
               <div className="space-y-1.5">
                 <Label className="text-xs">国际跟踪单号</Label>
                 <Input value={itemForm.internationalTrackingNo} onChange={(e) => setItemForm({ ...itemForm, internationalTrackingNo: e.target.value })} className="h-9" />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs">原订单号</Label>
+                <Input value={itemForm.originalOrderNo} onChange={(e) => setItemForm({ ...itemForm, originalOrderNo: e.target.value })} className="h-9" />
               </div>
             </div>
             <div className="grid grid-cols-2 gap-3">
