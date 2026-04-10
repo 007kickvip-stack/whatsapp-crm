@@ -1006,7 +1006,7 @@ export default function DailyData() {
 
       {/* 日报表弹窗 */}
       <Dialog open={reportDialogOpen} onOpenChange={setReportDialogOpen}>
-        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-[95vw] xl:max-w-[1400px] max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <CalendarDays className="w-5 h-5" />
