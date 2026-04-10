@@ -1111,9 +1111,9 @@ export default function OrdersPage() {
           ) : null}
         </td>
 
-        {/* 11. 联系方式 */}
+        {/* 11. 联系方式 - 只在父订单行显示（合并效果） */}
         <td className="py-1 px-1 border-r border-gray-100 text-center text-[11px] max-w-[200px]">
-          {hasItem ? (
+          {row.isFirstRow && hasItem ? (
             <EditableCell
               value={row.contactInfo || ""}
               type="textarea"
