@@ -991,46 +991,38 @@ export default function OrdersPage() {
           ) : null}
         </td>
 
-        {/* 1. 日期 - order level, editable on first row */}
-        <td className="py-1 px-1 border-r border-gray-100 whitespace-nowrap text-center text-[11px]">
-          {row.isFirstRow ? (
-            <EditableCell
-              value={row.orderDate || ""}
-              type="date"
-              onSave={(v) => saveOrderField(row.orderId, "orderDate", v)}
-              className="font-medium text-gray-700"
-            />
-          ) : null}
-        </td>
-
-        {/* 2. 客服名字 - read only */}
-        <td className="py-1 px-1 border-r border-gray-100 whitespace-nowrap text-center text-[11px]">
-          {row.isFirstRow ? row.staffName || "" : ""}
-        </td>
-
-        {/* 3. 账号 - order level editable (dropdown with search) */}
-        <td className="py-1 px-1 border-r border-gray-100 whitespace-nowrap text-center text-[11px]">
-          {row.isFirstRow ? (
-            <AccountSelect
-              value={row.account || ""}
-              onValueChange={(v) => saveOrderField(row.orderId, "account", v)}
-              placeholder="账号"
-              compact
-            />
-          ) : null}
-        </td>
-
-        {/* 4. 客户WhatsApp - order level editable */}
-        <td className="py-1 px-1 border-r border-gray-100 whitespace-nowrap text-center text-[11px]">
-          {row.isFirstRow ? (
-            <EditableCell
-              value={row.customerWhatsapp}
-              onSave={(v) => saveOrderField(row.orderId, "customerWhatsapp", v)}
-              className="font-medium text-emerald-700"
-              placeholder="WhatsApp"
-            />
-          ) : null}
-        </td>
+        {/* 1-4: 日期、客服名字、账号、客户WhatsApp - 使用 rowSpan 合并单元格并垂直居中 */}
+        {row.isFirstRow && (
+          <>
+            <td className="py-1 px-1 border-r border-gray-100 whitespace-nowrap text-center text-[11px] align-middle" rowSpan={row.itemCount || 1}>
+              <EditableCell
+                value={row.orderDate || ""}
+                type="date"
+                onSave={(v) => saveOrderField(row.orderId, "orderDate", v)}
+                className="font-medium text-gray-700"
+              />
+            </td>
+            <td className="py-1 px-1 border-r border-gray-100 whitespace-nowrap text-center text-[11px] align-middle" rowSpan={row.itemCount || 1}>
+              {row.staffName || ""}
+            </td>
+            <td className="py-1 px-1 border-r border-gray-100 whitespace-nowrap text-center text-[11px] align-middle" rowSpan={row.itemCount || 1}>
+              <AccountSelect
+                value={row.account || ""}
+                onValueChange={(v) => saveOrderField(row.orderId, "account", v)}
+                placeholder="账号"
+                compact
+              />
+            </td>
+            <td className="py-1 px-1 border-r border-gray-100 whitespace-nowrap text-center text-[11px] align-middle" rowSpan={row.itemCount || 1}>
+              <EditableCell
+                value={row.customerWhatsapp}
+                onSave={(v) => saveOrderField(row.orderId, "customerWhatsapp", v)}
+                className="font-medium text-emerald-700"
+                placeholder="WhatsApp"
+              />
+            </td>
+          </>
+        )}
 
         {/* 5. 客户属性 - order level select */}
         <td className="py-1 px-1 border-r border-gray-100 whitespace-nowrap text-center text-[11px]">
@@ -1111,17 +1103,19 @@ export default function OrdersPage() {
           ) : null}
         </td>
 
-        {/* 11. 联系方式 - 只在父订单行显示（合并效果） */}
-        <td className="py-1 px-1 border-r border-gray-100 text-center text-[11px] max-w-[200px]">
-          {row.isFirstRow && hasItem ? (
-            <EditableCell
-              value={row.contactInfo || ""}
-              type="textarea"
-              onSave={(v) => saveItemField(row.itemId!, row.orderId, "contactInfo", v)}
-              placeholder="姓名/电话/地址"
-            />
-          ) : null}
-        </td>
+        {/* 11. 联系方式 - 使用 rowSpan 合并单元格并垂直居中 */}
+        {row.isFirstRow && (
+          <td className="py-1 px-1 border-r border-gray-100 text-center text-[11px] max-w-[200px] align-middle" rowSpan={row.itemCount || 1}>
+            {hasItem ? (
+              <EditableCell
+                value={row.contactInfo || ""}
+                type="textarea"
+                onSave={(v) => saveItemField(row.itemId!, row.orderId, "contactInfo", v)}
+                placeholder="姓名/电话/地址"
+              />
+            ) : null}
+          </td>
+        )}
 
         {/* 12. 国际跟踪单号 */}
         <td className="py-1 px-1 border-r border-gray-100 whitespace-nowrap text-center text-[11px]">
