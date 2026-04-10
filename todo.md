@@ -236,3 +236,4 @@
 
 ## Bug修复
 - [x] 修复日报表“保存为图片”导出失败的问题（替换 html2canvas 为 html-to-image + 克隆元素避免 Dialog 影响 + 备用 Canvas API 方案）
+- [x] 修复日报表导出图片空白问题（html-to-image 克隆元素丢失 CSS 变量，改用纯 Canvas API 手动绘制）
