@@ -1247,7 +1247,7 @@ export async function getDailyReport(reportDate: string, staffName?: string) {
   const db = await getDb();
   if (!db) return { rows: [], totals: null };
 
-  const conditions: SQL[] = [sql`d.reportDate = ${reportDate}`];
+  const conditions: SQL[] = [sql`DATE(d.reportDate) = ${reportDate}`];
   if (staffName) conditions.push(sql`d.staffName = ${staffName}`);
 
   const whereClause = sql`WHERE ${sql.join(conditions, sql` AND `)}`;

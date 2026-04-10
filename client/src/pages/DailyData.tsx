@@ -1,6 +1,6 @@
 import { useState, useMemo, useRef, useEffect, useCallback } from "react";
 import { trpc } from "@/lib/trpc";
-import html2canvas from "html2canvas";
+import { toPng } from "html-to-image";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -240,26 +240,191 @@ export default function DailyData() {
 
   // 导出日报表为图片
   async function exportReportAsImage() {
-    if (!reportContentRef.current) return;
+    const el = reportContentRef.current;
+    if (!el) {
+      toast.error("暂无可导出的报表数据");
+      return;
+    }
     setExporting(true);
     try {
-      const canvas = await html2canvas(reportContentRef.current, {
+      // 克隆元素到 body 中以避免 Dialog 的 transform/fixed 影响渲染
+      const clone = el.cloneNode(true) as HTMLElement;
+      clone.style.position = "absolute";
+      clone.style.left = "-9999px";
+      clone.style.top = "0";
+      clone.style.width = el.scrollWidth + "px";
+      clone.style.backgroundColor = "#ffffff";
+      clone.style.padding = "24px";
+      clone.style.color = "#000000";
+      document.body.appendChild(clone);
+
+      // 等待 DOM 完全渲染
+      await new Promise(r => setTimeout(r, 500));
+
+      const dataUrl = await toPng(clone, {
         backgroundColor: "#ffffff",
-        scale: 2,
-        useCORS: true,
-        logging: false,
+        pixelRatio: 2,
+        cacheBust: true,
+        skipFonts: true,
       });
+
+      // 清理克隆元素
+      document.body.removeChild(clone);
+
       const link = document.createElement("a");
       link.download = `日报表_${reportDate}.png`;
-      link.href = canvas.toDataURL("image/png");
+      link.href = dataUrl;
       link.click();
       toast.success("图片已保存");
     } catch (err) {
-      console.error(err);
-      toast.error("导出失败，请重试");
+      console.error("导出报表图片失败:", err);
+      // 尝试备用方案：使用 Canvas API 手动绘制
+      try {
+        await exportReportAsCanvas();
+      } catch (err2) {
+        console.error("备用导出也失败:", err2);
+        toast.error("导出失败，请尝试截图保存");
+      }
     } finally {
       setExporting(false);
     }
+  }
+
+  // 备用方案：用 Canvas API 手动绘制报表
+  async function exportReportAsCanvas() {
+    const data = reportQuery.data;
+    if (!data || data.rows.length === 0) return;
+
+    const rows = data.rows as any[];
+    const totalsData = data.totals as any;
+    const cols = ["名字", "账号", "消息数", "新客人数", "新意向", "回访人数", "新客单数", "老客单数", "件数", "总营业额", "产品售价", "收取运费", "预估毛利润", "利润率"];
+    const colWidths = [80, 120, 60, 60, 60, 60, 60, 60, 50, 90, 80, 80, 90, 60];
+    const totalWidth = colWidths.reduce((a, b) => a + b, 0) + 48;
+    const headerH = 80;
+    const cardH = 80;
+    const tableHeaderH = 30;
+    const rowH = 28;
+    const totalH = headerH + cardH + 20 + tableHeaderH + (rows.length + 1) * rowH + 40;
+
+    const canvas = document.createElement("canvas");
+    const scale = 2;
+    canvas.width = totalWidth * scale;
+    canvas.height = totalH * scale;
+    const ctx = canvas.getContext("2d")!;
+    ctx.scale(scale, scale);
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, totalWidth, totalH);
+
+    // 标题
+    ctx.fillStyle = "#000000";
+    ctx.font = "bold 18px sans-serif";
+    ctx.textAlign = "center";
+    ctx.fillText(isAdmin ? "团队日报表" : "个人日报表", totalWidth / 2, 30);
+    ctx.font = "13px sans-serif";
+    ctx.fillStyle = "#666666";
+    ctx.fillText(reportDate, totalWidth / 2, 50);
+
+    // 汇总卡片
+    if (totalsData) {
+      const cards = [
+        { label: "总营业额", value: `\u00a5${Number(totalsData.totalRevenue || 0).toFixed(2)}`, color: "#059669" },
+        { label: "预估毛利润", value: `\u00a5${Number(totalsData.totalEstimatedProfit || 0).toFixed(2)}`, color: "#2563eb" },
+        { label: "平均利润率", value: `${(Number(totalsData.avgProfitRate || 0) * 100).toFixed(1)}%`, color: "#000" },
+        { label: "客服人数", value: String(totalsData.staffCount || 0), color: "#000" },
+      ];
+      const cardW = (totalWidth - 48 - 30) / 4;
+      cards.forEach((c, i) => {
+        const x = 24 + i * (cardW + 10);
+        ctx.fillStyle = "#f8f9fa";
+        ctx.fillRect(x, headerH, cardW, 60);
+        ctx.strokeStyle = "#e5e7eb";
+        ctx.strokeRect(x, headerH, cardW, 60);
+        ctx.fillStyle = "#666";
+        ctx.font = "11px sans-serif";
+        ctx.textAlign = "left";
+        ctx.fillText(c.label, x + 8, headerH + 20);
+        ctx.fillStyle = c.color;
+        ctx.font = "bold 16px sans-serif";
+        ctx.fillText(c.value, x + 8, headerH + 45);
+      });
+    }
+
+    // 表格头
+    let y = headerH + cardH + 20;
+    ctx.fillStyle = "#f3f4f6";
+    ctx.fillRect(24, y, totalWidth - 48, tableHeaderH);
+    ctx.fillStyle = "#374151";
+    ctx.font = "bold 11px sans-serif";
+    ctx.textAlign = "center";
+    let x = 24;
+    cols.forEach((col, i) => {
+      ctx.fillText(col, x + colWidths[i] / 2, y + 20);
+      x += colWidths[i];
+    });
+    y += tableHeaderH;
+
+    // 数据行
+    ctx.font = "11px sans-serif";
+    rows.forEach((row: any) => {
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(24, y, totalWidth - 48, rowH);
+      ctx.strokeStyle = "#e5e7eb";
+      ctx.strokeRect(24, y, totalWidth - 48, rowH);
+      ctx.fillStyle = "#000000";
+      ctx.textAlign = "center";
+      const vals = [
+        row.staffName || "-", row.whatsAccount || "-",
+        String(row.messageCount || 0), String(row.newCustomerCount || 0),
+        String(row.newIntentCount || 0), String(row.returnVisitCount || 0),
+        String(row.newOrderCount || 0), String(row.oldOrderCount || 0),
+        String(row.itemCount || 0),
+        `\u00a5${Number(row.totalRevenue || 0).toFixed(2)}`,
+        `\u00a5${Number(row.productSellingPrice || 0).toFixed(2)}`,
+        `\u00a5${Number(row.shippingCharged || 0).toFixed(2)}`,
+        `\u00a5${Number(row.estimatedProfit || 0).toFixed(2)}`,
+        `${(Number(row.estimatedProfitRate || 0) * 100).toFixed(1)}%`,
+      ];
+      let cx = 24;
+      vals.forEach((v, i) => {
+        ctx.fillText(v, cx + colWidths[i] / 2, y + 19);
+        cx += colWidths[i];
+      });
+      y += rowH;
+    });
+
+    // 汇总行
+    if (totalsData) {
+      ctx.fillStyle = "#fffbeb";
+      ctx.fillRect(24, y, totalWidth - 48, rowH);
+      ctx.strokeStyle = "#e5e7eb";
+      ctx.strokeRect(24, y, totalWidth - 48, rowH);
+      ctx.fillStyle = "#000";
+      ctx.font = "bold 11px sans-serif";
+      ctx.textAlign = "center";
+      const tvals = [
+        "合计", "",
+        String(totalsData.totalMessages || 0), String(totalsData.totalNewCustomers || 0),
+        String(totalsData.totalNewIntents || 0), String(totalsData.totalReturnVisits || 0),
+        String(totalsData.totalNewOrders || 0), String(totalsData.totalOldOrders || 0),
+        String(totalsData.totalItems || 0),
+        `\u00a5${Number(totalsData.totalRevenue || 0).toFixed(2)}`,
+        `\u00a5${Number(totalsData.totalProductSellingPrice || 0).toFixed(2)}`,
+        `\u00a5${Number(totalsData.totalShippingCharged || 0).toFixed(2)}`,
+        `\u00a5${Number(totalsData.totalEstimatedProfit || 0).toFixed(2)}`,
+        `${(Number(totalsData.avgProfitRate || 0) * 100).toFixed(1)}%`,
+      ];
+      let cx = 24;
+      tvals.forEach((v, i) => {
+        ctx.fillText(v, cx + colWidths[i] / 2, y + 19);
+        cx += colWidths[i];
+      });
+    }
+
+    const link = document.createElement("a");
+    link.download = `日报表_${reportDate}.png`;
+    link.href = canvas.toDataURL("image/png");
+    link.click();
+    toast.success("图片已保存");
   }
 
   // 汇总当前列表数据
