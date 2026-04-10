@@ -335,7 +335,15 @@ export default function DailyData() {
       const rowH = 32;
       const dataRowsCount = rows.length;
       const totalRowCount = totalsData ? 1 : 0;
-      const totalH = tableStartY + tableHeaderH + (dataRowsCount + totalRowCount) * rowH + 30;
+
+      // 备注数据
+      const notes = (notesQuery.data || []) as any[];
+      // 预计算备注区域高度
+      const notesSectionTitleH = notes.length > 0 ? 40 : 0;
+      const noteItemH = 60; // 每条备注预估高度
+      const notesSectionH = notes.length > 0 ? notesSectionTitleH + notes.length * noteItemH + 10 : 0;
+
+      const totalH = tableStartY + tableHeaderH + (dataRowsCount + totalRowCount) * rowH + 30 + notesSectionH;
 
       const canvas = document.createElement("canvas");
       const scale = 2;
@@ -479,7 +487,82 @@ export default function DailyData() {
           ctx.fillText(v, cx + colWidths[i] / 2, y + 21);
           cx += colWidths[i];
         });
+        y += rowH;
     }
+
+      // 渲染备注区域
+      if (notes.length > 0) {
+        let noteY = y + 20;
+        // 备注标题
+        ctx.fillStyle = "#111827";
+        ctx.font = "bold 14px 'Noto Sans SC', 'PingFang SC', 'Microsoft YaHei', sans-serif";
+        ctx.textAlign = "left";
+        ctx.fillText("\u270F\uFE0F 日报备注 & 总结", padding, noteY + 16);
+        noteY += 30;
+
+        // 分隔线
+        ctx.strokeStyle = "#e5e7eb";
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(padding, noteY);
+        ctx.lineTo(padding + tableWidth, noteY);
+        ctx.stroke();
+        noteY += 10;
+
+        notes.forEach((note: any) => {
+          // 备注卡片背景
+          ctx.fillStyle = "#f9fafb";
+          roundRect(ctx, padding, noteY, tableWidth, noteItemH - 8, 6);
+          ctx.fill();
+          ctx.strokeStyle = "#e5e7eb";
+          ctx.lineWidth = 0.5;
+          roundRect(ctx, padding, noteY, tableWidth, noteItemH - 8, 6);
+          ctx.stroke();
+
+          // 作者和角色标签
+          ctx.fillStyle = "#374151";
+          ctx.font = "bold 12px 'Noto Sans SC', sans-serif";
+          ctx.textAlign = "left";
+          ctx.fillText(note.userName || "未知", padding + 10, noteY + 18);
+
+          // 角色标签
+          const roleText = note.userRole === "admin" ? "管理员" : "客服";
+          const roleX = padding + 10 + ctx.measureText(note.userName || "未知").width + 8;
+          const roleBg = note.userRole === "admin" ? "#dbeafe" : "#d1fae5";
+          const roleColor = note.userRole === "admin" ? "#1d4ed8" : "#047857";
+          ctx.font = "10px 'Noto Sans SC', sans-serif";
+          const roleW = ctx.measureText(roleText).width + 10;
+          ctx.fillStyle = roleBg;
+          roundRect(ctx, roleX, noteY + 8, roleW, 16, 3);
+          ctx.fill();
+          ctx.fillStyle = roleColor;
+          ctx.fillText(roleText, roleX + 5, noteY + 19);
+
+          // 时间
+          const timeStr = note.createdAt ? new Date(note.createdAt).toLocaleString("zh-CN", { hour: "2-digit", minute: "2-digit" }) : "";
+          ctx.fillStyle = "#9ca3af";
+          ctx.font = "10px 'Noto Sans SC', sans-serif";
+          ctx.textAlign = "right";
+          ctx.fillText(timeStr, padding + tableWidth - 10, noteY + 19);
+
+          // 备注内容
+          ctx.fillStyle = "#4b5563";
+          ctx.font = "12px 'Noto Sans SC', sans-serif";
+          ctx.textAlign = "left";
+          // 截断过长的内容
+          const maxContentWidth = tableWidth - 24;
+          let content = note.content || "";
+          if (ctx.measureText(content).width > maxContentWidth) {
+            while (ctx.measureText(content + "...").width > maxContentWidth && content.length > 0) {
+              content = content.slice(0, -1);
+            }
+            content += "...";
+          }
+          ctx.fillText(content, padding + 10, noteY + 40);
+
+          noteY += noteItemH;
+        });
+      }
 
       const link = document.createElement("a");
       link.download = `日报表_${reportDate}.png`;
