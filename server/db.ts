@@ -1,6 +1,6 @@
 import { eq, like, and, sql, desc, or, SQL } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
-import { InsertUser, users, customers, orders, orderItems, InsertCustomer, InsertOrder, InsertOrderItem, auditLogs, InsertAuditLog, exchangeRates, InsertExchangeRate, profitAlertSettings, InsertProfitAlertSetting, staffMonthlyTargets, InsertStaffMonthlyTarget, dailyData, InsertDailyData, accounts, InsertAccount } from "../drizzle/schema";
+import { InsertUser, users, customers, orders, orderItems, InsertCustomer, InsertOrder, InsertOrderItem, auditLogs, InsertAuditLog, exchangeRates, InsertExchangeRate, profitAlertSettings, InsertProfitAlertSetting, staffMonthlyTargets, InsertStaffMonthlyTarget, dailyData, InsertDailyData, accounts, InsertAccount, dailyReportNotes, InsertDailyReportNote } from "../drizzle/schema";
 import { ENV } from './_core/env';
 import { nanoid } from 'nanoid';
 import { createHash, randomBytes } from 'crypto';
@@ -1358,6 +1358,82 @@ export async function getDailyReportByAccount(reportDate: string, staffName: str
     rows: rows as unknown as any[],
     totals: (totalsRows as unknown as any[])[0] || null,
   };
+}
+
+/**
+ * 管理员下钻 - 根据日期和客服名字查询该客服下所有账号的明细数据
+ */
+export async function getDailyReportDrillDown(reportDate: string, staffName: string) {
+  const db = await getDb();
+  if (!db) return [];
+
+  const [rows] = await db.execute(sql`
+    SELECT * FROM daily_data d
+    WHERE DATE(d.reportDate) = ${reportDate}
+      AND d.staffName = ${staffName}
+    ORDER BY d.whatsAccount ASC
+  `);
+
+  return rows as unknown as any[];
+}
+
+// ==================== 日报表备注 ====================
+
+/**
+ * 获取某日的所有备注
+ */
+export async function listDailyReportNotes(reportDate: string) {
+  const db = await getDb();
+  if (!db) return [];
+  const rows = await db.select().from(dailyReportNotes)
+    .where(sql`DATE(${dailyReportNotes.reportDate}) = ${reportDate}`)
+    .orderBy(dailyReportNotes.createdAt);
+  return rows;
+}
+
+/**
+ * 创建日报表备注
+ */
+export async function createDailyReportNote(data: Omit<InsertDailyReportNote, 'reportDate'> & { reportDate: string | Date }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  // Ensure reportDate is stored as a proper date string without timezone shift
+  const dateStr = typeof data.reportDate === 'string' ? data.reportDate : data.reportDate.toISOString().slice(0, 10);
+  const result = await db.insert(dailyReportNotes).values({
+    ...data,
+    reportDate: sql`${dateStr}`,
+  } as any);
+  return { id: result[0].insertId };
+}
+
+/**
+ * 更新日报表备注
+ */
+export async function updateDailyReportNote(id: number, content: string) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.update(dailyReportNotes).set({ content }).where(eq(dailyReportNotes.id, id));
+  return { success: true };
+}
+
+/**
+ * 删除日报表备注
+ */
+export async function deleteDailyReportNote(id: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.delete(dailyReportNotes).where(eq(dailyReportNotes.id, id));
+  return { success: true };
+}
+
+/**
+ * 获取单条备注
+ */
+export async function getDailyReportNoteById(id: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const rows = await db.select().from(dailyReportNotes).where(eq(dailyReportNotes.id, id));
+  return rows[0] || null;
 }
 
 /**

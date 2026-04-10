@@ -232,3 +232,20 @@ export const accounts = mysqlTable("accounts", {
 
 export type Account = typeof accounts.$inferSelect;
 export type InsertAccount = typeof accounts.$inferInsert;
+
+/**
+ * 日报表备注表 - 管理员和客服在日报表中写总结/反映问题
+ */
+export const dailyReportNotes = mysqlTable("daily_report_notes", {
+  id: int("id").autoincrement().primaryKey(),
+  reportDate: date("reportDate").notNull(),
+  userId: int("userId").notNull(),
+  userName: varchar("userName", { length: 128 }).notNull(),
+  userRole: varchar("userRole", { length: 32 }).notNull(),
+  content: text("content").notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type DailyReportNote = typeof dailyReportNotes.$inferSelect;
+export type InsertDailyReportNote = typeof dailyReportNotes.$inferInsert;

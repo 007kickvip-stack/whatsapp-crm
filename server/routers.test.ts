@@ -65,6 +65,12 @@ vi.mock("./db", () => ({
   getDistinctOrderAccounts: vi.fn().mockResolvedValue(["M1 BUY-4254", "K-ONE-1718", "UMI BUY-3264"]),
   getDailyReportByStaff: vi.fn().mockResolvedValue({ rows: [{ staffId: 2, staffName: "Staff User", messageCount: 50, totalRevenue: "500" }], totals: { staffCount: 1, totalMessages: 50, totalRevenue: "500", totalEstimatedProfit: "150", avgProfitRate: "0.3" } }),
   getDailyReportByAccount: vi.fn().mockResolvedValue({ rows: [{ id: 1, staffName: "Staff User", whatsAccount: "M1 BUY-4254", messageCount: 50, totalRevenue: "500" }], totals: { accountCount: 1, totalMessages: 50, totalRevenue: "500", totalEstimatedProfit: "150", avgProfitRate: "0.3" } }),
+  getDailyReportDrillDown: vi.fn().mockResolvedValue([{ id: 1, staffName: "Staff User", whatsAccount: "M1 BUY-4254", messageCount: 30, totalRevenue: "300" }, { id: 2, staffName: "Staff User", whatsAccount: "K-ONE-1718", messageCount: 20, totalRevenue: "200" }]),
+  listDailyReportNotes: vi.fn().mockResolvedValue([{ id: 1, reportDate: "2026-04-09", userId: 1, userName: "Admin User", userRole: "admin", content: "今日总结", createdAt: new Date(), updatedAt: new Date() }]),
+  createDailyReportNote: vi.fn().mockResolvedValue({ id: 2 }),
+  updateDailyReportNote: vi.fn().mockResolvedValue({ success: true }),
+  deleteDailyReportNote: vi.fn().mockResolvedValue({ success: true }),
+  getDailyReportNoteById: vi.fn().mockResolvedValue({ id: 1, reportDate: "2026-04-09", userId: 1, userName: "Admin User", userRole: "admin", content: "今日总结", createdAt: new Date(), updatedAt: new Date() }),
   syncOrderDataToDailyData: vi.fn().mockResolvedValue({ success: true }),
   listAccounts: vi.fn().mockResolvedValue([{ id: 1, name: "M1 BUY-4254", color: "#f87171", sortOrder: 0 }, { id: 2, name: "K-ONE-1718", color: "#fb923c", sortOrder: 1 }]),
   createAccount: vi.fn().mockResolvedValue({ id: 3 }),
@@ -1005,5 +1011,110 @@ describe("Account Management", () => {
     const ctx = createAdminContext();
     const caller = appRouter.createCaller(ctx);
     await expect(caller.accounts.create({ name: "" })).rejects.toThrow();
+  });
+});
+
+describe("Daily Report DrillDown", () => {
+  it("admin can drill down into staff account details", async () => {
+    const { getDailyReportDrillDown } = await import("./db");
+    const ctx = createAdminContext();
+    const caller = appRouter.createCaller(ctx);
+    const result = await caller.dailyData.drillDown({ reportDate: "2026-04-09", staffName: "Staff User" });
+    expect(Array.isArray(result)).toBe(true);
+    expect(result.length).toBe(2);
+    expect(result[0].whatsAccount).toBe("M1 BUY-4254");
+    expect(result[1].whatsAccount).toBe("K-ONE-1718");
+    expect(getDailyReportDrillDown).toHaveBeenCalledWith("2026-04-09", "Staff User");
+  });
+
+  it("staff cannot access drillDown (admin only)", async () => {
+    const ctx = createStaffContext();
+    const caller = appRouter.createCaller(ctx);
+    await expect(caller.dailyData.drillDown({ reportDate: "2026-04-09", staffName: "Staff User" })).rejects.toThrow();
+  });
+});
+
+describe("Daily Report Notes", () => {
+  it("authenticated user can list notes", async () => {
+    const { listDailyReportNotes } = await import("./db");
+    const ctx = createStaffContext();
+    const caller = appRouter.createCaller(ctx);
+    const result = await caller.dailyData.notesList({ reportDate: "2026-04-09" });
+    expect(Array.isArray(result)).toBe(true);
+    expect(result.length).toBe(1);
+    expect(result[0].content).toBe("今日总结");
+    expect(listDailyReportNotes).toHaveBeenCalledWith("2026-04-09");
+  });
+
+  it("unauthenticated user cannot list notes", async () => {
+    const ctx = createUnauthContext();
+    const caller = appRouter.createCaller(ctx);
+    await expect(caller.dailyData.notesList({ reportDate: "2026-04-09" })).rejects.toThrow();
+  });
+
+  it("authenticated user can create note", async () => {
+    const { createDailyReportNote } = await import("./db");
+    const ctx = createStaffContext();
+    const caller = appRouter.createCaller(ctx);
+    const result = await caller.dailyData.createNote({ reportDate: "2026-04-09", content: "今日反馈" });
+    expect(result.id).toBe(2);
+    expect(createDailyReportNote).toHaveBeenCalledWith(expect.objectContaining({
+      reportDate: "2026-04-09",
+      userId: 2,
+      userName: "Staff User",
+      userRole: "user",
+      content: "今日反馈",
+    }));
+  });
+
+  it("createNote rejects empty content", async () => {
+    const ctx = createStaffContext();
+    const caller = appRouter.createCaller(ctx);
+    await expect(caller.dailyData.createNote({ reportDate: "2026-04-09", content: "" })).rejects.toThrow();
+  });
+
+  it("admin can update any note", async () => {
+    const { updateDailyReportNote } = await import("./db");
+    const ctx = createAdminContext();
+    const caller = appRouter.createCaller(ctx);
+    const result = await caller.dailyData.updateNote({ id: 1, content: "更新后的总结" });
+    expect(result.success).toBe(true);
+    expect(updateDailyReportNote).toHaveBeenCalledWith(1, "更新后的总结");
+  });
+
+  it("staff cannot update other user's note", async () => {
+    const { getDailyReportNoteById } = await import("./db");
+    // Note belongs to userId 1 (admin), staff is userId 2
+    (getDailyReportNoteById as any).mockResolvedValueOnce({ id: 1, userId: 1, userName: "Admin User", userRole: "admin", content: "test" });
+    const ctx = createStaffContext();
+    const caller = appRouter.createCaller(ctx);
+    await expect(caller.dailyData.updateNote({ id: 1, content: "hack" })).rejects.toThrow("无权编辑他人的备注");
+  });
+
+  it("staff can update own note", async () => {
+    const { getDailyReportNoteById, updateDailyReportNote } = await import("./db");
+    (getDailyReportNoteById as any).mockResolvedValueOnce({ id: 5, userId: 2, userName: "Staff User", userRole: "user", content: "my note" });
+    const ctx = createStaffContext();
+    const caller = appRouter.createCaller(ctx);
+    const result = await caller.dailyData.updateNote({ id: 5, content: "updated" });
+    expect(result.success).toBe(true);
+    expect(updateDailyReportNote).toHaveBeenCalledWith(5, "updated");
+  });
+
+  it("admin can delete any note", async () => {
+    const { deleteDailyReportNote } = await import("./db");
+    const ctx = createAdminContext();
+    const caller = appRouter.createCaller(ctx);
+    const result = await caller.dailyData.deleteNote({ id: 1 });
+    expect(result.success).toBe(true);
+    expect(deleteDailyReportNote).toHaveBeenCalledWith(1);
+  });
+
+  it("staff cannot delete other user's note", async () => {
+    const { getDailyReportNoteById } = await import("./db");
+    (getDailyReportNoteById as any).mockResolvedValueOnce({ id: 1, userId: 1, userName: "Admin User", userRole: "admin", content: "test" });
+    const ctx = createStaffContext();
+    const caller = appRouter.createCaller(ctx);
+    await expect(caller.dailyData.deleteNote({ id: 1 })).rejects.toThrow("无权删除他人的备注");
   });
 });

@@ -20,7 +20,8 @@ import {
   listStaffMonthlyTargets, upsertStaffMonthlyTarget, deleteStaffMonthlyTarget,
   getStaffTargetProgress, getStaffList,
   getDailyOrderSummary, listDailyData, createDailyData, updateDailyData, deleteDailyData,
-  getDailyDataById, getDailyReportByStaff, getDailyReportByAccount, syncOrderDataToDailyData, getDistinctOrderAccounts,
+  getDailyDataById, getDailyReportByStaff, getDailyReportByAccount, getDailyReportDrillDown, syncOrderDataToDailyData, getDistinctOrderAccounts,
+  listDailyReportNotes, createDailyReportNote, updateDailyReportNote, deleteDailyReportNote, getDailyReportNoteById,
   listAccounts, createAccount, updateAccount, deleteAccount, reorderAccounts,
 } from "./db";
 import { sdk } from "./_core/sdk";
@@ -987,9 +988,63 @@ export const appRouter = router({
       }
     }),
 
+    // 管理员下钻 - 查看某个客服下所有账号的明细数据
+    drillDown: adminProcedure.input(z.object({
+      reportDate: z.string(),
+      staffName: z.string(),
+    })).query(async ({ input }) => {
+      return await getDailyReportDrillDown(input.reportDate, input.staffName);
+    }),
+
     // 获取客服列表（仅管理员）
     staffList: adminProcedure.query(async () => {
       return await getStaffList();
+    }),
+
+    // 日报表备注 CRUD
+    notesList: protectedProcedure.input(z.object({
+      reportDate: z.string(),
+    })).query(async ({ input }) => {
+      return await listDailyReportNotes(input.reportDate);
+    }),
+
+    createNote: protectedProcedure.input(z.object({
+      reportDate: z.string(),
+      content: z.string().min(1, "备注内容不能为空"),
+    })).mutation(async ({ input, ctx }) => {
+      // Use SQL string directly to avoid timezone issues with new Date()
+      return await createDailyReportNote({
+        reportDate: input.reportDate,
+        userId: ctx.user.id,
+        userName: ctx.user.name || "未知",
+        userRole: ctx.user.role,
+        content: input.content,
+      });
+    }),
+
+    updateNote: protectedProcedure.input(z.object({
+      id: z.number(),
+      content: z.string().min(1, "备注内容不能为空"),
+    })).mutation(async ({ input, ctx }) => {
+      const note = await getDailyReportNoteById(input.id);
+      if (!note) throw new TRPCError({ code: "NOT_FOUND", message: "备注不存在" });
+      // 只能编辑自己的备注，除非是管理员
+      if (note.userId !== ctx.user.id && ctx.user.role !== "admin") {
+        throw new TRPCError({ code: "FORBIDDEN", message: "无权编辑他人的备注" });
+      }
+      return await updateDailyReportNote(input.id, input.content);
+    }),
+
+    deleteNote: protectedProcedure.input(z.object({
+      id: z.number(),
+    })).mutation(async ({ input, ctx }) => {
+      const note = await getDailyReportNoteById(input.id);
+      if (!note) throw new TRPCError({ code: "NOT_FOUND", message: "备注不存在" });
+      // 只能删除自己的备注，除非是管理员
+      if (note.userId !== ctx.user.id && ctx.user.role !== "admin") {
+        throw new TRPCError({ code: "FORBIDDEN", message: "无权删除他人的备注" });
+      }
+      return await deleteDailyReportNote(input.id);
     }),
   }),
 

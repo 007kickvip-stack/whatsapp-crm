@@ -12,9 +12,11 @@ import { toast } from "sonner";
 import {
   CalendarDays, Plus, Trash2, RefreshCw, FileText,
   MessageSquare, Users, ShoppingCart, Package, DollarSign, TrendingUp,
-  Download, Image as ImageIcon
+  Download, Image as ImageIcon, ChevronDown, ChevronRight, Send, Pencil, User
 } from "lucide-react";
+import { Textarea } from "@/components/ui/textarea";
 import AccountSelect from "@/components/AccountSelect";
+import DrillDownRows from "@/components/DrillDownRows";
 
 function formatDate(d: any): string {
   if (!d) return "";
@@ -169,10 +171,60 @@ export default function DailyData() {
 
   // 账号列表现在从数据库加载（通过 AccountSelect 组件内部查询）
 
+  // 下钻展开状态（管理员点击客服名字展开账号明细）
+  const [expandedStaff, setExpandedStaff] = useState<Set<string>>(new Set());
+  // 备注输入状态
+  const [noteContent, setNoteContent] = useState("");
+  const [editingNoteId, setEditingNoteId] = useState<number | null>(null);
+  const [editingNoteContent, setEditingNoteContent] = useState("");
+
   const reportQuery = trpc.dailyData.report.useQuery(
     { reportDate, staffName: staffFilter === "__all__" ? undefined : staffFilter },
     { enabled: reportDialogOpen }
   );
+
+  // 备注查询
+  const notesQuery = trpc.dailyData.notesList.useQuery(
+    { reportDate },
+    { enabled: reportDialogOpen }
+  );
+
+  // 备注 mutations
+  const createNoteMutation = trpc.dailyData.createNote.useMutation({
+    onSuccess: () => {
+      toast.success("备注已添加");
+      setNoteContent("");
+      utils.dailyData.notesList.invalidate();
+    },
+    onError: (e: any) => toast.error(e.message),
+  });
+
+  const updateNoteMutation = trpc.dailyData.updateNote.useMutation({
+    onSuccess: () => {
+      toast.success("备注已更新");
+      setEditingNoteId(null);
+      setEditingNoteContent("");
+      utils.dailyData.notesList.invalidate();
+    },
+    onError: (e: any) => toast.error(e.message),
+  });
+
+  const deleteNoteMutation = trpc.dailyData.deleteNote.useMutation({
+    onSuccess: () => {
+      toast.success("备注已删除");
+      utils.dailyData.notesList.invalidate();
+    },
+    onError: (e: any) => toast.error(e.message),
+  });
+
+  function toggleStaffExpand(staffName: string) {
+    setExpandedStaff(prev => {
+      const next = new Set(prev);
+      if (next.has(staffName)) next.delete(staffName);
+      else next.add(staffName);
+      return next;
+    });
+  }
 
   const createMutation = trpc.dailyData.create.useMutation({
     onSuccess: () => {
@@ -975,24 +1027,45 @@ export default function DailyData() {
                     </tr>
                   </thead>
                   <tbody>
-                    {reportQuery.data.rows.map((row: any, idx: number) => (
-                      <tr key={isAdmin ? (row.staffId || idx) : (row.id || idx)} className="border-b hover:bg-muted/30">
-                        {/* 管理员显示客服名字，客服显示账号 */}
-                        <td className={`${tdClass} font-medium`}>{isAdmin ? row.staffName : (row.whatsAccount || "-")}</td>
-                        <td className={tdClass}>{row.messageCount || 0}</td>
-                        <td className={tdClass}>{row.newCustomerCount || 0}</td>
-                        <td className={tdClass}>{row.newIntentCount || 0}</td>
-                        <td className={tdClass}>{row.returnVisitCount || 0}</td>
-                        <td className={tdClass}>{row.newOrderCount || 0}</td>
-                        <td className={tdClass}>{row.oldOrderCount || 0}</td>
-                        <td className={tdClass}>{row.itemCount || 0}</td>
-                        <td className={`${tdClass} font-medium text-emerald-600`}>¥{formatMoney(row.totalRevenue)}</td>
-                        <td className={tdClass}>¥{formatMoney(row.productSellingPrice)}</td>
-                        <td className={tdClass}>¥{formatMoney(row.shippingCharged)}</td>
-                        <td className={`${tdClass} font-medium text-blue-600`}>¥{formatMoney(row.estimatedProfit)}</td>
-                        <td className="py-1 px-1 text-center whitespace-nowrap text-[11px]">{formatPercent(row.estimatedProfitRate)}</td>
-                      </tr>
-                    ))}
+                    {reportQuery.data.rows.map((row: any, idx: number) => {
+                      const staffKey = row.staffName || `staff-${idx}`;
+                      const isExpanded = expandedStaff.has(staffKey);
+                      return (
+                        <>
+                          <tr
+                            key={isAdmin ? (row.staffId || idx) : (row.id || idx)}
+                            className={`border-b hover:bg-muted/30 ${isAdmin ? "cursor-pointer" : ""}`}
+                            onClick={isAdmin ? () => toggleStaffExpand(staffKey) : undefined}
+                          >
+                            {/* 管理员显示客服名字（可点击展开），客服显示账号 */}
+                            <td className={`${tdClass} font-medium`}>
+                              {isAdmin ? (
+                                <span className="flex items-center gap-1">
+                                  {isExpanded ? <ChevronDown className="w-3 h-3 text-blue-500" /> : <ChevronRight className="w-3 h-3 text-gray-400" />}
+                                  {row.staffName}
+                                </span>
+                              ) : (row.whatsAccount || "-")}
+                            </td>
+                            <td className={tdClass}>{row.messageCount || 0}</td>
+                            <td className={tdClass}>{row.newCustomerCount || 0}</td>
+                            <td className={tdClass}>{row.newIntentCount || 0}</td>
+                            <td className={tdClass}>{row.returnVisitCount || 0}</td>
+                            <td className={tdClass}>{row.newOrderCount || 0}</td>
+                            <td className={tdClass}>{row.oldOrderCount || 0}</td>
+                            <td className={tdClass}>{row.itemCount || 0}</td>
+                            <td className={`${tdClass} font-medium text-emerald-600`}>¥{formatMoney(row.totalRevenue)}</td>
+                            <td className={tdClass}>¥{formatMoney(row.productSellingPrice)}</td>
+                            <td className={tdClass}>¥{formatMoney(row.shippingCharged)}</td>
+                            <td className={`${tdClass} font-medium text-blue-600`}>¥{formatMoney(row.estimatedProfit)}</td>
+                            <td className="py-1 px-1 text-center whitespace-nowrap text-[11px]">{formatPercent(row.estimatedProfitRate)}</td>
+                          </tr>
+                          {/* 管理员下钻展开行 */}
+                          {isAdmin && isExpanded && (
+                            <DrillDownRows reportDate={reportDate} staffName={row.staffName} />
+                          )}
+                        </>
+                      );
+                    })}
                     {/* 汇总行 */}
                     {reportQuery.data.totals && (
                       <tr className="border-t-2 bg-amber-50/50 font-bold">
@@ -1013,6 +1086,109 @@ export default function DailyData() {
                     )}
                   </tbody>
                 </table>
+              </div>
+
+              {/* 备注/总结区域 */}
+              <div className="border rounded-lg p-4 mt-4">
+                <h4 className="text-sm font-semibold mb-3 flex items-center gap-1.5">
+                  <Pencil className="w-4 h-4" />
+                  日报备注 & 总结
+                </h4>
+
+                {/* 已有备注列表 */}
+                <div className="space-y-2 mb-3">
+                  {(notesQuery.data || []).map((note: any) => (
+                    <div key={note.id} className="bg-muted/30 rounded-lg p-3 text-sm">
+                      <div className="flex items-center justify-between mb-1">
+                        <div className="flex items-center gap-1.5">
+                          <User className="w-3 h-3 text-muted-foreground" />
+                          <span className="font-medium text-xs">{note.userName}</span>
+                          <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${note.userRole === 'admin' ? 'bg-amber-100 text-amber-700' : 'bg-blue-100 text-blue-700'}`}>
+                            {note.userRole === 'admin' ? '管理员' : '客服'}
+                          </span>
+                          <span className="text-[10px] text-muted-foreground">
+                            {new Date(note.createdAt).toLocaleString('zh-CN', { hour: '2-digit', minute: '2-digit' })}
+                          </span>
+                        </div>
+                        {(note.userId === user?.id || isAdmin) && (
+                          <div className="flex items-center gap-1">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-5 w-5"
+                              onClick={() => {
+                                setEditingNoteId(note.id);
+                                setEditingNoteContent(note.content);
+                              }}
+                            >
+                              <Pencil className="w-3 h-3" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-5 w-5 text-destructive"
+                              onClick={() => {
+                                if (confirm("确定删除该备注？")) deleteNoteMutation.mutate({ id: note.id });
+                              }}
+                            >
+                              <Trash2 className="w-3 h-3" />
+                            </Button>
+                          </div>
+                        )}
+                      </div>
+                      {editingNoteId === note.id ? (
+                        <div className="flex gap-2 mt-1">
+                          <Textarea
+                            value={editingNoteContent}
+                            onChange={(e) => setEditingNoteContent(e.target.value)}
+                            className="text-xs min-h-[60px]"
+                          />
+                          <div className="flex flex-col gap-1">
+                            <Button
+                              size="sm"
+                              className="h-7 text-xs"
+                              onClick={() => updateNoteMutation.mutate({ id: note.id, content: editingNoteContent })}
+                              disabled={updateNoteMutation.isPending || !editingNoteContent.trim()}
+                            >
+                              保存
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="h-7 text-xs"
+                              onClick={() => { setEditingNoteId(null); setEditingNoteContent(""); }}
+                            >
+                              取消
+                            </Button>
+                          </div>
+                        </div>
+                      ) : (
+                        <p className="text-xs text-foreground whitespace-pre-wrap">{note.content}</p>
+                      )}
+                    </div>
+                  ))}
+                  {(notesQuery.data || []).length === 0 && (
+                    <p className="text-xs text-muted-foreground text-center py-2">还没有备注，在下方添加总结或反映问题</p>
+                  )}
+                </div>
+
+                {/* 新增备注输入框 */}
+                <div className="flex gap-2">
+                  <Textarea
+                    placeholder="写下今日总结或反映问题..."
+                    value={noteContent}
+                    onChange={(e) => setNoteContent(e.target.value)}
+                    className="text-xs min-h-[60px]"
+                  />
+                  <Button
+                    size="sm"
+                    className="h-auto px-3"
+                    onClick={() => createNoteMutation.mutate({ reportDate, content: noteContent })}
+                    disabled={createNoteMutation.isPending || !noteContent.trim()}
+                  >
+                    <Send className="w-4 h-4" />
+                  </Button>
+                </div>
               </div>
             </div>
           )}
