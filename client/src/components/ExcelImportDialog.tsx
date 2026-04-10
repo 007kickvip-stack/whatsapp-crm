@@ -187,10 +187,10 @@ export default function ExcelImportDialog({ open, onOpenChange, onSuccess }: Exc
           }
         });
         return obj;
-      }).filter((row) => row.customerWhatsapp && row.orderNumber);
+      }).filter((row) => row.orderNumber || row.originalOrderNo);
 
       if (parsed.length === 0) {
-        toast.error("没有找到有效的数据行（需要客户WhatsApp和订单编号）");
+        toast.error("没有找到有效的数据行（需要订单编号或原订单号）");
         return;
       }
 
@@ -260,7 +260,7 @@ export default function ExcelImportDialog({ open, onOpenChange, onSuccess }: Exc
     }
   }, []);
 
-  const uniqueOrders = new Set(previewData.map((r) => `${r.orderNumber}||${r.customerWhatsapp}`)).size;
+  const uniqueOrders = new Set(previewData.map((r) => `${r.orderNumber || r.originalOrderNo || ""}||${r.customerWhatsapp || ""}`)).size;
 
   return (
     <Dialog open={open} onOpenChange={(v) => { if (!v) handleClose(); else onOpenChange(v); }}>
@@ -293,7 +293,7 @@ export default function ExcelImportDialog({ open, onOpenChange, onSuccess }: Exc
                 <p className="font-medium">使用方法</p>
                 <p className="text-muted-foreground mt-1">
                   1. 准备包含订单数据的 Excel 文件（第一行为表头）<br />
-                  2. 必须包含「客户WhatsApp」和「订单编号」列<br />
+                  2. 必须包含「订单编号」或「原订单号」列（至少包含其中一个）<br />
                   3. 系统会自动识别列名并映射到对应字段<br />
                   4. 不确定格式？可以先下载模板填写
                 </p>

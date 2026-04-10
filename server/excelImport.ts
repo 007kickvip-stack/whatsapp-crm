@@ -120,12 +120,12 @@ export function registerExcelImportRoute(app: Express) {
       const headerRow = rawData[0].map(String);
       const fieldMapping = mapHeaders(headerRow);
 
-      // Check required fields
-      const hasWhatsapp = fieldMapping.includes("customerWhatsapp");
+      // Check required fields: must have orderNumber or originalOrderNo (at least one)
       const hasOrderNumber = fieldMapping.includes("orderNumber");
-      if (!hasWhatsapp || !hasOrderNumber) {
+      const hasOriginalOrderNo = fieldMapping.includes("originalOrderNo");
+      if (!hasOrderNumber && !hasOriginalOrderNo) {
         res.status(400).json({
-          error: "Excel 文件必须包含「客户WhatsApp」和「订单编号」列",
+          error: "Excel 文件必须包含「订单编号」或「原订单号」列（至少包含其中一个）",
           detectedHeaders: headerRow,
           mapping: fieldMapping,
         });
@@ -143,17 +143,18 @@ export function registerExcelImportRoute(app: Express) {
           }
         });
         return obj;
-      }).filter((row) => row.customerWhatsapp && row.orderNumber);
+      }).filter((row) => row.orderNumber || row.originalOrderNo);
 
       if (parsedRows.length === 0) {
-        res.status(400).json({ error: "没有找到有效的数据行（需要客户WhatsApp和订单编号）" });
+        res.status(400).json({ error: "没有找到有效的数据行（需要订单编号或原订单号）" });
         return;
       }
 
-      // Group rows by orderNumber + customerWhatsapp
+      // Group rows by orderNumber (or originalOrderNo if no orderNumber) + customerWhatsapp
       const orderGroups = new Map<string, Record<string, string>[]>();
       for (const row of parsedRows) {
-        const key = `${row.orderNumber}||${row.customerWhatsapp}`;
+        const orderKey = row.orderNumber || row.originalOrderNo || "";
+        const key = `${orderKey}||${row.customerWhatsapp || ""}`;
         if (!orderGroups.has(key)) orderGroups.set(key, []);
         orderGroups.get(key)!.push(row);
       }
@@ -169,27 +170,32 @@ export function registerExcelImportRoute(app: Express) {
         try {
           const first = groupRows[0];
 
-          // Auto-create customer if not exists
-          let existingCustomer = await getCustomerByWhatsapp(first.customerWhatsapp);
+          // Auto-create customer if WhatsApp is provided
           let customerId: number | undefined;
-          if (!existingCustomer) {
-            customerId = await createCustomer({
-              whatsapp: first.customerWhatsapp,
-              customerType: first.customerType || "新零售",
-              createdById: user.id,
-            });
-          } else {
-            customerId = existingCustomer.id;
+          if (first.customerWhatsapp) {
+            let existingCustomer = await getCustomerByWhatsapp(first.customerWhatsapp);
+            if (!existingCustomer) {
+              customerId = await createCustomer({
+                whatsapp: first.customerWhatsapp,
+                customerType: first.customerType || "新零售",
+                createdById: user.id,
+              });
+            } else {
+              customerId = existingCustomer.id;
+            }
           }
+
+          // Use orderNumber or fallback to originalOrderNo
+          const effectiveOrderNumber = first.orderNumber || first.originalOrderNo || "";
 
           // Create order
           const orderId = await createOrder({
             orderDate: first.orderDate ? new Date(first.orderDate) : null,
             account: first.account || undefined,
-            customerWhatsapp: first.customerWhatsapp,
+            customerWhatsapp: first.customerWhatsapp || "",
             customerId,
             customerType: first.customerType || "新零售",
-            orderNumber: first.orderNumber,
+            orderNumber: effectiveOrderNumber,
             orderStatus: first.orderStatus || "已报货，待发货",
             paymentStatus: first.paymentStatus || "未付款",
             remarks: first.remarks || undefined,
@@ -214,7 +220,7 @@ export function registerExcelImportRoute(app: Express) {
 
             await createOrderItem({
               orderId,
-              orderNumber: row.orderNumber,
+              orderNumber: row.orderNumber || effectiveOrderNumber,
               size: row.size || undefined,
               domesticTrackingNo: row.domesticTrackingNo || undefined,
               sizeRecommendation: row.sizeRecommendation || undefined,
@@ -242,7 +248,7 @@ export function registerExcelImportRoute(app: Express) {
           }
 
           await recalculateOrderTotals(orderId);
-          results.push({ orderId, orderNumber: first.orderNumber });
+          results.push({ orderId, orderNumber: effectiveOrderNumber });
         } catch (err: any) {
           errors.push(`订单 ${groupRows[0].orderNumber}: ${err.message}`);
         }
