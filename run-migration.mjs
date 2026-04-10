@@ -1,19 +1,6 @@
 import mysql from 'mysql2/promise';
-import fs from 'fs';
-import path from 'path';
-import { fileURLToPath } from 'url';
-
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const migrationSQL = fs.readFileSync(
-  path.join(__dirname, 'drizzle/0010_kind_makkari.sql'),
-  'utf-8'
-);
 
 const conn = await mysql.createConnection(process.env.DATABASE_URL);
-const statements = migrationSQL.split(';').filter(s => s.trim());
-for (const stmt of statements) {
-  await conn.execute(stmt);
-  console.log('Executed:', stmt.substring(0, 80) + '...');
-}
-console.log('Migration done: daily_report_notes table created');
+await conn.execute("ALTER TABLE `users` ADD `hireDate` date;");
+console.log("Migration done: added hireDate to users table");
 await conn.end();

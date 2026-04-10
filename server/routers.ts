@@ -6,7 +6,7 @@ import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import {
   listUsers, updateUserRole, deleteUser, getUserById, createUser,
-  getUserByUsername, verifyPassword, updateUserPassword, updateUserUsername,
+  getUserByUsername, verifyPassword, updateUserPassword, updateUserUsername, updateUserHireDate,
   createCustomer, updateCustomer, deleteCustomer, getCustomerById, getCustomerByWhatsapp, listCustomers,
   createOrder, updateOrder, deleteOrder, getOrderById, getOrderWithItems, listOrders,
   createOrderItem, updateOrderItem, deleteOrderItem, getOrderItemById, getOrderItemsByOrderId, recalculateOrderTotals,
@@ -83,6 +83,7 @@ export const appRouter = router({
       username: z.string().min(2).optional(),
       password: z.string().min(4).optional(),
       role: z.enum(["user", "admin"]).default("user"),
+      hireDate: z.string().optional(),
     })).mutation(async ({ input }) => {
       if (input.username) {
         const existing = await getUserByUsername(input.username);
@@ -92,6 +93,14 @@ export const appRouter = router({
       }
       const result = await createUser(input);
       return result;
+    }),
+
+    updateHireDate: adminProcedure.input(z.object({
+      userId: z.number(),
+      hireDate: z.string().nullable(),
+    })).mutation(async ({ input }) => {
+      await updateUserHireDate(input.userId, input.hireDate);
+      return { success: true };
     }),
 
     setPassword: adminProcedure.input(z.object({

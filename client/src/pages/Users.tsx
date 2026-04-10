@@ -43,6 +43,7 @@ import {
   KeyRound,
   Eye,
   EyeOff,
+  CalendarDays,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useLocation } from "wouter";
@@ -64,6 +65,7 @@ export default function UsersPage() {
     username: "",
     password: "",
     role: "user" as "user" | "admin",
+    hireDate: "",
   });
   const [showAddPassword, setShowAddPassword] = useState(false);
 
@@ -106,7 +108,7 @@ export default function UsersPage() {
       toast.success("账号创建成功，用户可使用用户名和密码登录");
       utils.users.list.invalidate();
       setShowAddDialog(false);
-      setAddForm({ name: "", email: "", username: "", password: "", role: "user" });
+      setAddForm({ name: "", email: "", username: "", password: "", role: "user", hireDate: "" });
     },
     onError: (err) => toast.error(err.message),
   });
@@ -151,6 +153,7 @@ export default function UsersPage() {
       username: addForm.username.trim(),
       password: addForm.password,
       role: addForm.role,
+      hireDate: addForm.hireDate || undefined,
     });
   };
 
@@ -206,7 +209,7 @@ export default function UsersPage() {
         </div>
         <Button
           onClick={() => {
-            setAddForm({ name: "", email: "", username: "", password: "", role: "user" });
+            setAddForm({ name: "", email: "", username: "", password: "", role: "user", hireDate: "" });
             setShowAddPassword(false);
             setShowAddDialog(true);
           }}
@@ -233,6 +236,7 @@ export default function UsersPage() {
                       <th className="text-left py-3 px-4 font-medium text-muted-foreground">邮箱</th>
                       <th className="text-left py-3 px-4 font-medium text-muted-foreground">角色</th>
                       <th className="text-left py-3 px-4 font-medium text-muted-foreground">登录方式</th>
+                      <th className="text-left py-3 px-4 font-medium text-muted-foreground">入职时间</th>
                       <th className="text-left py-3 px-4 font-medium text-muted-foreground">最后登录</th>
                       <th className="text-left py-3 px-4 font-medium text-muted-foreground">注册时间</th>
                       <th className="text-right py-3 px-4 font-medium text-muted-foreground">操作</th>
@@ -299,6 +303,9 @@ export default function UsersPage() {
                             <Badge variant="outline" className="text-xs">
                               {u.loginMethod === "password" ? "密码登录" : u.loginMethod === "manual" ? "手动创建" : "OAuth"}
                             </Badge>
+                          </td>
+                          <td className="py-3 px-4 text-muted-foreground">
+                            {(u as any).hireDate ? new Date((u as any).hireDate).toLocaleDateString() : <span className="text-muted-foreground/50">-</span>}
                           </td>
                           <td className="py-3 px-4 text-muted-foreground">
                             {new Date(u.lastSignedIn).toLocaleString()}
@@ -440,6 +447,15 @@ export default function UsersPage() {
                   </SelectItem>
                 </SelectContent>
               </Select>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="add-hireDate">入职时间</Label>
+              <Input
+                id="add-hireDate"
+                type="date"
+                value={addForm.hireDate}
+                onChange={(e) => setAddForm((f) => ({ ...f, hireDate: e.target.value }))}
+              />
             </div>
             <div className="rounded-lg bg-emerald-50 border border-emerald-200 p-3 text-sm text-emerald-800">
               <p className="font-medium mb-1">提示</p>

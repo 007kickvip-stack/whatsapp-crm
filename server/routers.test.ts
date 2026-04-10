@@ -8,6 +8,9 @@ vi.mock("./db", () => ({
   updateUserRole: vi.fn().mockResolvedValue(undefined),
   deleteUser: vi.fn().mockResolvedValue(undefined),
   getUserById: vi.fn().mockResolvedValue(null),
+  createUser: vi.fn().mockResolvedValue({ id: 10, openId: "manual-test" }),
+  getUserByUsername: vi.fn().mockResolvedValue(null),
+  updateUserHireDate: vi.fn().mockResolvedValue(undefined),
   createCustomer: vi.fn().mockResolvedValue(1),
   updateCustomer: vi.fn().mockResolvedValue(undefined),
   deleteCustomer: vi.fn().mockResolvedValue(undefined),
@@ -1116,5 +1119,67 @@ describe("Daily Report Notes", () => {
     const ctx = createStaffContext();
     const caller = appRouter.createCaller(ctx);
     await expect(caller.dailyData.deleteNote({ id: 1 })).rejects.toThrow("无权删除他人的备注");
+  });
+});
+
+describe("users.create with hireDate", () => {
+  it("admin can create user with hireDate", async () => {
+    const { createUser } = await import("./db");
+    const ctx = createAdminContext();
+    const caller = appRouter.createCaller(ctx);
+    const result = await caller.users.create({
+      name: "New Staff",
+      username: "newstaff",
+      password: "test1234",
+      role: "user",
+      hireDate: "2026-03-15",
+    });
+    expect(result.id).toBe(10);
+    expect(createUser).toHaveBeenCalledWith(expect.objectContaining({
+      name: "New Staff",
+      hireDate: "2026-03-15",
+    }));
+  });
+
+  it("admin can create user without hireDate", async () => {
+    const { createUser } = await import("./db");
+    const ctx = createAdminContext();
+    const caller = appRouter.createCaller(ctx);
+    const result = await caller.users.create({
+      name: "Another Staff",
+      username: "another",
+      password: "test1234",
+      role: "user",
+    });
+    expect(result.id).toBe(10);
+    expect(createUser).toHaveBeenCalledWith(expect.objectContaining({
+      name: "Another Staff",
+    }));
+  });
+});
+
+describe("users.updateHireDate", () => {
+  it("admin can update hire date", async () => {
+    const { updateUserHireDate } = await import("./db");
+    const ctx = createAdminContext();
+    const caller = appRouter.createCaller(ctx);
+    const result = await caller.users.updateHireDate({
+      userId: 5,
+      hireDate: "2026-01-10",
+    });
+    expect(result.success).toBe(true);
+    expect(updateUserHireDate).toHaveBeenCalledWith(5, "2026-01-10");
+  });
+
+  it("admin can clear hire date", async () => {
+    const { updateUserHireDate } = await import("./db");
+    const ctx = createAdminContext();
+    const caller = appRouter.createCaller(ctx);
+    const result = await caller.users.updateHireDate({
+      userId: 5,
+      hireDate: null,
+    });
+    expect(result.success).toBe(true);
+    expect(updateUserHireDate).toHaveBeenCalledWith(5, null);
   });
 });

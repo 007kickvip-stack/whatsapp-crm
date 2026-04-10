@@ -119,7 +119,7 @@ export function verifyPassword(password: string, storedHash: string): boolean {
   return computed === hash;
 }
 
-export async function createUser(data: { name: string; email?: string; role?: "user" | "admin"; username?: string; password?: string }) {
+export async function createUser(data: { name: string; email?: string; role?: "user" | "admin"; username?: string; password?: string; hireDate?: string }) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
   const openId = `manual-${nanoid()}`;
@@ -131,6 +131,7 @@ export async function createUser(data: { name: string; email?: string; role?: "u
     username: data.username || null,
     password: hashedPassword,
     role: data.role || "user",
+    hireDate: data.hireDate ? new Date(data.hireDate + "T00:00:00") : null,
     loginMethod: "password",
     lastSignedIn: new Date(),
   });
@@ -149,6 +150,12 @@ export async function updateUserPassword(userId: number, password: string) {
   if (!db) return;
   const hashedPassword = hashPassword(password);
   await db.update(users).set({ password: hashedPassword }).where(eq(users.id, userId));
+}
+
+export async function updateUserHireDate(userId: number, hireDate: string | null) {
+  const db = await getDb();
+  if (!db) return;
+  await db.update(users).set({ hireDate: hireDate ? new Date(hireDate + "T00:00:00") : null }).where(eq(users.id, userId));
 }
 
 export async function updateUserUsername(userId: number, username: string) {
