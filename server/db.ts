@@ -283,12 +283,13 @@ export async function listOrders(params: {
   orderStatus?: string;
   paymentStatus?: string;
   customerWhatsapp?: string;
+  internationalTrackingNo?: string;
   dateFrom?: string;
   dateTo?: string;
 }) {
   const db = await getDb();
   if (!db) return { data: [], total: 0 };
-  const { page = 1, pageSize = 20, search, staffId, staffName, account, customerType, orderNumber, orderStatus, paymentStatus, customerWhatsapp, dateFrom, dateTo } = params;
+  const { page = 1, pageSize = 20, search, staffId, staffName, account, customerType, orderNumber, orderStatus, paymentStatus, customerWhatsapp, internationalTrackingNo, dateFrom, dateTo } = params;
   const offset = (page - 1) * pageSize;
   const conditions: SQL[] = [];
   if (search) {
@@ -323,6 +324,9 @@ export async function listOrders(params: {
   }
   if (customerWhatsapp) {
     conditions.push(like(orders.customerWhatsapp, `%${customerWhatsapp}%`));
+  }
+  if (internationalTrackingNo) {
+    conditions.push(sql`${orders.id} IN (SELECT ${orderItems.orderId} FROM ${orderItems} WHERE ${orderItems.internationalTrackingNo} LIKE ${'%' + internationalTrackingNo + '%'})`);
   }
   if (dateFrom && dateTo) {
     conditions.push(sql`${orders.orderDate} >= ${dateFrom} AND ${orders.orderDate} <= ${dateTo}`);
@@ -569,12 +573,13 @@ export async function exportOrders(params: {
   orderStatus?: string;
   paymentStatus?: string;
   customerWhatsapp?: string;
+  internationalTrackingNo?: string;
   dateFrom?: string;
   dateTo?: string;
 }) {
   const db = await getDb();
   if (!db) return [];
-  const { search, staffId, staffName, account, customerType, orderNumber, orderStatus, paymentStatus, customerWhatsapp, dateFrom, dateTo } = params;
+  const { search, staffId, staffName, account, customerType, orderNumber, orderStatus, paymentStatus, customerWhatsapp, internationalTrackingNo, dateFrom, dateTo } = params;
   const conditions: SQL[] = [];
   if (search) {
     conditions.push(
@@ -608,6 +613,9 @@ export async function exportOrders(params: {
   }
   if (customerWhatsapp) {
     conditions.push(like(orders.customerWhatsapp, `%${customerWhatsapp}%`));
+  }
+  if (internationalTrackingNo) {
+    conditions.push(sql`${orders.id} IN (SELECT ${orderItems.orderId} FROM ${orderItems} WHERE ${orderItems.internationalTrackingNo} LIKE ${'%' + internationalTrackingNo + '%'})`);
   }
   if (dateFrom && dateTo) {
     conditions.push(sql`${orders.orderDate} >= ${dateFrom} AND ${orders.orderDate} <= ${dateTo}`);

@@ -25,9 +25,9 @@ import {
   CheckCircle2,
   Loader2,
   ArrowRight,
-  Package,
   Download,
   RefreshCw,
+  XCircle,
 } from "lucide-react";
 import { toast } from "sonner";
 import { trpc } from "@/lib/trpc";
@@ -56,6 +56,22 @@ const PREVIEW_FIELDS = [
   { key: "remarks", label: "备注" },
 ];
 
+type PreviewRow = Record<string, string> & {
+  _matched: boolean;
+  _matchType: string;
+  _updatableFields: string[];
+};
+
+type PreviewResult = {
+  success: boolean;
+  totalRows: number;
+  matchedCount: number;
+  unmatchedCount: number;
+  rows: PreviewRow[];
+  detectedHeaders: string[];
+  mapping: { header: string; field: string }[];
+};
+
 type UpdateResult = {
   success: boolean;
   updated: number;
@@ -71,8 +87,8 @@ export default function ExcelImportDialog({ open, onOpenChange, onSuccess }: Exc
   const [step, setStep] = useState<"upload" | "preview" | "result">("upload");
   const [file, setFile] = useState<File | null>(null);
   const [importing, setImporting] = useState(false);
-  const [previewData, setPreviewData] = useState<Record<string, string>[]>([]);
-  const [mappingInfo, setMappingInfo] = useState<{ header: string; field: string }[]>([]);
+  const [previewing, setPreviewing] = useState(false);
+  const [previewResult, setPreviewResult] = useState<PreviewResult | null>(null);
   const [importResult, setImportResult] = useState<UpdateResult | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const utils = trpc.useUtils();
@@ -80,10 +96,10 @@ export default function ExcelImportDialog({ open, onOpenChange, onSuccess }: Exc
   const handleClose = useCallback(() => {
     setStep("upload");
     setFile(null);
-    setPreviewData([]);
-    setMappingInfo([]);
+    setPreviewResult(null);
     setImportResult(null);
     setImporting(false);
+    setPreviewing(false);
     onOpenChange(false);
   }, [onOpenChange]);
 
@@ -112,97 +128,37 @@ export default function ExcelImportDialog({ open, onOpenChange, onSuccess }: Exc
     setFile(selected);
   }, []);
 
-  // Parse file client-side for preview
+  // Upload file to server for preview with match status
   const handlePreview = useCallback(async () => {
     if (!file) {
       toast.error("请先选择文件");
       return;
     }
 
+    setPreviewing(true);
     try {
-      const XLSX = await import("xlsx");
-      const buffer = await file.arrayBuffer();
-      const workbook = XLSX.read(buffer, { type: "array" });
-      const sheetName = workbook.SheetNames[0];
-      if (!sheetName) {
-        toast.error("Excel 文件中没有工作表");
-        return;
-      }
+      const formData = new FormData();
+      formData.append("file", file);
 
-      const sheet = workbook.Sheets[sheetName];
-      const rawData: string[][] = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "" });
-
-      if (rawData.length < 2) {
-        toast.error("Excel 文件至少需要包含表头行和一行数据");
-        return;
-      }
-
-      const headerRow = rawData[0].map(String);
-      const dataRows = rawData.slice(1).filter((row) => row.some((cell) => String(cell).trim()));
-
-      const HEADER_MAP: Record<string, string> = {
-        "日期": "orderDate", "订单日期": "orderDate",
-        "账号": "account",
-        "客户whatsapp": "customerWhatsapp", "whatsapp": "customerWhatsapp",
-        "客户属性": "customerType",
-        "订单编号": "orderNumber", "订单号": "orderNumber",
-        "size": "size", "尺码": "size",
-        "国内单号": "domesticTrackingNo",
-        "推荐码数": "sizeRecommendation",
-        "联系方式": "contactInfo",
-        "国际跟踪单号": "internationalTrackingNo", "国际单号": "internationalTrackingNo",
-        "原订单号": "originalOrderNo", "原单号": "originalOrderNo",
-        "发出日期": "shipDate",
-        "件数": "quantity", "数量": "quantity",
-        "货源": "source",
-        "订单状态": "orderStatus",
-        "总金额$": "amountUsd",
-        "售价": "sellingPrice",
-        "产品成本": "productCost", "成本": "productCost",
-        "收取运费": "shippingCharged", "收取运费(¥)": "shippingCharged",
-        "实际运费": "shippingActual",
-        "备注": "remarks",
-        "付款状态": "paymentStatus",
-      };
-
-      const fieldMapping = headerRow.map((h) => {
-        const normalized = h.trim().toLowerCase();
-        for (const [key, val] of Object.entries(HEADER_MAP)) {
-          if (key.toLowerCase() === normalized || key === h.trim()) return val;
-        }
-        return "_skip";
+      const response = await fetch("/api/excel-preview", {
+        method: "POST",
+        body: formData,
       });
 
-      const hasOrderNumber = fieldMapping.includes("orderNumber");
-      const hasOriginalOrderNo = fieldMapping.includes("originalOrderNo");
-      if (!hasOrderNumber && !hasOriginalOrderNo) {
-        toast.error("Excel 文件必须包含「订单编号」或「原订单号」列（至少一个）");
+      const result = await response.json();
+
+      if (!response.ok) {
+        toast.error(result.error || "预览失败");
+        setPreviewing(false);
         return;
       }
 
-      const mapping = headerRow.map((h, i) => ({ header: h, field: fieldMapping[i] }));
-      setMappingInfo(mapping);
-
-      const parsed = dataRows.map((row) => {
-        const obj: Record<string, string> = {};
-        fieldMapping.forEach((field, idx) => {
-          if (field !== "_skip" && row[idx] !== undefined) {
-            const val = String(row[idx]).trim();
-            if (val) obj[field] = val;
-          }
-        });
-        return obj;
-      }).filter((row) => row.orderNumber || row.originalOrderNo);
-
-      if (parsed.length === 0) {
-        toast.error("没有找到有效的数据行（需要订单编号或原订单号）");
-        return;
-      }
-
-      setPreviewData(parsed);
+      setPreviewResult(result);
       setStep("preview");
     } catch (err: any) {
-      toast.error("解析文件失败: " + (err.message || "未知错误"));
+      toast.error(err.message || "预览失败");
+    } finally {
+      setPreviewing(false);
     }
   }, [file]);
 
@@ -266,11 +222,15 @@ export default function ExcelImportDialog({ open, onOpenChange, onSuccess }: Exc
     }
   }, []);
 
-  const totalRows = previewData.length;
+  const previewRows = previewResult?.rows || [];
+  const matchedCount = previewResult?.matchedCount || 0;
+  const unmatchedCount = previewResult?.unmatchedCount || 0;
+  const totalRows = previewResult?.totalRows || 0;
+  const visibleFields = PREVIEW_FIELDS.filter((f) => previewRows.some((row) => row[f.key]));
 
   return (
     <Dialog open={open} onOpenChange={(v) => { if (!v) handleClose(); else onOpenChange(v); }}>
-      <DialogContent className="max-w-4xl max-h-[85vh] flex flex-col">
+      <DialogContent className="max-w-5xl max-h-[85vh] flex flex-col">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <FileSpreadsheet className="h-5 w-5" />
@@ -285,7 +245,7 @@ export default function ExcelImportDialog({ open, onOpenChange, onSuccess }: Exc
         <div className="flex items-center gap-2 text-xs text-muted-foreground px-1">
           <Badge variant={step === "upload" ? "default" : "secondary"} className="text-[10px]">1. 上传文件</Badge>
           <ArrowRight className="h-3 w-3" />
-          <Badge variant={step === "preview" ? "default" : "secondary"} className="text-[10px]">2. 预览数据</Badge>
+          <Badge variant={step === "preview" ? "default" : "secondary"} className="text-[10px]">2. 预览匹配</Badge>
           <ArrowRight className="h-3 w-3" />
           <Badge variant={step === "result" ? "default" : "secondary"} className="text-[10px]">3. 更新结果</Badge>
         </div>
@@ -342,20 +302,39 @@ export default function ExcelImportDialog({ open, onOpenChange, onSuccess }: Exc
           </div>
         )}
 
-        {/* Step 2: Preview */}
-        {step === "preview" && (
+        {/* Step 2: Preview with match status */}
+        {step === "preview" && previewResult && (
           <div className="flex-1 flex flex-col gap-3 min-h-0">
+            {/* Match summary */}
             <div className="flex items-center gap-4 text-sm">
               <div className="flex items-center gap-1.5">
-                <RefreshCw className="h-4 w-4 text-blue-500" />
-                <span>将通过订单编号/原订单号匹配并更新 <span className="font-bold text-blue-600">{totalRows}</span> 条数据</span>
+                <span>共 <span className="font-bold">{totalRows}</span> 条数据：</span>
               </div>
+              <div className="flex items-center gap-1.5">
+                <CheckCircle2 className="h-4 w-4 text-emerald-500" />
+                <span className="text-emerald-600 font-medium">{matchedCount} 条已匹配</span>
+              </div>
+              {unmatchedCount > 0 && (
+                <div className="flex items-center gap-1.5">
+                  <XCircle className="h-4 w-4 text-red-500" />
+                  <span className="text-red-600 font-medium">{unmatchedCount} 条未匹配</span>
+                </div>
+              )}
             </div>
 
+            {unmatchedCount > 0 && (
+              <div className="flex items-start gap-2 p-2 rounded-lg bg-amber-50 border border-amber-200 text-xs">
+                <AlertCircle className="h-3.5 w-3.5 mt-0.5 text-amber-500 shrink-0" />
+                <span className="text-amber-700">
+                  未匹配的行将被跳过，不会进行更新。请检查订单编号或原订单号是否正确。
+                </span>
+              </div>
+            )}
+
             {/* Mapping info */}
-            {mappingInfo.length > 0 && (
+            {previewResult.mapping.length > 0 && (
               <div className="flex flex-wrap gap-1">
-                {mappingInfo.filter((m) => m.field !== "_skip").map((m, i) => (
+                {previewResult.mapping.filter((m) => m.field !== "_skip").map((m, i) => (
                   <Badge key={i} variant="outline" className="text-[10px] gap-1">
                     {m.header} → {PREVIEW_FIELDS.find((f) => f.key === m.field)?.label || m.field}
                   </Badge>
@@ -368,16 +347,30 @@ export default function ExcelImportDialog({ open, onOpenChange, onSuccess }: Exc
                 <TableHeader>
                   <TableRow>
                     <TableHead className="w-8">#</TableHead>
-                    {PREVIEW_FIELDS.filter((f) => previewData.some((row) => row[f.key])).map((f) => (
+                    <TableHead className="text-xs whitespace-nowrap w-[80px]">匹配状态</TableHead>
+                    {visibleFields.map((f) => (
                       <TableHead key={f.key} className="text-xs whitespace-nowrap">{f.label}</TableHead>
                     ))}
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {previewData.slice(0, 50).map((row, rowIdx) => (
-                    <TableRow key={rowIdx}>
+                  {previewRows.slice(0, 100).map((row, rowIdx) => (
+                    <TableRow key={rowIdx} className={row._matched ? "" : "bg-red-50/50"}>
                       <TableCell className="text-xs text-muted-foreground">{rowIdx + 1}</TableCell>
-                      {PREVIEW_FIELDS.filter((f) => previewData.some((r) => r[f.key])).map((f) => (
+                      <TableCell className="text-xs">
+                        {row._matched ? (
+                          <div className="flex items-center gap-1">
+                            <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />
+                            <span className="text-emerald-600 font-medium">已匹配</span>
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-1">
+                            <XCircle className="h-3.5 w-3.5 text-red-500" />
+                            <span className="text-red-600 font-medium">未匹配</span>
+                          </div>
+                        )}
+                      </TableCell>
+                      {visibleFields.map((f) => (
                         <TableCell key={f.key} className="text-xs max-w-[150px] truncate">
                           {row[f.key] || "-"}
                         </TableCell>
@@ -386,9 +379,9 @@ export default function ExcelImportDialog({ open, onOpenChange, onSuccess }: Exc
                   ))}
                 </TableBody>
               </Table>
-              {previewData.length > 50 && (
+              {previewRows.length > 100 && (
                 <p className="text-xs text-muted-foreground text-center py-2">
-                  仅显示前 50 行，共 {previewData.length} 行
+                  仅显示前 100 行，共 {previewRows.length} 行
                 </p>
               )}
             </ScrollArea>
@@ -424,16 +417,29 @@ export default function ExcelImportDialog({ open, onOpenChange, onSuccess }: Exc
           {step === "upload" && (
             <>
               <Button variant="outline" onClick={handleClose}>取消</Button>
-              <Button onClick={handlePreview} disabled={!file} className="gap-2">
-                <ArrowRight className="h-4 w-4" />
-                预览数据
+              <Button onClick={handlePreview} disabled={!file || previewing} className="gap-2">
+                {previewing ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    检查匹配中...
+                  </>
+                ) : (
+                  <>
+                    <ArrowRight className="h-4 w-4" />
+                    预览匹配
+                  </>
+                )}
               </Button>
             </>
           )}
           {step === "preview" && (
             <>
-              <Button variant="outline" onClick={() => setStep("upload")}>上一步</Button>
-              <Button onClick={handleImport} disabled={importing} className="gap-2">
+              <Button variant="outline" onClick={() => { setStep("upload"); setPreviewResult(null); }}>上一步</Button>
+              <Button
+                onClick={handleImport}
+                disabled={importing || matchedCount === 0}
+                className="gap-2"
+              >
                 {importing ? (
                   <>
                     <Loader2 className="h-4 w-4 animate-spin" />
@@ -442,7 +448,7 @@ export default function ExcelImportDialog({ open, onOpenChange, onSuccess }: Exc
                 ) : (
                   <>
                     <RefreshCw className="h-4 w-4" />
-                    确认更新 {totalRows} 条数据
+                    确认更新 {matchedCount} 条匹配数据
                   </>
                 )}
               </Button>

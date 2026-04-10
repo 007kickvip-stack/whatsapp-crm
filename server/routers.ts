@@ -191,6 +191,7 @@ export const appRouter = router({
       orderStatus: z.string().optional(),
       paymentStatus: z.string().optional(),
       customerWhatsapp: z.string().optional(),
+      internationalTrackingNo: z.string().optional(),
       dateFrom: z.string().optional(),
       dateTo: z.string().optional(),
     })).query(({ input, ctx }) => {
@@ -674,6 +675,7 @@ export const appRouter = router({
       orderStatus: z.string().optional(),
       paymentStatus: z.string().optional(),
       customerWhatsapp: z.string().optional(),
+      internationalTrackingNo: z.string().optional(),
       dateFrom: z.string().optional(),
       dateTo: z.string().optional(),
     })).mutation(async ({ input, ctx }) => {

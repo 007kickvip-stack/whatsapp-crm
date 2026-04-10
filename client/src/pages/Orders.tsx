@@ -475,6 +475,7 @@ export default function OrdersPage() {
   const [filterOrderNumber, setFilterOrderNumber] = useState("");
   const [filterStatus, setFilterStatus] = useState<string>("");
   const [filterPayment, setFilterPayment] = useState<string>("");
+  const [filterIntlTracking, setFilterIntlTracking] = useState("");
   const [previewImage, setPreviewImage] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
   const [excelImportOpen, setExcelImportOpen] = useState(false);
@@ -510,10 +511,11 @@ export default function OrdersPage() {
       orderNumber: filterOrderNumber || undefined,
       orderStatus: filterStatus || undefined,
       paymentStatus: filterPayment || undefined,
+      internationalTrackingNo: filterIntlTracking || undefined,
       dateFrom: filterDateFrom || undefined,
       dateTo: filterDateTo || undefined,
     }),
-    [page, search, filterStaffName, filterAccount, filterWhatsapp, filterCustomerType, filterOrderNumber, filterStatus, filterPayment, filterDateFrom, filterDateTo]
+    [page, search, filterStaffName, filterAccount, filterWhatsapp, filterCustomerType, filterOrderNumber, filterStatus, filterPayment, filterIntlTracking, filterDateFrom, filterDateTo]
   );
 
   const { data, isLoading } = trpc.orders.list.useQuery(queryInput);
@@ -657,12 +659,13 @@ export default function OrdersPage() {
     setFilterOrderNumber("");
     setFilterStatus("");
     setFilterPayment("");
+    setFilterIntlTracking("");
     setSearch("");
     setPage(1);
   };
 
   const hasActiveFilters =
-    filterDateFrom || filterDateTo || filterStaffName || filterAccount || filterWhatsapp || filterCustomerType || filterOrderNumber || filterStatus || filterPayment;
+    filterDateFrom || filterDateTo || filterStaffName || filterAccount || filterWhatsapp || filterCustomerType || filterOrderNumber || filterStatus || filterPayment || filterIntlTracking;
   const totalPages = Math.ceil((data?.total ?? 0) / 20);
 
   const exportMutation = trpc.export.orders.useMutation();
@@ -679,6 +682,7 @@ export default function OrdersPage() {
         orderNumber: filterOrderNumber || undefined,
         orderStatus: filterStatus || undefined,
         paymentStatus: filterPayment || undefined,
+        internationalTrackingNo: filterIntlTracking || undefined,
         dateFrom: filterDateFrom || undefined,
         dateTo: filterDateTo || undefined,
       });
@@ -1573,6 +1577,16 @@ export default function OrdersPage() {
                   ))}
                 </SelectContent>
               </Select>
+            </div>
+            {/* 国际跟踪单号 */}
+            <div className="space-y-1">
+              <Label className="text-[10px] text-muted-foreground">国际跟踪单号</Label>
+              <Input
+                placeholder="输入单号"
+                value={filterIntlTracking}
+                onChange={(e) => { setFilterIntlTracking(e.target.value); setPage(1); }}
+                className="h-8 text-xs"
+              />
             </div>
           </div>
         </CardContent>

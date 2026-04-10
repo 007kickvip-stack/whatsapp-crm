@@ -95,6 +95,129 @@ function mapHeaders(rawHeaders: string[]): string[] {
 }
 
 export function registerExcelImportRoute(app: Express) {
+  // Preview endpoint: parse Excel and check match status without updating
+  app.post("/api/excel-preview", upload.single("file"), async (req: Request, res: Response) => {
+    try {
+      let user;
+      try {
+        user = await sdk.authenticateRequest(req);
+      } catch {
+        res.status(401).json({ error: "未登录或登录已过期" });
+        return;
+      }
+
+      if (!req.file) {
+        res.status(400).json({ error: "请上传 Excel 文件" });
+        return;
+      }
+
+      const workbook = XLSX.read(req.file.buffer, { type: "buffer" });
+      const sheetName = workbook.SheetNames[0];
+      if (!sheetName) {
+        res.status(400).json({ error: "Excel 文件中没有工作表" });
+        return;
+      }
+
+      const sheet = workbook.Sheets[sheetName];
+      const rawData: string[][] = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "" });
+
+      if (rawData.length < 2) {
+        res.status(400).json({ error: "Excel 文件至少需要包含表头行和一行数据" });
+        return;
+      }
+
+      const headerRow = rawData[0].map(String);
+      const fieldMapping = mapHeaders(headerRow);
+
+      const hasOrderNumber = fieldMapping.includes("orderNumber");
+      const hasOriginalOrderNo = fieldMapping.includes("originalOrderNo");
+      if (!hasOrderNumber && !hasOriginalOrderNo) {
+        res.status(400).json({
+          error: "Excel 文件必须包含「订单编号」或「原订单号」列（至少包含其中一个）",
+          detectedHeaders: headerRow,
+          mapping: fieldMapping,
+        });
+        return;
+      }
+
+      const dataRows = rawData.slice(1).filter((row) => row.some((cell) => String(cell).trim()));
+      const parsedRows: Record<string, string>[] = dataRows.map((row) => {
+        const obj: Record<string, string> = {};
+        fieldMapping.forEach((field, idx) => {
+          if (field !== "_skip" && row[idx] !== undefined) {
+            const val = String(row[idx]).trim();
+            if (val) obj[field] = val;
+          }
+        });
+        return obj;
+      }).filter((row) => row.orderNumber || row.originalOrderNo);
+
+      if (parsedRows.length === 0) {
+        res.status(400).json({ error: "没有找到有效的数据行（需要订单编号或原订单号）" });
+        return;
+      }
+
+      // Collect identifiers
+      const orderNumbers = Array.from(new Set(parsedRows.map((r) => r.orderNumber).filter(Boolean)));
+      const originalOrderNos = Array.from(new Set(parsedRows.map((r) => r.originalOrderNo).filter(Boolean)));
+
+      // Query existing items
+      const [itemsByOrderNum, itemsByOrigNo] = await Promise.all([
+        findOrderItemsByOrderNumbers(orderNumbers),
+        findOrderItemsByOriginalOrderNos(originalOrderNos),
+      ]);
+
+      // Build lookup sets
+      const matchedOrderNums = new Set(itemsByOrderNum.map((r) => r.item.orderNumber || ""));
+      const matchedOrigNos = new Set(itemsByOrigNo.map((r) => r.item.originalOrderNo || ""));
+
+      // Build preview rows with match status
+      const previewRows = parsedRows.map((row) => {
+        let matched = false;
+        let matchType = "";
+        if (row.orderNumber && matchedOrderNums.has(row.orderNumber)) {
+          matched = true;
+          matchType = "orderNumber";
+        } else if (row.originalOrderNo && matchedOrigNos.has(row.originalOrderNo)) {
+          matched = true;
+          matchType = "originalOrderNo";
+        }
+
+        // Determine which fields will be updated
+        const updatableFields: string[] = [];
+        for (const [field, value] of Object.entries(row)) {
+          if (!value) continue;
+          if (UPDATABLE_ITEM_FIELDS.includes(field) || UPDATABLE_ORDER_FIELDS.includes(field)) {
+            updatableFields.push(field);
+          }
+        }
+
+        return {
+          ...row,
+          _matched: matched,
+          _matchType: matchType,
+          _updatableFields: updatableFields,
+        };
+      });
+
+      const matchedCount = previewRows.filter((r) => r._matched).length;
+      const unmatchedCount = previewRows.filter((r) => !r._matched).length;
+
+      res.json({
+        success: true,
+        totalRows: previewRows.length,
+        matchedCount,
+        unmatchedCount,
+        rows: previewRows,
+        detectedHeaders: headerRow,
+        mapping: fieldMapping.map((f, i) => ({ header: headerRow[i], field: f })),
+      });
+    } catch (err: any) {
+      console.error("[Excel Preview] Error:", err);
+      res.status(500).json({ error: err.message || "预览失败" });
+    }
+  });
+
   app.post("/api/excel-import", upload.single("file"), async (req: Request, res: Response) => {
     try {
       // Authenticate user
