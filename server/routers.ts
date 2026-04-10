@@ -28,10 +28,6 @@ import { sdk } from "./_core/sdk";
 import { ONE_YEAR_MS } from "@shared/const";
 import { storagePut } from "./storage";
 import { nanoid } from "nanoid";
-import {
-  hualeiTestConnection, hualeiQueryOrders, hualeiQueryFees,
-  hualeiQueryTracking, hualeiCreateOrder, hualeiGetShippingMethods,
-} from "./hualei";
 
 export const appRouter = router({
   system: systemRouter,
@@ -1103,109 +1099,6 @@ export const appRouter = router({
       const result = await reorderAccounts(input.items);
       await logAction(ctx, "update", "account", undefined, "批量排序", JSON.stringify(input.items));
       return result;
-    }),
-  }),
-
-  // ==================== 华磊科技系统对接 ====================
-  hualei: router({
-    testConnection: adminProcedure.mutation(async () => {
-      return await hualeiTestConnection();
-    }),
-
-    shippingMethods: protectedProcedure.query(async () => {
-      return await hualeiGetShippingMethods();
-    }),
-
-    queryOrders: protectedProcedure.input(z.object({
-      status: z.string().optional(),
-      startDate: z.string().optional(),
-      endDate: z.string().optional(),
-      documentCode: z.string().optional(),
-    })).query(async ({ input }) => {
-      return await hualeiQueryOrders(input.status, input.startDate, input.endDate, input.documentCode);
-    }),
-
-    queryFees: protectedProcedure.input(z.object({
-      documentCodes: z.array(z.string()),
-    })).query(async ({ input }) => {
-      return await hualeiQueryFees(input.documentCodes);
-    }),
-
-    queryTracking: protectedProcedure.input(z.object({
-      trackingNumber: z.string().optional(),
-      orderId: z.string().optional(),
-    })).query(async ({ input }) => {
-      return await hualeiQueryTracking(input.trackingNumber, input.orderId);
-    }),
-
-    createOrder: protectedProcedure.input(z.object({
-      productId: z.string(),
-      country: z.string(),
-      consigneeName: z.string(),
-      consigneeCompany: z.string().optional(),
-      consigneeState: z.string().optional(),
-      consigneeCity: z.string().optional(),
-      consigneePostcode: z.string(),
-      consigneeAddress: z.string(),
-      consigneeStreetNo: z.string().optional(),
-      consigneeTelephone: z.string().optional(),
-      consigneeEmail: z.string().optional(),
-      orderPiece: z.string().optional(),
-      weight: z.string().optional(),
-      length: z.string().optional(),
-      width: z.string().optional(),
-      height: z.string().optional(),
-      cargoType: z.string().optional(),
-      dutyType: z.string().optional(),
-      customNote: z.string().optional(),
-      customerInvoiceCode: z.string().optional(),
-      declarations: z.array(z.object({
-        skuCode: z.string().optional(),
-        enName: z.string(),
-        cnName: z.string().optional(),
-        pieces: z.number(),
-        weight: z.number(),
-        price: z.number(),
-        hsCode: z.string().optional(),
-      })).optional(),
-    })).mutation(async ({ input, ctx }) => {
-      const result = await hualeiCreateOrder(input);
-      await logAction(ctx, "hualei_create_order", "hualei_order", undefined, input.customerInvoiceCode, JSON.stringify({ ...input, result }));
-      return result;
-    }),
-
-    // 同步跟踪单号和费用到CRM订单
-    syncFees: protectedProcedure.input(z.object({
-      orderItemIds: z.array(z.number()),
-      documentCodes: z.array(z.string()),
-    })).mutation(async ({ input, ctx }) => {
-      const fees = await hualeiQueryFees(input.documentCodes);
-      const results: Array<{ orderItemId: number; documentCode: string; success: boolean; trackingNumber?: string; totalFee?: number }> = [];
-
-      for (let i = 0; i < input.orderItemIds.length; i++) {
-        const orderItemId = input.orderItemIds[i];
-        const docCode = input.documentCodes[i];
-        const fee = fees.find(f => f.documentCode === docCode);
-
-        if (fee) {
-          // Update order item with tracking number and actual shipping fee
-          await updateOrderItem(orderItemId, {
-            internationalTrackingNo: fee.trackingNumber,
-            shippingActual: String(fee.total),
-          });
-          // Recalculate order totals
-          const item = await getOrderItemById(orderItemId);
-          if (item) {
-            await recalculateOrderTotals(item.orderId);
-          }
-          results.push({ orderItemId, documentCode: docCode, success: true, trackingNumber: fee.trackingNumber, totalFee: fee.total });
-        } else {
-          results.push({ orderItemId, documentCode: docCode, success: false });
-        }
-      }
-
-      await logAction(ctx, "hualei_sync_fees", "order_item", undefined, `同步${results.filter(r => r.success).length}条`, JSON.stringify(results));
-      return results;
     }),
   }),
 });

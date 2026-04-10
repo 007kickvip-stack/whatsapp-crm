@@ -17,7 +17,6 @@ import ProfitReportPage from "./pages/ProfitReport";
 import StaffTargetsPage from "./pages/StaffTargets";
 import DailyDataPage from "./pages/DailyData";
 import AccountManagementPage from "./pages/AccountManagement";
-import HualeiIntegrationPage from "./pages/HualeiIntegration";
 
 function Router() {
   return (
@@ -39,7 +38,6 @@ function Router() {
             <Route path="/staff-targets" component={StaffTargetsPage} />
             <Route path="/daily-data" component={DailyDataPage} />
             <Route path="/account-management" component={AccountManagementPage} />
-            <Route path="/hualei" component={HualeiIntegrationPage} />
             <Route path="/404" component={NotFound} />
             <Route component={NotFound} />
           </Switch>

@@ -7,7 +7,4 @@ export const ENV = {
   isProduction: process.env.NODE_ENV === "production",
   forgeApiUrl: process.env.BUILT_IN_FORGE_API_URL ?? "",
   forgeApiKey: process.env.BUILT_IN_FORGE_API_KEY ?? "",
-  hualeiBaseUrl: process.env.HUALEI_BASE_URL ?? "http://111.230.184.181:8082",
-  hualeiUsername: process.env.HUALEI_USERNAME ?? "",
-  hualeiPassword: process.env.HUALEI_PASSWORD ?? "",
 };

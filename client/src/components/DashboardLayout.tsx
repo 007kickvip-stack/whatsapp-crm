@@ -39,7 +39,6 @@ import {
   Target,
   CalendarDays,
   Palette,
-  Plug,
 } from "lucide-react";
 import { CSSProperties, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation } from "wouter";
@@ -78,7 +77,6 @@ const adminMenuItems: MenuItem[] = [
   { icon: Palette, label: "账号管理", path: "/account-management", adminOnly: true },
   { icon: ArrowRightLeft, label: "汇率管理", path: "/exchange-rate", adminOnly: true },
   { icon: ClipboardList, label: "操作日志", path: "/audit-logs", adminOnly: true },
-  { icon: Plug, label: "华磊对接", path: "/hualei", adminOnly: true },
 ];
 
 export default function DashboardLayout({
