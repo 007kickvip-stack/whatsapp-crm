@@ -23,11 +23,13 @@ import {
   getDailyDataById, getDailyReportByStaff, getDailyReportByAccount, getDailyReportDrillDown, syncOrderDataToDailyData, getDistinctOrderAccounts,
   listDailyReportNotes, createDailyReportNote, updateDailyReportNote, deleteDailyReportNote, getDailyReportNoteById,
   listAccounts, createAccount, updateAccount, deleteAccount, reorderAccounts,
+  findOrderItemByDomesticTrackingNo, markLogisticsSubscribed,
 } from "./db";
 import { sdk } from "./_core/sdk";
 import { ONE_YEAR_MS } from "@shared/const";
 import { storagePut } from "./storage";
 import { nanoid } from "nanoid";
+import { subscribeTrackingNo, getCallbackUrl } from "./trackingProxy";
 
 export const appRouter = router({
   system: systemRouter,
@@ -192,6 +194,7 @@ export const appRouter = router({
       paymentStatus: z.string().optional(),
       customerWhatsapp: z.string().optional(),
       internationalTrackingNo: z.string().optional(),
+      logisticsStatus: z.string().optional(),
       dateFrom: z.string().optional(),
       dateTo: z.string().optional(),
     })).query(({ input, ctx }) => {
@@ -465,6 +468,14 @@ export const appRouter = router({
         profitRate: profitRate.toFixed(6),
       });
 
+      // 自动订阅快递100推送（异步，不阻塞主流程）
+      if (input.domesticTrackingNo) {
+        const callbackUrl = "https://whatsappcrm-hh98jc4u.manus.space/api/kuaidi100/callback";
+        subscribeTrackingNo(id, input.domesticTrackingNo, callbackUrl).catch(e =>
+          console.warn("[Auto Subscribe] 创建时自动订阅失败:", e.message)
+        );
+      }
+
       // Recalculate order totals
       await recalculateOrderTotals(input.orderId);
       return { id };
@@ -533,6 +544,14 @@ export const appRouter = router({
         profitRate: profitRate.toFixed(6),
       });
 
+      // 如果国内单号变更，自动重新订阅快递100推送
+      if (data.domesticTrackingNo && data.domesticTrackingNo !== currentItem?.domesticTrackingNo) {
+        const callbackUrl = "https://whatsappcrm-hh98jc4u.manus.space/api/kuaidi100/callback";
+        subscribeTrackingNo(id, data.domesticTrackingNo, callbackUrl).catch(e =>
+          console.warn("[Auto Subscribe] 更新时自动订阅失败:", e.message)
+        );
+      }
+
       await recalculateOrderTotals(orderId);
       return { success: true };
     }),
@@ -599,6 +618,14 @@ export const appRouter = router({
           profitRate: profitRate.toFixed(6),
         });
         ids.push(id);
+
+        // 自动订阅快递100推送（异步）
+        if (item.domesticTrackingNo) {
+          const callbackUrl = "https://whatsappcrm-hh98jc4u.manus.space/api/kuaidi100/callback";
+          subscribeTrackingNo(id, item.domesticTrackingNo, callbackUrl).catch(e =>
+            console.warn("[Auto Subscribe] bulkCreate 自动订阅失败:", e.message)
+          );
+        }
       }
 
       await recalculateOrderTotals(input.orderId);
@@ -676,6 +703,7 @@ export const appRouter = router({
       paymentStatus: z.string().optional(),
       customerWhatsapp: z.string().optional(),
       internationalTrackingNo: z.string().optional(),
+      logisticsStatus: z.string().optional(),
       dateFrom: z.string().optional(),
       dateTo: z.string().optional(),
     })).mutation(async ({ input, ctx }) => {

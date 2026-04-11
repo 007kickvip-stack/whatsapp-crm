@@ -339,3 +339,13 @@
 
 ## 国际跟踪单号改为跳转新页面
 - [x] 国际跟踪单号查询按钮改为直接跳转17track新页面，不使用弹窗
+
+## 快递100订阅推送 + 物流状态自动更新
+- [x] 数据库：order_items 表添加 logisticsStatus（物流状态）、logisticsStatusText、logisticsLastUpdate、logisticsSubscribed 字段
+- [x] 后端：创建快递100订阅接口（subscribe），订阅物流状态变更推送
+- [x] 后端：创建回调接口（/api/kuaidi100/callback）接收快递100推送
+- [x] 后端：回调接口自动更新 order_items 的物流状态字段
+- [x] 后端：创建/更新国内单号时自动触发订阅
+- [x] 前端：国内单号旁显示物流状态标签（颜色区分不同状态：在途/揽收/派件/签收/疑难/退回/清关/拒签）
+- [x] 前端：筛选栏添加"国内单号状态"筛选项（展开更多中第三行）
+- [x] 后端：listOrders 和 exportOrders 查询支持 logisticsStatus 筛选参数

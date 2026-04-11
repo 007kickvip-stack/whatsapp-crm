@@ -156,6 +156,29 @@ function profitColor(val: string | number | null | undefined): string {
   return "text-muted-foreground";
 }
 
+// 物流状态选项（与后端 STATE_MAP 对应）
+const LOGISTICS_STATUSES = [
+  { value: "in_transit", label: "在途", color: "bg-blue-100 text-blue-800 border-blue-300" },
+  { value: "collected", label: "揽收", color: "bg-cyan-100 text-cyan-800 border-cyan-300" },
+  { value: "delivering", label: "派件", color: "bg-indigo-100 text-indigo-800 border-indigo-300" },
+  { value: "signed", label: "签收", color: "bg-emerald-100 text-emerald-800 border-emerald-300" },
+  { value: "difficult", label: "疑难", color: "bg-red-100 text-red-800 border-red-300" },
+  { value: "returned", label: "退回", color: "bg-orange-100 text-orange-800 border-orange-300" },
+  { value: "customs", label: "清关", color: "bg-purple-100 text-purple-800 border-purple-300" },
+  { value: "refused", label: "拒签", color: "bg-red-200 text-red-900 border-red-400" },
+  { value: "unknown", label: "未知", color: "bg-gray-100 text-gray-600 border-gray-200" },
+];
+
+function logisticsStatusColor(status: string | null): string {
+  const found = LOGISTICS_STATUSES.find((s) => s.value === status);
+  return found?.color || "bg-gray-100 text-gray-600 border-gray-200";
+}
+
+function logisticsStatusLabel(status: string | null): string {
+  const found = LOGISTICS_STATUSES.find((s) => s.value === status);
+  return found?.label || "";
+}
+
 // ============================================================
 // Inline editable cell component
 // ============================================================
@@ -478,6 +501,7 @@ export default function OrdersPage() {
   const [filterStatus, setFilterStatus] = useState<string>("");
   const [filterPayment, setFilterPayment] = useState<string>("");
   const [filterIntlTracking, setFilterIntlTracking] = useState("");
+  const [filterLogisticsStatus, setFilterLogisticsStatus] = useState<string>("");
   const [filterExpanded, setFilterExpanded] = useState(false);
   const [previewImage, setPreviewImage] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
@@ -518,10 +542,11 @@ export default function OrdersPage() {
       orderStatus: filterStatus || undefined,
       paymentStatus: filterPayment || undefined,
       internationalTrackingNo: filterIntlTracking || undefined,
+      logisticsStatus: filterLogisticsStatus || undefined,
       dateFrom: filterDateFrom || undefined,
       dateTo: filterDateTo || undefined,
     }),
-    [page, search, filterStaffName, filterAccount, filterWhatsapp, filterCustomerType, filterOrderNumber, filterStatus, filterPayment, filterIntlTracking, filterDateFrom, filterDateTo]
+    [page, search, filterStaffName, filterAccount, filterWhatsapp, filterCustomerType, filterOrderNumber, filterStatus, filterPayment, filterIntlTracking, filterLogisticsStatus, filterDateFrom, filterDateTo]
   );
 
   const { data, isLoading } = trpc.orders.list.useQuery(queryInput);
@@ -666,12 +691,13 @@ export default function OrdersPage() {
     setFilterStatus("");
     setFilterPayment("");
     setFilterIntlTracking("");
+    setFilterLogisticsStatus("");
     setSearch("");
     setPage(1);
   };
 
   const hasActiveFilters =
-    filterDateFrom || filterDateTo || filterStaffName || filterAccount || filterWhatsapp || filterCustomerType || filterOrderNumber || filterStatus || filterPayment || filterIntlTracking;
+    filterDateFrom || filterDateTo || filterStaffName || filterAccount || filterWhatsapp || filterCustomerType || filterOrderNumber || filterStatus || filterPayment || filterIntlTracking || filterLogisticsStatus;
   const totalPages = Math.ceil((data?.total ?? 0) / 20);
 
   const exportMutation = trpc.export.orders.useMutation();
@@ -689,6 +715,7 @@ export default function OrdersPage() {
         orderStatus: filterStatus || undefined,
         paymentStatus: filterPayment || undefined,
         internationalTrackingNo: filterIntlTracking || undefined,
+        logisticsStatus: filterLogisticsStatus || undefined,
         dateFrom: filterDateFrom || undefined,
         dateTo: filterDateTo || undefined,
       });
@@ -814,6 +841,8 @@ export default function OrdersPage() {
     orderImageUrl: string | null;
     size: string | null;
     domesticTrackingNo: string | null;
+    logisticsStatus: string | null;
+    logisticsStatusText: string | null;
     sizeRecommendation: string | null;
     contactInfo: string | null;
     internationalTrackingNo: string | null;
@@ -881,6 +910,8 @@ export default function OrdersPage() {
           orderImageUrl: null,
           size: null,
           domesticTrackingNo: null,
+          logisticsStatus: null,
+          logisticsStatusText: null,
           sizeRecommendation: null,
           contactInfo: null,
           internationalTrackingNo: null,
@@ -927,6 +958,8 @@ export default function OrdersPage() {
             orderImageUrl: item.orderImageUrl,
             size: item.size,
             domesticTrackingNo: item.domesticTrackingNo,
+            logisticsStatus: item.logisticsStatus || null,
+            logisticsStatusText: item.logisticsStatusText || null,
             sizeRecommendation: item.sizeRecommendation,
             contactInfo: item.contactInfo || (idx === 0 ? null : null),
             internationalTrackingNo: item.internationalTrackingNo,
@@ -1160,23 +1193,37 @@ export default function OrdersPage() {
         {/* 9. 国内单号 */}
         <td className="py-1 px-1 border-r border-gray-100 whitespace-nowrap text-center text-[11px]">
           {hasItem ? (
-            <div className="flex items-center gap-0.5">
-              <EditableCell
-                value={row.domesticTrackingNo || ""}
-                onSave={(v) => saveItemField(row.itemId!, row.orderId, "domesticTrackingNo", v)}
-                placeholder="国内单号"
-              />
-              {row.domesticTrackingNo && (
+            <div className="flex flex-col gap-0.5">
+              <div className="flex items-center gap-0.5">
+                <EditableCell
+                  value={row.domesticTrackingNo || ""}
+                  onSave={(v) => saveItemField(row.itemId!, row.orderId, "domesticTrackingNo", v)}
+                  placeholder="国内单号"
+                />
+                {row.domesticTrackingNo && (
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <button
+                        onClick={() => { setTrackingNo(row.domesticTrackingNo!); setTrackingType("domestic"); setTrackingOpen(true); }}
+                        className="shrink-0 p-0.5 rounded hover:bg-emerald-50 text-emerald-600 hover:text-emerald-700 transition-colors"
+                      >
+                        <ExternalLink className="h-3 w-3" />
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent side="top">查询国内物流</TooltipContent>
+                  </Tooltip>
+                )}
+              </div>
+              {row.domesticTrackingNo && row.logisticsStatus && row.logisticsStatus !== "unknown" && (
                 <Tooltip>
                   <TooltipTrigger asChild>
-                    <button
-                      onClick={() => { setTrackingNo(row.domesticTrackingNo!); setTrackingType("domestic"); setTrackingOpen(true); }}
-                      className="shrink-0 p-0.5 rounded hover:bg-emerald-50 text-emerald-600 hover:text-emerald-700 transition-colors"
-                    >
-                      <ExternalLink className="h-3 w-3" />
-                    </button>
+                    <span className={`inline-block px-1.5 py-0.5 rounded text-[9px] font-medium border ${logisticsStatusColor(row.logisticsStatus)} cursor-default`}>
+                      {row.logisticsStatusText || logisticsStatusLabel(row.logisticsStatus)}
+                    </span>
                   </TooltipTrigger>
-                  <TooltipContent side="top">查询国内物流</TooltipContent>
+                  <TooltipContent side="top">
+                    {row.logisticsStatusText || logisticsStatusLabel(row.logisticsStatus)}
+                  </TooltipContent>
                 </Tooltip>
               )}
             </div>
@@ -1637,6 +1684,26 @@ export default function OrdersPage() {
                 onChange={(e) => { setFilterIntlTracking(e.target.value); setPage(1); }}
                 className="h-8 text-xs"
               />
+            </div>
+          </div>
+          {/* Row 3 - collapsible (continued) */}
+          <div className={`grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-x-3 gap-y-2 overflow-hidden transition-all duration-300 ease-in-out ${filterExpanded ? "mt-2 max-h-[200px] opacity-100" : "max-h-0 opacity-0"}`}>
+            {/* 国内单号状态 */}
+            <div className="space-y-1">
+              <Label className="text-[10px] text-muted-foreground">国内单号状态</Label>
+              <Select value={filterLogisticsStatus} onValueChange={(v) => { setFilterLogisticsStatus(v === "all" ? "" : v); setPage(1); }}>
+                <SelectTrigger className="h-8 text-xs">
+                  <SelectValue placeholder="全部" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">全部</SelectItem>
+                  {LOGISTICS_STATUSES.filter(s => s.value !== "unknown").map((s) => (
+                    <SelectItem key={s.value} value={s.value}>
+                      <span className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-medium border ${s.color}`}>{s.label}</span>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
           </div>
         </CardContent>

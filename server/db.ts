@@ -1,4 +1,4 @@
-import { eq, like, and, sql, desc, or, SQL, inArray } from "drizzle-orm";
+import { eq, like, and, sql, desc, or, SQL, inArray, isNotNull } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import { InsertUser, users, customers, orders, orderItems, InsertCustomer, InsertOrder, InsertOrderItem, auditLogs, InsertAuditLog, exchangeRates, InsertExchangeRate, profitAlertSettings, InsertProfitAlertSetting, staffMonthlyTargets, InsertStaffMonthlyTarget, dailyData, InsertDailyData, accounts, InsertAccount, dailyReportNotes, InsertDailyReportNote } from "../drizzle/schema";
 import { ENV } from './_core/env';
@@ -284,12 +284,13 @@ export async function listOrders(params: {
   paymentStatus?: string;
   customerWhatsapp?: string;
   internationalTrackingNo?: string;
+  logisticsStatus?: string;
   dateFrom?: string;
   dateTo?: string;
 }) {
   const db = await getDb();
   if (!db) return { data: [], total: 0 };
-  const { page = 1, pageSize = 20, search, staffId, staffName, account, customerType, orderNumber, orderStatus, paymentStatus, customerWhatsapp, internationalTrackingNo, dateFrom, dateTo } = params;
+  const { page = 1, pageSize = 20, search, staffId, staffName, account, customerType, orderNumber, orderStatus, paymentStatus, customerWhatsapp, internationalTrackingNo, logisticsStatus, dateFrom, dateTo } = params;
   const offset = (page - 1) * pageSize;
   const conditions: SQL[] = [];
   if (search) {
@@ -327,6 +328,9 @@ export async function listOrders(params: {
   }
   if (internationalTrackingNo) {
     conditions.push(sql`${orders.id} IN (SELECT ${orderItems.orderId} FROM ${orderItems} WHERE ${orderItems.internationalTrackingNo} LIKE ${'%' + internationalTrackingNo + '%'})`);
+  }
+  if (logisticsStatus) {
+    conditions.push(sql`${orders.id} IN (SELECT ${orderItems.orderId} FROM ${orderItems} WHERE ${orderItems.logisticsStatus} = ${logisticsStatus})`);
   }
   if (dateFrom && dateTo) {
     conditions.push(sql`${orders.orderDate} >= ${dateFrom} AND ${orders.orderDate} <= ${dateTo}`);
@@ -400,6 +404,52 @@ export async function findOrderItemsByOriginalOrderNos(origNos: string[]) {
     item: orderItems,
     orderId: orderItems.orderId,
   }).from(orderItems).where(inArray(orderItems.originalOrderNo, origNos));
+}
+
+/**
+ * 根据国内单号查找订单子项
+ */
+export async function findOrderItemByDomesticTrackingNo(trackingNo: string) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const rows = await db.select().from(orderItems).where(eq(orderItems.domesticTrackingNo, trackingNo)).limit(1);
+  return rows[0];
+}
+
+/**
+ * 查找所有有国内单号但未订阅的子项
+ */
+export async function findUnsubscribedItemsWithDomesticTracking() {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(orderItems)
+    .where(and(
+      isNotNull(orderItems.domesticTrackingNo),
+      sql`${orderItems.domesticTrackingNo} != ''`,
+      eq(orderItems.logisticsSubscribed, 0)
+    ));
+}
+
+/**
+ * 更新物流状态
+ */
+export async function updateLogisticsStatus(id: number, data: {
+  logisticsStatus: string;
+  logisticsStatusText: string;
+  logisticsLastUpdate: Date;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.update(orderItems).set(data).where(eq(orderItems.id, id));
+}
+
+/**
+ * 标记子项已订阅快递100推送
+ */
+export async function markLogisticsSubscribed(id: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.update(orderItems).set({ logisticsSubscribed: 1 }).where(eq(orderItems.id, id));
 }
 
 export async function getOrderItemsByOrderId(orderId: number) {
@@ -574,12 +624,13 @@ export async function exportOrders(params: {
   paymentStatus?: string;
   customerWhatsapp?: string;
   internationalTrackingNo?: string;
+  logisticsStatus?: string;
   dateFrom?: string;
   dateTo?: string;
 }) {
   const db = await getDb();
   if (!db) return [];
-  const { search, staffId, staffName, account, customerType, orderNumber, orderStatus, paymentStatus, customerWhatsapp, internationalTrackingNo, dateFrom, dateTo } = params;
+  const { search, staffId, staffName, account, customerType, orderNumber, orderStatus, paymentStatus, customerWhatsapp, internationalTrackingNo, logisticsStatus, dateFrom, dateTo } = params;
   const conditions: SQL[] = [];
   if (search) {
     conditions.push(
@@ -616,6 +667,9 @@ export async function exportOrders(params: {
   }
   if (internationalTrackingNo) {
     conditions.push(sql`${orders.id} IN (SELECT ${orderItems.orderId} FROM ${orderItems} WHERE ${orderItems.internationalTrackingNo} LIKE ${'%' + internationalTrackingNo + '%'})`);
+  }
+  if (logisticsStatus) {
+    conditions.push(sql`${orders.id} IN (SELECT ${orderItems.orderId} FROM ${orderItems} WHERE ${orderItems.logisticsStatus} = ${logisticsStatus})`);
   }
   if (dateFrom && dateTo) {
     conditions.push(sql`${orders.orderDate} >= ${dateFrom} AND ${orders.orderDate} <= ${dateTo}`);

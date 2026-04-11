@@ -86,6 +86,10 @@ export const orderItems = mysqlTable("order_items", {
   contactInfo: text("contactInfo"),
   internationalTrackingNo: varchar("internationalTrackingNo", { length: 128 }),
   originalOrderNo: varchar("originalOrderNo", { length: 128 }),
+  logisticsStatus: varchar("logisticsStatus", { length: 32 }).default("unknown"), // unknown, collected, in_transit, delivering, signed, returned, difficult, customs, refused
+  logisticsStatusText: varchar("logisticsStatusText", { length: 64 }), // 物流状态中文描述
+  logisticsLastUpdate: timestamp("logisticsLastUpdate"), // 物流最后更新时间
+  logisticsSubscribed: int("logisticsSubscribed").default(0), // 是否已订阅快递100推送 0=否 1=是
   shipDate: varchar("shipDate", { length: 128 }),
   quantity: int("quantity").default(1),
   source: varchar("source", { length: 128 }),
