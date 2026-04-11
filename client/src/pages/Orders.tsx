@@ -1221,13 +1221,13 @@ export default function OrdersPage() {
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <button
-                      onClick={() => { setTrackingNo(row.internationalTrackingNo!); setTrackingType("international"); setTrackingOpen(true); }}
+                      onClick={() => window.open(`https://www.17track.net/zh-cn/track#nums=${encodeURIComponent(row.internationalTrackingNo!)}`, '_blank')}
                       className="shrink-0 p-0.5 rounded hover:bg-emerald-50 text-emerald-600 hover:text-emerald-700 transition-colors"
                     >
                       <ExternalLink className="h-3 w-3" />
                     </button>
                   </TooltipTrigger>
-                  <TooltipContent side="top">查询国际物流</TooltipContent>
+                  <TooltipContent side="top">在17track查询国际物流</TooltipContent>
                 </Tooltip>
               )}
             </div>
