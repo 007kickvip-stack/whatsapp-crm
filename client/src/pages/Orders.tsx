@@ -1166,7 +1166,7 @@ export default function OrdersPage() {
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <button
-                      onClick={() => window.open(`https://parcelsapp.com/zh/tracking/${encodeURIComponent(row.domesticTrackingNo!)}`, "_blank")}
+                      onClick={() => window.open(`https://www.kuaidi100.com/chaxun?nu=${encodeURIComponent(row.domesticTrackingNo!)}`, "_blank")}
                       className="shrink-0 p-0.5 rounded hover:bg-emerald-50 text-emerald-600 hover:text-emerald-700 transition-colors"
                     >
                       <ExternalLink className="h-3 w-3" />
