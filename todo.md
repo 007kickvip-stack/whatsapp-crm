@@ -328,3 +328,6 @@
 
 ## 国际跟踪单号弹窗改为iframe嵌入
 - [x] 国际跟踪单号查询弹窗改为iframe嵌入17track查询页面，不依赖API
+
+## 部署构建 OOM 修复
+- [x] 优化 Vite 构建配置减少内存占用（exit code 137）：代码分割 + lazy import + 删除未使用文件
