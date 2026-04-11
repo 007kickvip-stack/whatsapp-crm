@@ -8,6 +8,7 @@ import { appRouter } from "../routers";
 import { createContext } from "./context";
 import { serveStatic, setupVite } from "./vite";
 import { registerExcelImportRoute } from "../excelImport";
+import { registerTrackingProxyRoute } from "../trackingProxy";
 
 function isPortAvailable(port: number): Promise<boolean> {
   return new Promise(resolve => {
@@ -38,6 +39,8 @@ async function startServer() {
   registerOAuthRoutes(app);
   // Excel import REST endpoint (multipart/form-data)
   registerExcelImportRoute(app);
+  // Tracking proxy for domestic/international logistics
+  registerTrackingProxyRoute(app);
   // tRPC API
   app.use(
     "/api/trpc",

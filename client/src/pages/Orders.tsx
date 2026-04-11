@@ -63,6 +63,7 @@ import {
 import { toast } from "sonner";
 import { useLocation } from "wouter";
 import ExcelImportDialog from "@/components/ExcelImportDialog";
+import TrackingDialog from "@/components/TrackingDialog";
 import AccountSelect from "@/components/AccountSelect";
 import BulkAddItemsDialog from "@/components/BulkAddItemsDialog";
 
@@ -481,6 +482,9 @@ export default function OrdersPage() {
   const [previewImage, setPreviewImage] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
   const [excelImportOpen, setExcelImportOpen] = useState(false);
+  const [trackingOpen, setTrackingOpen] = useState(false);
+  const [trackingNo, setTrackingNo] = useState("");
+  const [trackingType, setTrackingType] = useState<"domestic" | "international">("domestic");
   // Bulk add items dialog state
   const [bulkAddOpen, setBulkAddOpen] = useState(false);
   const [bulkAddOrderId, setBulkAddOrderId] = useState<number>(0);
@@ -1166,7 +1170,7 @@ export default function OrdersPage() {
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <button
-                      onClick={() => window.open(`https://www.kuaidi100.com/chaxun?nu=${encodeURIComponent(row.domesticTrackingNo!)}`, "_blank")}
+                      onClick={() => { setTrackingNo(row.domesticTrackingNo!); setTrackingType("domestic"); setTrackingOpen(true); }}
                       className="shrink-0 p-0.5 rounded hover:bg-emerald-50 text-emerald-600 hover:text-emerald-700 transition-colors"
                     >
                       <ExternalLink className="h-3 w-3" />
@@ -1217,7 +1221,7 @@ export default function OrdersPage() {
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <button
-                      onClick={() => window.open(`https://www.17track.net/zh-cn/track#nums=${encodeURIComponent(row.internationalTrackingNo!)}`, "_blank")}
+                      onClick={() => { setTrackingNo(row.internationalTrackingNo!); setTrackingType("international"); setTrackingOpen(true); }}
                       className="shrink-0 p-0.5 rounded hover:bg-emerald-50 text-emerald-600 hover:text-emerald-700 transition-colors"
                     >
                       <ExternalLink className="h-3 w-3" />
@@ -1833,6 +1837,14 @@ export default function OrdersPage() {
         open={excelImportOpen}
         onOpenChange={setExcelImportOpen}
         onSuccess={() => utils.orders.list.invalidate()}
+      />
+
+      {/* Tracking Dialog */}
+      <TrackingDialog
+        open={trackingOpen}
+        onOpenChange={setTrackingOpen}
+        trackingNo={trackingNo}
+        type={trackingType}
       />
 
       {/* Bulk Add Items Dialog */}
