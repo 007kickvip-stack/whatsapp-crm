@@ -1466,8 +1466,9 @@ export default function OrdersPage() {
               </Button>
             )}
           </div>
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-9 gap-2">
-            {/* 日期范围 */}
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-x-3 gap-y-2">
+            {/* Row 1 */}
+            {/* 开始日期 */}
             <div className="space-y-1">
               <Label className="text-[10px] text-muted-foreground">开始日期</Label>
               <Input
@@ -1477,6 +1478,7 @@ export default function OrdersPage() {
                 className="h-8 text-xs"
               />
             </div>
+            {/* 结束日期 */}
             <div className="space-y-1">
               <Label className="text-[10px] text-muted-foreground">结束日期</Label>
               <Input
@@ -1517,6 +1519,7 @@ export default function OrdersPage() {
                 className="h-8 text-xs"
               />
             </div>
+            {/* Row 2 */}
             {/* 客户属性 */}
             <div className="space-y-1">
               <Label className="text-[10px] text-muted-foreground">客户属性</Label>
