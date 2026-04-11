@@ -58,6 +58,7 @@ import {
   ChevronUp,
   Layers,
   ChevronsUpDown,
+  ExternalLink,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useLocation } from "wouter";
@@ -476,6 +477,7 @@ export default function OrdersPage() {
   const [filterStatus, setFilterStatus] = useState<string>("");
   const [filterPayment, setFilterPayment] = useState<string>("");
   const [filterIntlTracking, setFilterIntlTracking] = useState("");
+  const [filterExpanded, setFilterExpanded] = useState(false);
   const [previewImage, setPreviewImage] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
   const [excelImportOpen, setExcelImportOpen] = useState(false);
@@ -1154,11 +1156,26 @@ export default function OrdersPage() {
         {/* 9. 国内单号 */}
         <td className="py-1 px-1 border-r border-gray-100 whitespace-nowrap text-center text-[11px]">
           {hasItem ? (
-            <EditableCell
-              value={row.domesticTrackingNo || ""}
-              onSave={(v) => saveItemField(row.itemId!, row.orderId, "domesticTrackingNo", v)}
-              placeholder="国内单号"
-            />
+            <div className="flex items-center gap-0.5">
+              <EditableCell
+                value={row.domesticTrackingNo || ""}
+                onSave={(v) => saveItemField(row.itemId!, row.orderId, "domesticTrackingNo", v)}
+                placeholder="国内单号"
+              />
+              {row.domesticTrackingNo && (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button
+                      onClick={() => window.open(`https://www.kuaidi100.com/chaxun?nu=${encodeURIComponent(row.domesticTrackingNo!)}`, "_blank")}
+                      className="shrink-0 p-0.5 rounded hover:bg-emerald-50 text-emerald-600 hover:text-emerald-700 transition-colors"
+                    >
+                      <ExternalLink className="h-3 w-3" />
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent side="top">查询国内物流</TooltipContent>
+                </Tooltip>
+              )}
+            </div>
           ) : null}
         </td>
 
@@ -1190,11 +1207,26 @@ export default function OrdersPage() {
         {/* 12. 国际跟踪单号 */}
         <td className="py-1 px-1 border-r border-gray-100 whitespace-nowrap text-center text-[11px]">
           {hasItem ? (
-            <EditableCell
-              value={row.internationalTrackingNo || ""}
-              onSave={(v) => saveItemField(row.itemId!, row.orderId, "internationalTrackingNo", v)}
-              placeholder="国际单号"
-            />
+            <div className="flex items-center gap-0.5">
+              <EditableCell
+                value={row.internationalTrackingNo || ""}
+                onSave={(v) => saveItemField(row.itemId!, row.orderId, "internationalTrackingNo", v)}
+                placeholder="国际单号"
+              />
+              {row.internationalTrackingNo && (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button
+                      onClick={() => window.open(`https://www.17track.net/zh-cn/track#nums=${encodeURIComponent(row.internationalTrackingNo!)}`, "_blank")}
+                      className="shrink-0 p-0.5 rounded hover:bg-emerald-50 text-emerald-600 hover:text-emerald-700 transition-colors"
+                    >
+                      <ExternalLink className="h-3 w-3" />
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent side="top">查询国际物流</TooltipContent>
+                </Tooltip>
+              )}
+            </div>
           ) : null}
         </td>
 
@@ -1459,6 +1491,15 @@ export default function OrdersPage() {
           <div className="flex items-center gap-2 mb-2">
             <Filter className="h-4 w-4 text-emerald-600 shrink-0" />
             <span className="text-sm font-medium text-emerald-700">订单筛选</span>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setFilterExpanded((v) => !v)}
+              className="gap-1 text-xs h-6 px-2 text-muted-foreground hover:text-foreground"
+            >
+              {filterExpanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+              {filterExpanded ? "收起" : "展开更多"}
+            </Button>
             {hasActiveFilters && (
               <Button variant="ghost" size="sm" onClick={clearFilters} className="gap-1 text-xs h-6 px-2 ml-auto text-red-500 hover:text-red-700 hover:bg-red-50">
                 <X className="h-3 w-3" />
@@ -1519,7 +1560,9 @@ export default function OrdersPage() {
                 className="h-8 text-xs"
               />
             </div>
-            {/* Row 2 */}
+          </div>
+          {/* Row 2 - collapsible */}
+          <div className={`grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-x-3 gap-y-2 overflow-hidden transition-all duration-300 ease-in-out ${filterExpanded ? "mt-2 max-h-[200px] opacity-100" : "max-h-0 opacity-0"}`}>
             {/* 客户属性 */}
             <div className="space-y-1">
               <Label className="text-[10px] text-muted-foreground">客户属性</Label>
