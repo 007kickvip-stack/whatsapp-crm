@@ -45,6 +45,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { useLocation, useParams } from "wouter";
+import TrackingHoverCard from "@/components/TrackingHoverCard";
 
 const PAYMENT_STATUSES = ["未付款", "待付款", "已付款", "部分付款"];
 
@@ -406,7 +407,36 @@ export default function OrderDetailPage() {
                     <tr key={item.id} className="border-b last:border-0 hover:bg-muted/20 transition-colors">
                       <td className="py-3 px-4 font-medium">{item.orderNumber || "-"}</td>
                       <td className="py-3 px-4">{item.size || "-"}</td>
-                      <td className="py-3 px-4 text-xs max-w-[120px] truncate">{item.domesticTrackingNo || "-"}</td>
+                      <td className="py-3 px-4 text-xs max-w-[160px]">
+                        {item.domesticTrackingNo ? (
+                          <div className="flex flex-col gap-1">
+                            <span className="font-mono truncate">{item.domesticTrackingNo}</span>
+                            <TrackingHoverCard trackingNo={item.domesticTrackingNo}>
+                              {(item as any).logisticsStatus && (item as any).logisticsStatus !== "unknown" ? (
+                                <span className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-medium border cursor-pointer hover:opacity-80 transition-opacity ${
+                                  (item as any).logisticsStatus === "in_transit" ? "bg-blue-100 text-blue-800 border-blue-300" :
+                                  (item as any).logisticsStatus === "collected" ? "bg-cyan-100 text-cyan-800 border-cyan-300" :
+                                  (item as any).logisticsStatus === "delivering" ? "bg-indigo-100 text-indigo-800 border-indigo-300" :
+                                  (item as any).logisticsStatus === "signed" ? "bg-emerald-100 text-emerald-800 border-emerald-300" :
+                                  (item as any).logisticsStatus === "difficult" ? "bg-red-100 text-red-800 border-red-300" :
+                                  (item as any).logisticsStatus === "returned" ? "bg-orange-100 text-orange-800 border-orange-300" :
+                                  (item as any).logisticsStatus === "customs" ? "bg-purple-100 text-purple-800 border-purple-300" :
+                                  (item as any).logisticsStatus === "refused" ? "bg-red-200 text-red-900 border-red-400" :
+                                  "bg-gray-100 text-gray-600 border-gray-200"
+                                }`}>
+                                  {(item as any).logisticsStatusText || (item as any).logisticsStatus}
+                                </span>
+                              ) : (
+                                <span className="inline-block px-1.5 py-0.5 rounded text-[10px] font-medium border cursor-pointer hover:opacity-80 transition-opacity bg-gray-50 text-gray-500 border-gray-200">
+                                  查看物流
+                                </span>
+                              )}
+                            </TrackingHoverCard>
+                          </div>
+                        ) : (
+                          <span className="text-muted-foreground">-</span>
+                        )}
+                      </td>
                       <td className="py-3 px-4 text-xs max-w-[120px] truncate">{item.internationalTrackingNo || "-"}</td>
                       <td className="py-3 px-4 text-xs max-w-[120px] truncate">{(item as any).originalOrderNo || "-"}</td>
                       <td className="py-3 px-4">{item.source || "-"}</td>

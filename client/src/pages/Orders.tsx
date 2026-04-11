@@ -64,6 +64,7 @@ import { toast } from "sonner";
 import { useLocation } from "wouter";
 import ExcelImportDialog from "@/components/ExcelImportDialog";
 import TrackingDialog from "@/components/TrackingDialog";
+import TrackingHoverCard from "@/components/TrackingHoverCard";
 import AccountSelect from "@/components/AccountSelect";
 import BulkAddItemsDialog from "@/components/BulkAddItemsDialog";
 
@@ -1214,17 +1215,18 @@ export default function OrdersPage() {
                   </Tooltip>
                 )}
               </div>
-              {row.domesticTrackingNo && row.logisticsStatus && row.logisticsStatus !== "unknown" && (
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <span className={`inline-block px-1.5 py-0.5 rounded text-[9px] font-medium border ${logisticsStatusColor(row.logisticsStatus)} cursor-default`}>
+              {row.domesticTrackingNo && (
+                <TrackingHoverCard trackingNo={row.domesticTrackingNo}>
+                  {row.logisticsStatus && row.logisticsStatus !== "unknown" ? (
+                    <span className={`inline-block px-1.5 py-0.5 rounded text-[9px] font-medium border cursor-pointer hover:opacity-80 transition-opacity ${logisticsStatusColor(row.logisticsStatus)}`}>
                       {row.logisticsStatusText || logisticsStatusLabel(row.logisticsStatus)}
                     </span>
-                  </TooltipTrigger>
-                  <TooltipContent side="top">
-                    {row.logisticsStatusText || logisticsStatusLabel(row.logisticsStatus)}
-                  </TooltipContent>
-                </Tooltip>
+                  ) : (
+                    <span className="inline-block px-1.5 py-0.5 rounded text-[9px] font-medium border cursor-pointer hover:opacity-80 transition-opacity bg-gray-50 text-gray-500 border-gray-200">
+                      查看物流
+                    </span>
+                  )}
+                </TrackingHoverCard>
               )}
             </div>
           ) : null}
