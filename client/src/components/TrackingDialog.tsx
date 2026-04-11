@@ -75,6 +75,7 @@ export default function TrackingDialog({
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<TrackingResult | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [iframeLoading, setIframeLoading] = useState(true);
 
   const fetchTracking = async () => {
     if (!trackingNo) return;
@@ -83,12 +84,9 @@ export default function TrackingDialog({
     setResult(null);
 
     try {
-      const endpoint =
-        type === "domestic"
-          ? `/api/tracking/domestic?no=${encodeURIComponent(trackingNo)}`
-          : `/api/tracking/international?no=${encodeURIComponent(trackingNo)}`;
-
-      const resp = await fetch(endpoint, { credentials: "include" });
+      const resp = await fetch(`/api/tracking/domestic?no=${encodeURIComponent(trackingNo)}`, {
+        credentials: "include",
+      });
       if (!resp.ok) {
         const errData = await resp.json().catch(() => ({}));
         throw new Error(errData.error || `查询失败 (HTTP ${resp.status})`);
@@ -105,33 +103,91 @@ export default function TrackingDialog({
 
   useEffect(() => {
     if (open && trackingNo) {
-      fetchTracking();
+      if (type === "domestic") {
+        fetchTracking();
+      } else {
+        // 国际单号使用 iframe，重置 iframe loading 状态
+        setIframeLoading(true);
+      }
     }
     if (!open) {
       setResult(null);
       setError(null);
+      setIframeLoading(true);
     }
-  }, [open, trackingNo]);
+  }, [open, trackingNo, type]);
 
   const stateInfo = result ? getStateLabel(result.state) : null;
   const StateIcon = stateInfo?.icon || Package;
 
+  // 国际单号 - 使用 iframe 嵌入 17track
+  if (type === "international") {
+    const trackUrl = `https://t.17track.net/en#nums=${encodeURIComponent(trackingNo)}`;
+
+    return (
+      <Dialog open={open} onOpenChange={onOpenChange}>
+        <DialogContent className="max-w-3xl h-[80vh] flex flex-col p-0 gap-0">
+          <DialogHeader className="px-4 pt-4 pb-2 shrink-0">
+            <DialogTitle className="flex items-center gap-2 text-base">
+              <Package className="h-5 w-5 text-emerald-600" />
+              国际物流查询
+            </DialogTitle>
+          </DialogHeader>
+
+          {/* 单号信息 */}
+          <div className="flex items-center justify-between bg-gray-50 mx-4 rounded-lg px-3 py-2 text-sm shrink-0">
+            <div>
+              <span className="text-gray-500">国际跟踪单号：</span>
+              <span className="font-mono font-medium">{trackingNo}</span>
+            </div>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => window.open(trackUrl, "_blank")}
+              className="h-7 px-2 gap-1 text-xs"
+            >
+              <ExternalLink className="h-3.5 w-3.5" />
+              新窗口打开
+            </Button>
+          </div>
+
+          {/* iframe 嵌入 17track */}
+          <div className="flex-1 relative mx-4 mb-4 mt-2 rounded-lg overflow-hidden border">
+            {iframeLoading && (
+              <div className="absolute inset-0 flex flex-col items-center justify-center bg-white z-10 gap-3">
+                <Loader2 className="h-8 w-8 animate-spin text-emerald-600" />
+                <p className="text-sm text-gray-500">正在加载 17track 查询页面...</p>
+              </div>
+            )}
+            <iframe
+              src={trackUrl}
+              className="w-full h-full border-0"
+              onLoad={() => setIframeLoading(false)}
+              sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
+              referrerPolicy="no-referrer"
+              title="17track 物流查询"
+            />
+          </div>
+        </DialogContent>
+      </Dialog>
+    );
+  }
+
+  // 国内单号 - 使用后端代理 API
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-lg max-h-[80vh] flex flex-col">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-base">
             <Package className="h-5 w-5 text-emerald-600" />
-            物流查询
+            国内物流查询
           </DialogTitle>
         </DialogHeader>
 
         {/* 单号信息 */}
         <div className="flex items-center justify-between bg-gray-50 rounded-lg px-3 py-2 text-sm">
           <div>
-            <span className="text-gray-500">
-              {type === "domestic" ? "国内单号" : "国际跟踪单号"}：
-            </span>
+            <span className="text-gray-500">国内单号：</span>
             <span className="font-mono font-medium">{trackingNo}</span>
           </div>
           <Button
@@ -164,27 +220,8 @@ export default function TrackingDialog({
           </div>
         )}
 
-        {/* 需要跳转 */}
-        {result && result.status === "redirect" && !loading && (
-          <div className="flex flex-col items-center justify-center py-8 gap-3">
-            <AlertCircle className="h-10 w-10 text-yellow-400" />
-            <p className="text-sm text-gray-600">{result.message}</p>
-            {result.redirectUrl && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => window.open(result.redirectUrl, "_blank")}
-                className="gap-1"
-              >
-                <ExternalLink className="h-3.5 w-3.5" />
-                前往 17track 查询
-              </Button>
-            )}
-          </div>
-        )}
-
         {/* 查询结果 */}
-        {result && result.status !== "redirect" && !loading && (
+        {result && !loading && (
           <div className="flex-1 overflow-y-auto space-y-3 min-h-0">
             {/* 快递公司和状态 */}
             <div className="flex items-center justify-between">
