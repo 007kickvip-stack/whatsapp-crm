@@ -1,12 +1,15 @@
 import type { Express, Request, Response } from "express";
 import { sdk } from "./_core/sdk";
+import { ENV } from "./_core/env";
+import crypto from "crypto";
 
 /**
- * 物流查询代理 - 通过后端服务器请求快递100接口，解决VPN冲突问题
+ * 物流查询代理 - 通过后端服务器请求快递100正式API，解决VPN冲突问题
  * 
- * 流程：
- * 1. 先调用 autoComNum 接口根据单号自动识别快递公司
- * 2. 再调用 query 接口获取物流轨迹
+ * 快递100实时查询接口文档：
+ * - URL: https://poll.kuaidi100.com/poll/query.do
+ * - 签名: MD5(param + key + customer) 转32位大写
+ * - param: JSON字符串 { com, num, phone? }
  */
 
 interface TrackingData {
@@ -14,6 +17,9 @@ interface TrackingData {
   context: string;
   ftime: string;
   location?: string;
+  areaCode?: string;
+  areaName?: string;
+  status?: string;
 }
 
 interface QueryResult {
@@ -25,6 +31,7 @@ interface QueryResult {
   data: TrackingData[];
   condition?: string;
   ischeck?: string;
+  comName?: string;
 }
 
 interface AutoComResult {
@@ -65,10 +72,89 @@ const COM_CODE_MAP: Record<string, string> = {
   jitu: "极兔速递",
   zhonghuanex: "中环快递",
   cainiao: "菜鸟",
+  ups: "UPS",
+  fedex: "FedEx",
+  dhl: "DHL",
+  usps: "USPS",
+  tnt: "TNT",
+  dpd: "DPD",
+  aramex: "Aramex",
+  yanwen: "燕文物流",
+  ydgj: "韵达国际",
+  chuanzhiyuan: "传志远",
+  disifang: "递四方",
+  huanqiu: "环球速运",
 };
 
 function getComName(comCode: string): string {
   return COM_CODE_MAP[comCode] || comCode;
+}
+
+/**
+ * 快递100正式API签名
+ * sign = MD5(param + key + customer).toUpperCase()
+ */
+function makeSign(param: string): string {
+  const str = param + ENV.kuaidi100Key + ENV.kuaidi100Customer;
+  return crypto.createHash("md5").update(str, "utf8").digest("hex").toUpperCase();
+}
+
+/**
+ * 调用快递100实时查询接口
+ */
+async function queryKuaidi100(com: string, num: string, phone?: string): Promise<QueryResult> {
+  const param = JSON.stringify({
+    com,
+    num,
+    ...(phone ? { phone } : {}),
+  });
+
+  const sign = makeSign(param);
+
+  const body = new URLSearchParams({
+    customer: ENV.kuaidi100Customer,
+    sign,
+    param,
+  });
+
+  const resp = await fetch("https://poll.kuaidi100.com/poll/query.do", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded",
+    },
+    body: body.toString(),
+  });
+
+  if (!resp.ok) {
+    throw new Error(`快递100 API 返回 HTTP ${resp.status}`);
+  }
+
+  return (await resp.json()) as QueryResult;
+}
+
+/**
+ * 自动识别快递公司（免费接口，无需签名）
+ */
+async function autoDetectCompany(trackingNo: string): Promise<string | null> {
+  try {
+    const autoUrl = `https://www.kuaidi100.com/autonumber/autoComNum?text=${encodeURIComponent(trackingNo)}`;
+    const autoResp = await fetch(autoUrl, {
+      headers: {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        "Referer": "https://www.kuaidi100.com/",
+      },
+    });
+
+    if (!autoResp.ok) return null;
+
+    const autoData = (await autoResp.json()) as AutoComResult;
+    if (autoData.auto && autoData.auto.length > 0) {
+      return autoData.auto[0].comCode;
+    }
+    return null;
+  } catch {
+    return null;
+  }
 }
 
 export function registerTrackingProxyRoute(app: Express) {
@@ -87,40 +173,13 @@ export function registerTrackingProxyRoute(app: Express) {
       }
 
       // Step 1: 自动识别快递公司
-      const autoUrl = `https://www.kuaidi100.com/autonumber/autoComNum?text=${encodeURIComponent(trackingNo)}`;
-      const autoResp = await fetch(autoUrl, {
-        headers: {
-          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-          "Referer": "https://www.kuaidi100.com/",
-        },
-      });
-      
-      if (!autoResp.ok) {
-        return res.status(502).json({ error: "无法识别快递公司", detail: `HTTP ${autoResp.status}` });
-      }
-
-      const autoData = (await autoResp.json()) as AutoComResult;
-      
-      if (!autoData.auto || autoData.auto.length === 0) {
+      const comCode = await autoDetectCompany(trackingNo);
+      if (!comCode) {
         return res.status(404).json({ error: "无法识别该单号对应的快递公司" });
       }
 
-      const comCode = autoData.auto[0].comCode;
-
-      // Step 2: 查询物流信息
-      const queryUrl = `https://www.kuaidi100.com/query?type=${encodeURIComponent(comCode)}&postid=${encodeURIComponent(trackingNo)}`;
-      const queryResp = await fetch(queryUrl, {
-        headers: {
-          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-          "Referer": "https://www.kuaidi100.com/",
-        },
-      });
-
-      if (!queryResp.ok) {
-        return res.status(502).json({ error: "查询物流信息失败", detail: `HTTP ${queryResp.status}` });
-      }
-
-      const queryData = (await queryResp.json()) as QueryResult;
+      // Step 2: 使用正式API查询物流信息
+      const queryData = await queryKuaidi100(comCode, trackingNo);
 
       return res.json({
         trackingNo,
@@ -138,7 +197,7 @@ export function registerTrackingProxyRoute(app: Express) {
     }
   });
 
-  // 国际物流查询 - 使用17track的方式，返回跳转链接（17track全球可访问）
+  // 国际物流查询
   app.get("/api/tracking/international", async (req: Request, res: Response) => {
     try {
       const user = await sdk.authenticateRequest(req);
@@ -151,42 +210,28 @@ export function registerTrackingProxyRoute(app: Express) {
         return res.status(400).json({ error: "缺少单号参数" });
       }
 
-      // 国际物流也尝试用快递100查询
-      const autoUrl = `https://www.kuaidi100.com/autonumber/autoComNum?text=${encodeURIComponent(trackingNo)}`;
-      const autoResp = await fetch(autoUrl, {
-        headers: {
-          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-          "Referer": "https://www.kuaidi100.com/",
-        },
-      });
+      // 先尝试自动识别快递公司
+      const comCode = await autoDetectCompany(trackingNo);
 
-      if (autoResp.ok) {
-        const autoData = (await autoResp.json()) as AutoComResult;
-        if (autoData.auto && autoData.auto.length > 0) {
-          const comCode = autoData.auto[0].comCode;
-          const queryUrl = `https://www.kuaidi100.com/query?type=${encodeURIComponent(comCode)}&postid=${encodeURIComponent(trackingNo)}`;
-          const queryResp = await fetch(queryUrl, {
-            headers: {
-              "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-              "Referer": "https://www.kuaidi100.com/",
-            },
-          });
-
-          if (queryResp.ok) {
-            const queryData = (await queryResp.json()) as QueryResult;
-            if (queryData.status === "200" && queryData.data && queryData.data.length > 0) {
-              return res.json({
-                trackingNo,
-                comCode,
-                comName: getComName(comCode),
-                status: queryData.status,
-                state: queryData.state,
-                message: queryData.message,
-                ischeck: queryData.ischeck,
-                data: queryData.data || [],
-              });
-            }
+      if (comCode) {
+        try {
+          // 使用正式API查询
+          const queryData = await queryKuaidi100(comCode, trackingNo);
+          if (queryData.status === "200" && queryData.data && queryData.data.length > 0) {
+            return res.json({
+              trackingNo,
+              comCode,
+              comName: getComName(comCode),
+              status: queryData.status,
+              state: queryData.state,
+              message: queryData.message,
+              ischeck: queryData.ischeck,
+              data: queryData.data || [],
+            });
           }
+        } catch (e) {
+          // 正式API查询失败，继续尝试其他方式
+          console.warn("Kuaidi100 API query failed for international:", e);
         }
       }
 

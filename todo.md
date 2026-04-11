@@ -331,3 +331,8 @@
 
 ## 部署构建 OOM 修复
 - [x] 优化 Vite 构建配置减少内存占用（exit code 137）：代码分割 + lazy import + 删除未使用文件
+
+## 接入快递100正式 API
+- [x] 配置快递100授权 Key 和 Customer 编号为环境变量
+- [x] 更新后端 trackingProxy.ts 使用正式 API（带 MD5 签名验证）
+- [x] 测试验证 API 集成（密钥有效，签名算法正确）
