@@ -357,3 +357,6 @@
 
 ## 国际跟踪单号查询链接修改
 - [x] 国际跟踪单号查询跳转改为 https://www.17track.net/zh-cn/carriers/yunji（云集物流）
+
+## 修正国际跟踪单号查询链接
+- [x] 链接格式改为 https://t.17track.net/zh-cn#nums=单号&fc=191512（云集物流承运商代码）

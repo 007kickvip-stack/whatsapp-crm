@@ -1270,7 +1270,7 @@ export default function OrdersPage() {
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <button
-                      onClick={() => window.open(`https://www.17track.net/zh-cn/carriers/yunji?nums=${encodeURIComponent(row.internationalTrackingNo!)}`, '_blank')}
+                      onClick={() => window.open(`https://t.17track.net/zh-cn#nums=${encodeURIComponent(row.internationalTrackingNo!)}&fc=191512`, '_blank')}
                       className="shrink-0 p-0.5 rounded hover:bg-emerald-50 text-emerald-600 hover:text-emerald-700 transition-colors"
                     >
                       <ExternalLink className="h-3 w-3" />

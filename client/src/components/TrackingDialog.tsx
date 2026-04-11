@@ -122,7 +122,7 @@ export default function TrackingDialog({
 
   // 国际单号 - 使用 iframe 嵌入 17track
   if (type === "international") {
-    const trackUrl = `https://www.17track.net/zh-cn/carriers/yunji?nums=${encodeURIComponent(trackingNo)}`;
+    const trackUrl = `https://t.17track.net/zh-cn#nums=${encodeURIComponent(trackingNo)}&fc=191512`;
 
     return (
       <Dialog open={open} onOpenChange={onOpenChange}>

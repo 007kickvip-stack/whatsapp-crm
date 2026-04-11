@@ -285,7 +285,7 @@ export function registerTrackingProxyRoute(app: Express) {
         status: "redirect", state: "-1",
         message: "无法通过快递100查询，请使用17track查询",
         data: [],
-        redirectUrl: `https://www.17track.net/zh-cn/carriers/yunji?nums=${encodeURIComponent(trackingNo)}`,
+        redirectUrl: `https://t.17track.net/zh-cn#nums=${encodeURIComponent(trackingNo)}&fc=191512`,
       });
     } catch (err: any) {
       console.error("International tracking proxy error:", err);
