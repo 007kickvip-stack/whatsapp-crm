@@ -1,6 +1,7 @@
 import type { Express, Request, Response } from "express";
 import multer from "multer";
 import * as XLSX from "xlsx";
+import ExcelJS from "exceljs";
 import { sdk } from "./_core/sdk";
 import {
   findOrderItemsByOrderNumbers,
@@ -16,6 +17,8 @@ import {
   getCurrentExchangeRate,
 } from "./db";
 import { subscribeTrackingNo, getCallbackUrl } from "./trackingProxy";
+import { storagePut } from "./storage";
+import crypto from "crypto";
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 
@@ -105,6 +108,58 @@ function mapHeaders(rawHeaders: string[]): string[] {
   });
 }
 
+// Extract embedded images from Excel using ExcelJS and map them to row/col positions
+async function extractEmbeddedImages(fileBuffer: Buffer): Promise<Map<string, string>> {
+  // Returns a map of "row:col" → S3 URL
+  const imageMap = new Map<string, string>();
+  try {
+    const workbook = new ExcelJS.Workbook();
+    await workbook.xlsx.load(fileBuffer as any);
+    const worksheet = workbook.getWorksheet(1);
+    if (!worksheet) return imageMap;
+
+    const images = worksheet.getImages();
+    if (!images || images.length === 0) return imageMap;
+
+    // Process images in parallel (batch of 5)
+    const BATCH_SIZE = 5;
+    for (let i = 0; i < images.length; i += BATCH_SIZE) {
+      const batch = images.slice(i, i + BATCH_SIZE);
+      await Promise.all(batch.map(async (img) => {
+        try {
+          const imageData = workbook.getImage(Number(img.imageId));
+          if (!imageData || !imageData.buffer) return;
+
+          const imgType = (imageData as any).type || "png";
+          const ext = imgType === "jpeg" ? "jpg" : imgType;
+          const mimeType = imgType === "jpeg" ? "image/jpeg" : `image/${imgType}`;
+          const randomSuffix = crypto.randomBytes(6).toString("hex");
+          const fileKey = `excel-import-images/${Date.now()}-${randomSuffix}.${ext}`;
+
+          const { url } = await storagePut(fileKey, imageData.buffer as any, mimeType);
+
+          // Get the anchor position (row, col) - ExcelJS uses tl (top-left) anchor
+          const range = img.range;
+          if (range && typeof range === "object" && "tl" in range) {
+            const tl = (range as any).tl;
+            const row = typeof tl.nativeRow === "number" ? tl.nativeRow : (typeof tl.row === "number" ? tl.row : -1);
+            const col = typeof tl.nativeCol === "number" ? tl.nativeCol : (typeof tl.col === "number" ? tl.col : -1);
+            if (row >= 0 && col >= 0) {
+              // row is 0-based (row 0 = header), col is 0-based
+              imageMap.set(`${row}:${col}`, url);
+            }
+          }
+        } catch (e) {
+          console.error("[Excel Import] Failed to extract image:", e);
+        }
+      }));
+    }
+  } catch (e) {
+    console.error("[Excel Import] Failed to parse images with ExcelJS:", e);
+  }
+  return imageMap;
+}
+
 export function registerExcelImportRoute(app: Express) {
   // Preview endpoint: parse Excel and check match status without updating
   app.post("/api/excel-preview", upload.single("file"), async (req: Request, res: Response) => {
@@ -152,7 +207,20 @@ export function registerExcelImportRoute(app: Express) {
       }
 
       const dataRows = rawData.slice(1).filter((row) => row.some((cell) => String(cell).trim()));
-      const parsedRows: Record<string, string>[] = dataRows.map((row) => {
+
+      // Extract embedded images from Excel and upload to S3
+      const orderImageColIdx = fieldMapping.indexOf("orderImageUrl");
+      const paymentImageColIdx = fieldMapping.indexOf("paymentScreenshotUrl");
+      let imageMap = new Map<string, string>();
+      if (orderImageColIdx >= 0 || paymentImageColIdx >= 0) {
+        imageMap = await extractEmbeddedImages(req.file.buffer as any);
+      }
+
+      // Track which data rows map to which raw row index (1-based, skipping header)
+      let rawRowIdx = 0;
+      const parsedRows: Record<string, string>[] = [];
+      for (const row of dataRows) {
+        rawRowIdx++; // 1-based index in rawData (after header)
         const obj: Record<string, string> = {};
         fieldMapping.forEach((field, idx) => {
           if (field !== "_skip" && row[idx] !== undefined) {
@@ -160,8 +228,21 @@ export function registerExcelImportRoute(app: Express) {
             if (val) obj[field] = val;
           }
         });
-        return obj;
-      }).filter((row) => row.orderNumber || row.originalOrderNo);
+
+        // Inject embedded images if cell value is empty but image exists at that position
+        if (orderImageColIdx >= 0 && !obj.orderImageUrl) {
+          const imgUrl = imageMap.get(`${rawRowIdx}:${orderImageColIdx}`);
+          if (imgUrl) obj.orderImageUrl = imgUrl;
+        }
+        if (paymentImageColIdx >= 0 && !obj.paymentScreenshotUrl) {
+          const imgUrl = imageMap.get(`${rawRowIdx}:${paymentImageColIdx}`);
+          if (imgUrl) obj.paymentScreenshotUrl = imgUrl;
+        }
+
+        if (obj.orderNumber || obj.originalOrderNo) {
+          parsedRows.push(obj);
+        }
+      }
 
       if (parsedRows.length === 0) {
         res.status(400).json({ error: "没有找到有效的数据行（需要订单编号或原订单号）" });
@@ -283,7 +364,19 @@ export function registerExcelImportRoute(app: Express) {
 
       // Parse data rows
       const dataRows = rawData.slice(1).filter((row) => row.some((cell) => String(cell).trim()));
-      const parsedRows: Record<string, string>[] = dataRows.map((row) => {
+
+      // Extract embedded images from Excel and upload to S3
+      const orderImageColIdx = fieldMapping.indexOf("orderImageUrl");
+      const paymentImageColIdx = fieldMapping.indexOf("paymentScreenshotUrl");
+      let imageMap = new Map<string, string>();
+      if (orderImageColIdx >= 0 || paymentImageColIdx >= 0) {
+        imageMap = await extractEmbeddedImages(req.file.buffer as any);
+      }
+
+      let rawRowIdx = 0;
+      const parsedRows: Record<string, string>[] = [];
+      for (const row of dataRows) {
+        rawRowIdx++;
         const obj: Record<string, string> = {};
         fieldMapping.forEach((field, idx) => {
           if (field !== "_skip" && row[idx] !== undefined) {
@@ -291,8 +384,21 @@ export function registerExcelImportRoute(app: Express) {
             if (val) obj[field] = val;
           }
         });
-        return obj;
-      }).filter((row) => row.orderNumber || row.originalOrderNo);
+
+        // Inject embedded images if cell value is empty but image exists at that position
+        if (orderImageColIdx >= 0 && !obj.orderImageUrl) {
+          const imgUrl = imageMap.get(`${rawRowIdx}:${orderImageColIdx}`);
+          if (imgUrl) obj.orderImageUrl = imgUrl;
+        }
+        if (paymentImageColIdx >= 0 && !obj.paymentScreenshotUrl) {
+          const imgUrl = imageMap.get(`${rawRowIdx}:${paymentImageColIdx}`);
+          if (imgUrl) obj.paymentScreenshotUrl = imgUrl;
+        }
+
+        if (obj.orderNumber || obj.originalOrderNo) {
+          parsedRows.push(obj);
+        }
+      }
 
       if (parsedRows.length === 0) {
         res.status(400).json({ error: "没有找到有效的数据行（需要订单编号或原订单号）" });

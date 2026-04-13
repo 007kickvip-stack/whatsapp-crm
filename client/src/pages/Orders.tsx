@@ -706,7 +706,7 @@ export default function OrdersPage() {
   const handleExport = async () => {
     setExporting(true);
     try {
-      const exportData = await exportMutation.mutateAsync({
+      const filters = {
         search: search || undefined,
         staffName: filterStaffName || undefined,
         account: filterAccount || undefined,
@@ -719,69 +719,32 @@ export default function OrdersPage() {
         logisticsStatus: filterLogisticsStatus || undefined,
         dateFrom: filterDateFrom || undefined,
         dateTo: filterDateTo || undefined,
+      };
+
+      // Call the Excel export endpoint (returns .xlsx with embedded images)
+      const response = await fetch("/api/excel-export", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          filters,
+          userId: user?.id,
+          userRole: user?.role,
+        }),
       });
-      if (!exportData || exportData.length === 0) {
-        toast.error("没有可导出的订单数据");
-        return;
+
+      if (!response.ok) {
+        const errData = await response.json().catch(() => ({ error: "导出失败" }));
+        throw new Error(errData.error || "导出失败");
       }
-      // Build CSV with BOM for Excel compatibility
-      const headers = [
-        "日期","客服名字","账号","客户WhatsApp","客户属性","订单编号","订单图片","Size","国内单号",
-        "推荐码数","联系方式","国际跟踪单号","原订单号","发出日期","件数","货源","订单状态",
-        "总金额$","总金额￥","售价","产品成本","产品毛利润","产品毛利率",
-        "收取运费","实际运费","运费利润","运费利润率","总利润","利润率","备注","付款状态","付款截图"
-      ];
-      const rows: string[][] = [];
-      for (const order of exportData as any[]) {
-        const items = (order.items && order.items.length > 0) ? order.items : [{}];
-        for (const item of items) {
-          rows.push([
-            order.orderDate ? new Date(order.orderDate).toLocaleDateString("zh-CN") : "",
-            order.staffName || "",
-            order.account || "",
-            order.customerWhatsapp || "",
-            order.customerType || "",
-            item.orderNumber || order.orderNumber || "",
-            item.orderImageUrl || "",
-            item.size || "",
-            item.domesticTrackingNo || "",
-            item.sizeRecommendation || "",
-            item.contactInfo || "",
-            item.internationalTrackingNo || "",
-            item.originalOrderNo || "",
-            item.shipDate || "",
-            String(item.quantity || ""),
-            item.source || "",
-            item.itemStatus || order.orderStatus || "",
-            fmtNum(item.amountUsd),
-            fmtNum(item.amountCny),
-            fmtNum(item.sellingPrice),
-            fmtNum(item.productCost),
-            fmtNum(item.productProfit),
-            fmtPct(item.productProfitRate),
-            fmtNum(item.shippingCharged),
-            fmtNum(item.shippingActual),
-            fmtNum(item.shippingProfit),
-            fmtPct(item.shippingProfitRate),
-            fmtNum(item.totalProfit),
-            fmtPct(item.profitRate),
-            item.remarks || order.remarks || "",
-            item.paymentStatus || order.paymentStatus || "",
-            item.paymentScreenshotUrl || "",
-          ]);
-        }
-      }
-      const csvContent = "\uFEFF" + [headers, ...rows].map(row =>
-        row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(",")
-      ).join("\n");
-      const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+
+      const blob = await response.blob();
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;
-      link.download = `订单导出_${new Date().toISOString().split("T")[0]}.csv`;
+      link.download = `订单导出_${new Date().toISOString().split("T")[0]}.xlsx`;
       link.click();
       URL.revokeObjectURL(url);
-      toast.success(`成功导出 ${exportData.length} 条订单`);
+      toast.success("导出成功（含图片）");
     } catch (err: any) {
       toast.error(err.message || "导出失败");
     } finally {

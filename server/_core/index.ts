@@ -9,6 +9,7 @@ import { createContext } from "./context";
 import { serveStatic, setupVite } from "./vite";
 import { registerExcelImportRoute } from "../excelImport";
 import { registerTrackingProxyRoute } from "../trackingProxy";
+import { registerExcelExportRoute } from "../excelExport";
 
 function isPortAvailable(port: number): Promise<boolean> {
   return new Promise(resolve => {
@@ -41,6 +42,8 @@ async function startServer() {
   registerExcelImportRoute(app);
   // Tracking proxy for domestic/international logistics
   registerTrackingProxyRoute(app);
+  // Excel export with embedded images
+  registerExcelExportRoute(app);
   // tRPC API
   app.use(
     "/api/trpc",
