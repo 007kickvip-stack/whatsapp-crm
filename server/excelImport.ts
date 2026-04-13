@@ -34,7 +34,9 @@ const HEADER_MAP: Record<string, string> = {
   "订单编号": "orderNumber",
   "订单号": "orderNumber",
   "编号": "orderNumber",
-  "订单图片": "_skip",
+  "订单图片": "orderImageUrl",
+  "订单图片链接": "orderImageUrl",
+  "orderimageurl": "orderImageUrl",
   "size": "size",
   "尺码": "size",
   "国内单号": "domesticTrackingNo",
@@ -66,7 +68,9 @@ const HEADER_MAP: Record<string, string> = {
   "运费利润率": "_skip",
   "总利润": "_skip",
   "利润率": "_skip",
-  "付款截图": "_skip",
+  "付款截图": "paymentScreenshotUrl",
+  "付款截图链接": "paymentScreenshotUrl",
+  "paymentscreenshoturl": "paymentScreenshotUrl",
   "备注": "remarks",
   "付款状态": "paymentStatus",
   "操作": "_skip",
@@ -78,6 +82,7 @@ const UPDATABLE_ITEM_FIELDS = [
   "internationalTrackingNo", "originalOrderNo", "shipDate", "quantity",
   "source", "amountUsd", "amountCny", "sellingPrice", "productCost",
   "shippingCharged", "shippingActual", "remarks", "paymentStatus", "itemStatus",
+  "orderImageUrl", "paymentScreenshotUrl",
 ];
 
 // Fields on orders table that can be updated from Excel
@@ -527,6 +532,8 @@ export function registerExcelImportRoute(app: Express) {
                 remarks: row.remarks || undefined,
                 paymentStatus: row.paymentStatus || undefined,
                 originalOrderNo: row.originalOrderNo || undefined,
+                orderImageUrl: row.orderImageUrl || undefined,
+                paymentScreenshotUrl: row.paymentScreenshotUrl || undefined,
               });
 
               // Auto-subscribe domestic tracking if present

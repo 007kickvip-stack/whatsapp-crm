@@ -726,10 +726,10 @@ export default function OrdersPage() {
       }
       // Build CSV with BOM for Excel compatibility
       const headers = [
-        "日期","客服名字","账号","客户WhatsApp","客户属性","订单编号","Size","国内单号",
+        "日期","客服名字","账号","客户WhatsApp","客户属性","订单编号","订单图片","Size","国内单号",
         "推荐码数","联系方式","国际跟踪单号","原订单号","发出日期","件数","货源","订单状态",
         "总金额$","总金额￥","售价","产品成本","产品毛利润","产品毛利率",
-        "收取运费","实际运费","运费利润","运费利润率","总利润","利润率","备注","付款状态"
+        "收取运费","实际运费","运费利润","运费利润率","总利润","利润率","备注","付款状态","付款截图"
       ];
       const rows: string[][] = [];
       for (const order of exportData as any[]) {
@@ -742,6 +742,7 @@ export default function OrdersPage() {
             order.customerWhatsapp || "",
             order.customerType || "",
             item.orderNumber || order.orderNumber || "",
+            item.orderImageUrl || "",
             item.size || "",
             item.domesticTrackingNo || "",
             item.sizeRecommendation || "",
@@ -766,6 +767,7 @@ export default function OrdersPage() {
             fmtPct(item.profitRate),
             item.remarks || order.remarks || "",
             item.paymentStatus || order.paymentStatus || "",
+            item.paymentScreenshotUrl || "",
           ]);
         }
       }
