@@ -9,7 +9,13 @@ import {
   updateOrder,
   recalculateOrderTotals,
   createAuditLog,
+  getCustomerByWhatsapp,
+  createCustomer,
+  createOrder,
+  createOrderItem,
+  getCurrentExchangeRate,
 } from "./db";
+import { subscribeTrackingNo, getCallbackUrl } from "./trackingProxy";
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 
@@ -203,6 +209,9 @@ export function registerExcelImportRoute(app: Express) {
       const matchedCount = previewRows.filter((r) => r._matched).length;
       const unmatchedCount = previewRows.filter((r) => !r._matched).length;
 
+      // Check if autoCreate mode is possible (need customerWhatsapp column)
+      const hasCustomerWhatsapp = fieldMapping.includes("customerWhatsapp");
+
       res.json({
         success: true,
         totalRows: previewRows.length,
@@ -211,6 +220,7 @@ export function registerExcelImportRoute(app: Express) {
         rows: previewRows,
         detectedHeaders: headerRow,
         mapping: fieldMapping.map((f, i) => ({ header: headerRow[i], field: f })),
+        canAutoCreate: hasCustomerWhatsapp,
       });
     } catch (err: any) {
       console.error("[Excel Preview] Error:", err);
@@ -312,12 +322,21 @@ export function registerExcelImportRoute(app: Express) {
         origNoMap.get(key)!.push({ itemId: row.item.id, orderId: row.item.orderId });
       }
 
+      // Check autoCreate mode from query parameter
+      const autoCreate = req.query.autoCreate === "true" || req.body?.autoCreate === true;
+      const hasCustomerWhatsapp = fieldMapping.includes("customerWhatsapp");
+
       // Process each row: match and update
       let updatedCount = 0;
       let skippedCount = 0;
+      let createdCount = 0;
       const errors: string[] = [];
       const affectedOrderIds = new Set<number>();
       const updatedItems: { itemId: number; orderNumber: string; fieldsUpdated: string[] }[] = [];
+      const createdOrders: { orderId: number; orderNumber: string }[] = [];
+
+      // Group unmatched rows by orderNumber + customerWhatsapp for auto-create
+      const unmatchedGroups = new Map<string, Record<string, string>[]>();
 
       for (const row of parsedRows) {
         try {
@@ -331,6 +350,13 @@ export function registerExcelImportRoute(app: Express) {
           }
 
           if (matchedItems.length === 0) {
+            if (autoCreate && hasCustomerWhatsapp && row.customerWhatsapp && row.orderNumber) {
+              // Collect unmatched rows for auto-create
+              const groupKey = `${row.orderNumber}||${row.customerWhatsapp}`;
+              if (!unmatchedGroups.has(groupKey)) unmatchedGroups.set(groupKey, []);
+              unmatchedGroups.get(groupKey)!.push(row);
+              continue;
+            }
             skippedCount++;
             const identifier = row.orderNumber || row.originalOrderNo || "未知";
             errors.push(`未找到匹配的订单子项: ${identifier}`);
@@ -423,6 +449,105 @@ export function registerExcelImportRoute(app: Express) {
         await recalculateOrderTotals(orderId);
       }
 
+      // ========== Auto-create new orders for unmatched rows ==========
+      if (autoCreate && unmatchedGroups.size > 0) {
+        const currentRate = await getCurrentExchangeRate();
+        const exchangeRateVal = parseFloat(String(currentRate.rate));
+
+        for (const [, groupRows] of Array.from(unmatchedGroups)) {
+          try {
+            const first = groupRows[0];
+
+            // Auto-create customer if not exists
+            let existingCustomer = await getCustomerByWhatsapp(first.customerWhatsapp!);
+            let customerId: number;
+            if (!existingCustomer) {
+              customerId = await createCustomer({
+                whatsapp: first.customerWhatsapp!,
+                customerType: first.customerType || "新零售",
+                createdById: user.id,
+              });
+            } else {
+              customerId = existingCustomer.id;
+            }
+
+            // Create order
+            const orderId = await createOrder({
+              orderDate: first.orderDate ? new Date(first.orderDate) : null,
+              account: first.account || undefined,
+              customerWhatsapp: first.customerWhatsapp!,
+              customerId,
+              customerType: first.customerType || "新零售",
+              orderNumber: first.orderNumber!,
+              orderStatus: first.orderStatus || "已报货，待发货",
+              paymentStatus: first.paymentStatus || "未付款",
+              remarks: first.remarks || undefined,
+              staffId: user.id,
+              staffName: user.name || "未知客服",
+            });
+
+            // Create order items for each row in the group
+            for (const row of groupRows) {
+              const amountUsd = parseFloat(row.amountUsd || "0");
+              const amountCny = row.amountCny ? parseFloat(row.amountCny) : amountUsd * exchangeRateVal;
+              const sellingPrice = parseFloat(row.sellingPrice || "0");
+              const productCost = parseFloat(row.productCost || "0");
+              const productProfit = sellingPrice - productCost;
+              const productProfitRate = sellingPrice > 0 ? productProfit / sellingPrice : 0;
+              const shippingCharged = parseFloat(row.shippingCharged || "0") || (amountCny - sellingPrice);
+              const shippingActual = parseFloat(row.shippingActual || "0");
+              const shippingProfit = shippingCharged - shippingActual;
+              const shippingProfitRate = shippingCharged > 0 ? shippingProfit / shippingCharged : 0;
+              const totalProfit = productProfit + shippingProfit;
+              const profitRate = amountCny > 0 ? totalProfit / amountCny : 0;
+
+              const itemId = await createOrderItem({
+                orderId,
+                orderNumber: row.orderNumber!,
+                size: row.size || undefined,
+                domesticTrackingNo: row.domesticTrackingNo || undefined,
+                sizeRecommendation: row.sizeRecommendation || undefined,
+                contactInfo: row.contactInfo || undefined,
+                internationalTrackingNo: row.internationalTrackingNo || undefined,
+                shipDate: row.shipDate || undefined,
+                quantity: row.quantity ? parseInt(row.quantity) || 1 : 1,
+                source: row.source || undefined,
+                amountUsd: row.amountUsd || "0",
+                amountCny: amountCny.toFixed(2),
+                sellingPrice: row.sellingPrice || "0",
+                productCost: row.productCost || "0",
+                shippingCharged: shippingCharged.toFixed(2),
+                shippingActual: row.shippingActual || "0",
+                productProfit: productProfit.toFixed(2),
+                productProfitRate: productProfitRate.toFixed(6),
+                shippingProfit: shippingProfit.toFixed(2),
+                shippingProfitRate: shippingProfitRate.toFixed(6),
+                totalProfit: totalProfit.toFixed(2),
+                profitRate: profitRate.toFixed(6),
+                remarks: row.remarks || undefined,
+                paymentStatus: row.paymentStatus || undefined,
+                originalOrderNo: row.originalOrderNo || undefined,
+              });
+
+              // Auto-subscribe domestic tracking if present
+              if (row.domesticTrackingNo) {
+                try {
+                  const callbackUrl = getCallbackUrl(req);
+                  await subscribeTrackingNo(itemId, row.domesticTrackingNo, callbackUrl);
+                } catch { /* ignore subscription errors */ }
+              }
+            }
+
+            await recalculateOrderTotals(orderId);
+            createdOrders.push({ orderId, orderNumber: first.orderNumber! });
+            createdCount++;
+          } catch (err: any) {
+            const identifier = groupRows[0].orderNumber || "未知";
+            errors.push(`创建订单 ${identifier} 失败: ${err.message}`);
+          }
+        }
+      }
+
       // Log the import action
       await createAuditLog({
         userId: user.id,
@@ -430,21 +555,25 @@ export function registerExcelImportRoute(app: Express) {
         userRole: user.role,
         action: "import",
         targetType: "order",
-        targetName: `Excel导入更新 ${updatedCount} 条子项`,
+        targetName: `Excel导入: 更新${updatedCount}条, 新建${createdCount}个订单`,
         details: JSON.stringify({
           updated: updatedCount,
+          created: createdCount,
           skipped: skippedCount,
           errors: errors.length,
           affectedOrders: Array.from(affectedOrderIds),
+          createdOrders: createdOrders.map(o => o.orderNumber),
         }),
       });
 
       res.json({
         success: true,
         updated: updatedCount,
+        created: createdCount,
         skipped: skippedCount,
         totalRows: parsedRows.length,
         updatedItems,
+        createdOrders,
         errors: errors.length > 0 ? errors : undefined,
         detectedHeaders: headerRow,
         mapping: fieldMapping.map((f, i) => ({ header: headerRow[i], field: f })),
