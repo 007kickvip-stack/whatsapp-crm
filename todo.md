@@ -514,3 +514,6 @@
 
 ## 导出报价图片去掉Remarks列
 - [x] 导出报价图片中去掉Remarks列，列宽度重新分配
+
+## 设置网页图标
+- [x] 将用户提供的图片转换为favicon并设置为网页图标（ICO+apple-touch-icon）
