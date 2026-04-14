@@ -452,7 +452,7 @@ export default function QuotationsPage() {
   // Build flat rows: parent row + child rows for each quotation
   const tableRows = useMemo(() => {
     const rows: Array<{
-      type: "parent" | "child";
+      type: "parent" | "child" | "total";
       quotation: any;
       item?: any;
       itemIndex?: number;
@@ -468,6 +468,8 @@ export default function QuotationsPage() {
         items.slice(1).forEach((item: any, idx: number) => {
           rows.push({ type: "child", quotation: q, item, itemIndex: idx + 1, itemCount: items.length });
         });
+        // Total row right after this quotation's items
+        rows.push({ type: "total", quotation: q, itemCount: items.length });
       }
     });
     return rows;
@@ -544,8 +546,22 @@ export default function QuotationsPage() {
                 const q = row.quotation;
                 const item = row.item;
                 const isParent = row.type === "parent";
+                const isTotal = row.type === "total";
                 const isCollapsed = collapsedIds.has(q.id);
                 const visibleItemCount = isCollapsed ? 1 : row.itemCount;
+
+                if (isTotal) {
+                  return (
+                    <tr key={`total-${q.id}`} className="border-t-2 border-emerald-200 bg-emerald-50/30">
+                      <td colSpan={10} className="py-1.5 px-2 text-right font-semibold text-gray-600 text-xs">
+                        {q.customerName} 合计
+                      </td>
+                      <td className="py-1.5 px-2 text-center font-bold text-emerald-700 text-xs">${fmtNum(q.totalAmountUsd)}</td>
+                      <td className="py-1.5 px-2 text-center font-bold text-orange-600 text-xs">¥{fmtNum(q.totalAmountCny)}</td>
+                      <td colSpan={4}></td>
+                    </tr>
+                  );
+                }
 
                 if (isParent) {
                   return (
@@ -816,21 +832,7 @@ export default function QuotationsPage() {
                 );
               })}
 
-              {/* Totals row for each quotation */}
-              {quotations.map((q: any) => {
-                const isCollapsed = collapsedIds.has(q.id);
-                if (isCollapsed) return null;
-                return (
-                  <tr key={`total-${q.id}`} className="border-t-2 border-emerald-200 bg-emerald-50/30">
-                    <td colSpan={10} className="py-1.5 px-2 text-right font-semibold text-gray-600 text-xs">
-                      {q.customerName} 合计
-                    </td>
-                    <td className="py-1.5 px-2 text-center font-bold text-emerald-700 text-xs">${fmtNum(q.totalAmountUsd)}</td>
-                    <td className="py-1.5 px-2 text-center font-bold text-orange-600 text-xs">¥{fmtNum(q.totalAmountCny)}</td>
-                    <td colSpan={3}></td>
-                  </tr>
-                );
-              })}
+
             </tbody>
           </table>
         </div>
