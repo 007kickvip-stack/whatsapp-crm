@@ -39,9 +39,20 @@ import {
   ChevronUp,
   RefreshCw,
   X,
+  BarChart3,
 } from "lucide-react";
 import { toast } from "sonner";
 import AccountSelect from "@/components/AccountSelect";
+import {
+  ResponsiveContainer,
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip as RechartsTooltip,
+  Legend,
+} from "recharts";
 
 // 客户属性颜色映射
 const customerTypeColors: Record<string, string> = {
@@ -54,25 +65,113 @@ const customerTypeColors: Record<string, string> = {
 // 顾客等级选项
 const customerLevels = ["A", "B", "C", "D", "VIP", "普通"];
 
-// 表格列定义
+// 客户分层选项
+const customerTiers = ["高价值", "中价值", "低价值", "新客户", "流失客户"];
+
+// 表格列定义 - 按用户要求的顺序
 const columns = [
   { key: "index", label: "序号", width: "w-[50px]", editable: false },
+  { key: "firstOrderDate", label: "首次下单日期", width: "w-[110px]", editable: false, type: "date" },
   { key: "staffName", label: "客服名字", width: "w-[90px]", editable: true, type: "text" },
   { key: "account", label: "账号", width: "w-[120px]", editable: true, type: "account" },
+  { key: "customerName", label: "客户名字", width: "w-[100px]", editable: true, type: "text" },
   { key: "whatsapp", label: "客户WhatsApp", width: "w-[140px]", editable: true, type: "text" },
+  { key: "customerEmail", label: "客户邮箱", width: "w-[160px]", editable: true, type: "text" },
   { key: "contactInfo", label: "联系方式", width: "w-[120px]", editable: true, type: "text" },
-  { key: "customerType", label: "客户属性", width: "w-[110px]", editable: true, type: "customerType" },
-  { key: "address", label: "收货地址", width: "w-[180px]", editable: true, type: "text" },
+  { key: "country", label: "国家", width: "w-[80px]", editable: true, type: "text" },
   { key: "totalOrderCount", label: "累计订单数", width: "w-[90px]", editable: false, type: "number" },
   { key: "totalSpentUsd", label: "累计消费($)", width: "w-[100px]", editable: false, type: "money" },
   { key: "totalSpentCny", label: "累计消费(¥)", width: "w-[100px]", editable: false, type: "money" },
-  { key: "firstOrderDate", label: "首次下单日期", width: "w-[110px]", editable: false, type: "date" },
+  { key: "customerType", label: "客户属性", width: "w-[110px]", editable: true, type: "customerType" },
+  { key: "customerTier", label: "客户分层", width: "w-[90px]", editable: true, type: "tier" },
   { key: "customerLevel", label: "顾客等级", width: "w-[80px]", editable: true, type: "level" },
   { key: "orderCategory", label: "订购类目", width: "w-[120px]", editable: true, type: "text" },
-  { key: "customerName", label: "客户名字", width: "w-[100px]", editable: true, type: "text" },
   { key: "birthDate", label: "出生日期", width: "w-[110px]", editable: true, type: "date" },
-  { key: "customerEmail", label: "客户邮箱", width: "w-[160px]", editable: true, type: "text" },
 ];
+
+// 客户折线图组件
+function CustomerChart({ customerId }: { customerId: number }) {
+  const [dateRange, setDateRange] = useState<"all" | "30d" | "90d" | "180d" | "1y">("all");
+  
+  const dateParams = useMemo(() => {
+    if (dateRange === "all") return {};
+    const now = new Date();
+    const days = dateRange === "30d" ? 30 : dateRange === "90d" ? 90 : dateRange === "180d" ? 180 : 365;
+    const start = new Date(now.getTime() - days * 86400000);
+    return {
+      startDate: start.toISOString().split("T")[0],
+      endDate: now.toISOString().split("T")[0],
+    };
+  }, [dateRange]);
+
+  const { data, isLoading } = trpc.customers.orderHistory.useQuery({
+    customerId,
+    ...dateParams,
+  });
+
+  if (isLoading) return <div className="py-4 text-center text-xs text-muted-foreground">加载中...</div>;
+  if (!data || data.length === 0) return <div className="py-4 text-center text-xs text-muted-foreground">暂无订单数据</div>;
+
+  const chartData = data.map((d: any) => ({
+    date: d.date ? new Date(d.date).toLocaleDateString("zh-CN", { month: "short", day: "numeric" }) : "未知",
+    rawDate: d.date,
+    orderCount: d.orderCount,
+    totalUsd: Number(d.totalUsd),
+    totalCny: Number(d.totalCny),
+  }));
+
+  return (
+    <div className="px-4 py-3 bg-muted/30">
+      <div className="flex items-center justify-between mb-2">
+        <span className="text-xs font-medium text-muted-foreground">下单趋势</span>
+        <div className="flex items-center gap-1">
+          {(["all", "30d", "90d", "180d", "1y"] as const).map((r) => (
+            <Button
+              key={r}
+              variant={dateRange === r ? "default" : "ghost"}
+              size="sm"
+              className="h-5 px-2 text-[10px]"
+              onClick={() => setDateRange(r)}
+            >
+              {r === "all" ? "全部" : r === "30d" ? "30天" : r === "90d" ? "90天" : r === "180d" ? "半年" : "1年"}
+            </Button>
+          ))}
+        </div>
+      </div>
+      <div className="h-[160px]">
+        <ResponsiveContainer width="100%" height="100%">
+          <LineChart data={chartData} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}>
+            <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
+            <XAxis dataKey="date" tick={{ fontSize: 10 }} />
+            <YAxis yAxisId="left" tick={{ fontSize: 10 }} />
+            <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 10 }} />
+            <RechartsTooltip
+              contentStyle={{ fontSize: 11, borderRadius: 8 }}
+              formatter={(value: number, name: string) => {
+                if (name === "orderCount") return [value, "订单数"];
+                if (name === "totalUsd") return [`$${value.toFixed(2)}`, "消费($)"];
+                if (name === "totalCny") return [`¥${value.toFixed(2)}`, "消费(¥)"];
+                return [value, name];
+              }}
+            />
+            <Legend
+              formatter={(value: string) => {
+                if (value === "orderCount") return "订单数";
+                if (value === "totalUsd") return "消费($)";
+                if (value === "totalCny") return "消费(¥)";
+                return value;
+              }}
+              wrapperStyle={{ fontSize: 10 }}
+            />
+            <Line yAxisId="left" type="monotone" dataKey="orderCount" stroke="#3b82f6" strokeWidth={2} dot={{ r: 3 }} />
+            <Line yAxisId="right" type="monotone" dataKey="totalUsd" stroke="#10b981" strokeWidth={1.5} dot={{ r: 2 }} strokeDasharray="4 2" />
+            <Line yAxisId="right" type="monotone" dataKey="totalCny" stroke="#f59e0b" strokeWidth={1.5} dot={{ r: 2 }} strokeDasharray="4 2" />
+          </LineChart>
+        </ResponsiveContainer>
+      </div>
+    </div>
+  );
+}
 
 export default function CustomersPage() {
   const { user } = useAuth();
@@ -88,6 +187,7 @@ export default function CustomersPage() {
   const [filterCustomerType, setFilterCustomerType] = useState("");
   const [filterCustomerLevel, setFilterCustomerLevel] = useState("");
   const [showNewRow, setShowNewRow] = useState(false);
+  const [expandedCustomers, setExpandedCustomers] = useState<Set<number>>(new Set());
   const [newCustomer, setNewCustomer] = useState<Record<string, string>>({
     whatsapp: "",
     staffName: "",
@@ -100,6 +200,8 @@ export default function CustomersPage() {
     customerName: "",
     birthDate: "",
     customerEmail: "",
+    country: "",
+    customerTier: "",
   });
 
   const utils = trpc.useUtils();
@@ -125,6 +227,7 @@ export default function CustomersPage() {
         whatsapp: "", staffName: "", account: "", contactInfo: "",
         customerType: "新零售", address: "", customerLevel: "",
         orderCategory: "", customerName: "", birthDate: "", customerEmail: "",
+        country: "", customerTier: "",
       });
     },
     onError: (err) => toast.error(err.message),
@@ -153,6 +256,16 @@ export default function CustomersPage() {
     },
     onError: (err) => toast.error(err.message),
   });
+
+  // 切换折线图展开
+  const toggleChart = useCallback((id: number) => {
+    setExpandedCustomers(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
 
   // 开始编辑单元格
   const startEdit = useCallback((id: number, field: string, currentValue: string) => {
@@ -282,6 +395,24 @@ export default function CustomersPage() {
           </Select>
         );
       }
+      // 客户分层下拉
+      if (col.type === "tier") {
+        return (
+          <Select value={editValue} onValueChange={(v) => {
+            updateMutation.mutate({ id: customer.id, [col.key]: v });
+            setEditingCell(null);
+          }}>
+            <SelectTrigger className="h-7 text-xs border-primary">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {customerTiers.map(t => (
+                <SelectItem key={t} value={t}>{t}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        );
+      }
       // 账号下拉
       if (col.type === "account") {
         return (
@@ -335,6 +466,33 @@ export default function CustomersPage() {
       );
     }
 
+    if (col.type === "tier") {
+      if (!cellValue) {
+        return (
+          <span
+            className="text-xs cursor-pointer hover:bg-muted/50 block w-full min-h-[20px] px-0.5 rounded text-muted-foreground/40"
+            onClick={() => startEdit(customer.id, col.key, cellValue)}
+          >-</span>
+        );
+      }
+      const tierColors: Record<string, string> = {
+        "高价值": "bg-emerald-100 text-emerald-800 border-emerald-200",
+        "中价值": "bg-blue-100 text-blue-800 border-blue-200",
+        "低价值": "bg-gray-100 text-gray-700 border-gray-200",
+        "新客户": "bg-purple-100 text-purple-800 border-purple-200",
+        "流失客户": "bg-red-100 text-red-800 border-red-200",
+      };
+      const colorClass = tierColors[cellValue] || "bg-gray-100 text-gray-700 border-gray-200";
+      return (
+        <span
+          className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-medium border cursor-pointer ${colorClass}`}
+          onClick={() => startEdit(customer.id, col.key, cellValue)}
+        >
+          {cellValue}
+        </span>
+      );
+    }
+
     return (
       <span
         className="text-xs cursor-pointer hover:bg-muted/50 block w-full min-h-[20px] px-0.5 rounded"
@@ -374,6 +532,20 @@ export default function CustomersPage() {
           <SelectContent>
             {customerLevels.map(l => (
               <SelectItem key={l} value={l}>{l}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      );
+    }
+    if (col.type === "tier") {
+      return (
+        <Select value={newCustomer.customerTier || ""} onValueChange={(v) => setNewCustomer(prev => ({ ...prev, customerTier: v }))}>
+          <SelectTrigger className="h-7 text-xs">
+            <SelectValue placeholder="-" />
+          </SelectTrigger>
+          <SelectContent>
+            {customerTiers.map(t => (
+              <SelectItem key={t} value={t}>{t}</SelectItem>
             ))}
           </SelectContent>
         </Select>
@@ -555,7 +727,7 @@ export default function CustomersPage() {
                           {col.label}
                         </th>
                       ))}
-                      <th className="w-[50px] text-center py-2 px-2 font-bold text-xs text-black border border-gray-200">
+                      <th className="w-[80px] text-center py-2 px-2 font-bold text-xs text-black border border-gray-200">
                         操作
                       </th>
                     </tr>
@@ -595,29 +767,54 @@ export default function CustomersPage() {
                     {/* 数据行 */}
                     {data?.data && data.data.length > 0 ? (
                       data.data.map((customer, idx) => (
-                        <tr
-                          key={customer.id}
-                          className="border-b border-gray-200 hover:bg-muted/20 transition-colors"
-                        >
-                          {columns.map((col) => (
-                            <td
-                              key={col.key}
-                              className={`${col.width} py-1 px-1.5 text-center border border-gray-100 align-middle`}
-                            >
-                              {renderCell(customer, col, idx)}
+                        <>
+                          <tr
+                            key={customer.id}
+                            className="border-b border-gray-200 hover:bg-muted/20 transition-colors"
+                          >
+                            {columns.map((col) => (
+                              <td
+                                key={col.key}
+                                className={`${col.width} py-1 px-1.5 text-center border border-gray-100 align-middle`}
+                              >
+                                {renderCell(customer, col, idx)}
+                              </td>
+                            ))}
+                            <td className="py-1 px-1 text-center border border-gray-100">
+                              <div className="flex items-center justify-center gap-0.5">
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <Button
+                                      variant="ghost"
+                                      size="icon"
+                                      className={`h-6 w-6 ${expandedCustomers.has(customer.id) ? "text-primary" : "text-muted-foreground"}`}
+                                      onClick={() => toggleChart(customer.id)}
+                                    >
+                                      <BarChart3 className="h-3 w-3" />
+                                    </Button>
+                                  </TooltipTrigger>
+                                  <TooltipContent>查看下单趋势</TooltipContent>
+                                </Tooltip>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-6 w-6 text-destructive hover:text-destructive"
+                                  onClick={() => setDeleteId(customer.id)}
+                                >
+                                  <Trash2 className="h-3 w-3" />
+                                </Button>
+                              </div>
                             </td>
-                          ))}
-                          <td className="py-1 px-1 text-center border border-gray-100">
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-6 w-6 text-destructive hover:text-destructive"
-                              onClick={() => setDeleteId(customer.id)}
-                            >
-                              <Trash2 className="h-3 w-3" />
-                            </Button>
-                          </td>
-                        </tr>
+                          </tr>
+                          {/* 折叠折线图 */}
+                          {expandedCustomers.has(customer.id) && (
+                            <tr key={`chart-${customer.id}`}>
+                              <td colSpan={columns.length + 1} className="p-0 border border-gray-100">
+                                <CustomerChart customerId={customer.id} />
+                              </td>
+                            </tr>
+                          )}
+                        </>
                       ))
                     ) : (
                       <tr>

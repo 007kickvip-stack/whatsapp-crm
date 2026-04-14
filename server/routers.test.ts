@@ -82,6 +82,11 @@ vi.mock("./db", () => ({
   reorderAccounts: vi.fn().mockResolvedValue({ success: true }),
   findOrderItemsByOrderNumbers: vi.fn().mockResolvedValue([]),
   findOrderItemsByOriginalOrderNos: vi.fn().mockResolvedValue([]),
+  syncCustomerStats: vi.fn().mockResolvedValue(undefined),
+  syncCustomerFromOrder: vi.fn().mockResolvedValue(undefined),
+  getCustomerOrderHistory: vi.fn().mockResolvedValue([]),
+  findOrderItemByDomesticTrackingNo: vi.fn().mockResolvedValue(null),
+  markLogisticsSubscribed: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock("./storage", () => ({

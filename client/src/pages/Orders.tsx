@@ -786,6 +786,13 @@ export default function OrdersPage() {
     { key: "paymentScreenshot", label: "付款截图", width: "80px" },
     { key: "remarks", label: "备注", width: "120px" },
     { key: "paymentStatus", label: "付款状态", width: "80px" },
+    { key: "customerName", label: "客户名字", width: "100px" },
+    { key: "customerCountry", label: "国家", width: "80px" },
+    { key: "customerTier", label: "客户分层", width: "90px" },
+    { key: "customerLevel", label: "顾客等级", width: "80px" },
+    { key: "orderCategory", label: "订购类目", width: "100px" },
+    { key: "customerBirthDate", label: "出生日期", width: "100px" },
+    { key: "customerEmail", label: "客户邮箱", width: "140px" },
   ];
 
   // Build flat rows
@@ -832,6 +839,13 @@ export default function OrdersPage() {
     paymentScreenshotUrl: string | null;
     remarks: string | null;
     paymentStatus: string | null;
+    customerName: string | null;
+    customerCountry: string | null;
+    customerTier: string | null;
+    customerLevel: string | null;
+    orderCategory: string | null;
+    customerBirthDate: string | null;
+    customerEmail: string | null;
   };
 
   // Auto-create initial item for orders that have no items
@@ -901,6 +915,13 @@ export default function OrdersPage() {
           paymentScreenshotUrl: null,
           remarks: order.remarks,
           paymentStatus: order.paymentStatus,
+          customerName: (order as any).customerName || null,
+          customerCountry: (order as any).customerCountry || null,
+          customerTier: (order as any).customerTier || null,
+          customerLevel: (order as any).customerLevel || null,
+          orderCategory: (order as any).orderCategory || null,
+          customerBirthDate: (order as any).customerBirthDate ? new Date((order as any).customerBirthDate).toISOString().split('T')[0] : null,
+          customerEmail: (order as any).customerEmail || null,
         });
       } else {
         // When collapsed, only show the first item row
@@ -949,6 +970,13 @@ export default function OrdersPage() {
             paymentScreenshotUrl: item.paymentScreenshotUrl,
             remarks: item.remarks,
             paymentStatus: item.paymentStatus || (idx === 0 ? order.paymentStatus : null),
+            customerName: idx === 0 ? ((order as any).customerName || null) : null,
+            customerCountry: idx === 0 ? ((order as any).customerCountry || null) : null,
+            customerTier: idx === 0 ? ((order as any).customerTier || null) : null,
+            customerLevel: idx === 0 ? ((order as any).customerLevel || null) : null,
+            orderCategory: idx === 0 ? ((order as any).orderCategory || null) : null,
+            customerBirthDate: idx === 0 ? ((order as any).customerBirthDate ? new Date((order as any).customerBirthDate).toISOString().split('T')[0] : null) : null,
+            customerEmail: idx === 0 ? ((order as any).customerEmail || null) : null,
             itemId: item.id,
           });
         });
@@ -1454,6 +1482,89 @@ export default function OrdersPage() {
               selectOptions={PAYMENT_STATUSES}
               selectColorFn={paymentColor}
               onSave={(v) => saveOrderField(row.orderId, "paymentStatus", v)}
+            />
+          ) : null}
+        </td>
+
+        {/* 32. 客户名字 */}
+        <td className="py-1 px-1 text-center text-[11px]">
+          {row.isFirstRow ? (
+            <EditableCell
+              value={row.customerName || ""}
+              type="text"
+              onSave={(v) => saveOrderField(row.orderId, "customerName", v)}
+              placeholder="客户名字"
+            />
+          ) : null}
+        </td>
+
+        {/* 33. 国家 */}
+        <td className="py-1 px-1 text-center text-[11px]">
+          {row.isFirstRow ? (
+            <EditableCell
+              value={row.customerCountry || ""}
+              type="text"
+              onSave={(v) => saveOrderField(row.orderId, "customerCountry", v)}
+              placeholder="国家"
+            />
+          ) : null}
+        </td>
+
+        {/* 34. 客户分层 */}
+        <td className="py-1 px-1 text-center text-[11px]">
+          {row.isFirstRow ? (
+            <EditableCell
+              value={row.customerTier || ""}
+              type="select"
+              selectOptions={["高价值", "中价值", "低价值", "新客户", "流失客户"]}
+              onSave={(v) => saveOrderField(row.orderId, "customerTier", v)}
+            />
+          ) : null}
+        </td>
+
+        {/* 35. 顾客等级 */}
+        <td className="py-1 px-1 text-center text-[11px]">
+          {row.isFirstRow ? (
+            <EditableCell
+              value={row.customerLevel || ""}
+              type="select"
+              selectOptions={["A", "B", "C", "D", "VIP", "普通"]}
+              onSave={(v) => saveOrderField(row.orderId, "customerLevel", v)}
+            />
+          ) : null}
+        </td>
+
+        {/* 36. 订购类目 */}
+        <td className="py-1 px-1 text-center text-[11px]">
+          {row.isFirstRow ? (
+            <EditableCell
+              value={row.orderCategory || ""}
+              type="text"
+              onSave={(v) => saveOrderField(row.orderId, "orderCategory", v)}
+              placeholder="订购类目"
+            />
+          ) : null}
+        </td>
+
+        {/* 37. 出生日期 */}
+        <td className="py-1 px-1 text-center text-[11px]">
+          {row.isFirstRow ? (
+            <EditableCell
+              value={row.customerBirthDate || ""}
+              type="date"
+              onSave={(v) => saveOrderField(row.orderId, "customerBirthDate", v)}
+            />
+          ) : null}
+        </td>
+
+        {/* 38. 客户邮箱 */}
+        <td className="py-1 px-1 text-center text-[11px]">
+          {row.isFirstRow ? (
+            <EditableCell
+              value={row.customerEmail || ""}
+              type="text"
+              onSave={(v) => saveOrderField(row.orderId, "customerEmail", v)}
+              placeholder="客户邮箱"
             />
           ) : null}
         </td>

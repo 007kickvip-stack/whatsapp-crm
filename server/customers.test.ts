@@ -34,7 +34,7 @@ describe("customers CRUD with new fields", () => {
   const caller = appRouter.createCaller(ctx);
   let createdId: number;
 
-  it("should create a customer with new fields", async () => {
+  it("should create a customer with all fields including customerTier and country", async () => {
     const result = await caller.customers.create({
       whatsapp: "+44-test-" + Date.now(),
       customerType: "新零售",
@@ -48,13 +48,15 @@ describe("customers CRUD with new fields", () => {
       birthDate: "1990-05-15",
       customerEmail: "zhangsan@test.com",
       address: "北京市朝阳区",
+      country: "中国",
+      customerTier: "高价值",
     });
     expect(result).toHaveProperty("id");
     expect(typeof result.id).toBe("number");
     createdId = result.id;
   });
 
-  it("should retrieve the created customer with new fields", async () => {
+  it("should retrieve the created customer with all new fields", async () => {
     const customer = await caller.customers.getById({ id: createdId });
     expect(customer).toBeDefined();
     expect(customer!.staffName).toBe("客服小王");
@@ -65,14 +67,18 @@ describe("customers CRUD with new fields", () => {
     expect(customer!.customerName).toBe("张三");
     expect(customer!.customerEmail).toBe("zhangsan@test.com");
     expect(customer!.address).toBe("北京市朝阳区");
+    expect(customer!.country).toBe("中国");
+    expect(customer!.customerTier).toBe("高价值");
   });
 
-  it("should update customer new fields", async () => {
+  it("should update customer fields including customerTier", async () => {
     const result = await caller.customers.update({
       id: createdId,
       customerLevel: "VIP",
       orderCategory: "鞋类,服装",
       customerEmail: "updated@test.com",
+      customerTier: "中价值",
+      country: "美国",
     });
     expect(result).toEqual({ success: true });
 
@@ -80,6 +86,8 @@ describe("customers CRUD with new fields", () => {
     expect(customer!.customerLevel).toBe("VIP");
     expect(customer!.orderCategory).toBe("鞋类,服装");
     expect(customer!.customerEmail).toBe("updated@test.com");
+    expect(customer!.customerTier).toBe("中价值");
+    expect(customer!.country).toBe("美国");
   });
 
   it("should list customers with filters", async () => {
@@ -107,11 +115,82 @@ describe("customers CRUD with new fields", () => {
     expect(result).toEqual({ success: true });
   });
 
+  it("should query customer order history", async () => {
+    const result = await caller.customers.orderHistory({ customerId: createdId });
+    expect(Array.isArray(result)).toBe(true);
+  });
+
   it("should delete the test customer", async () => {
     const result = await caller.customers.delete({ id: createdId });
     expect(result).toEqual({ success: true });
 
     const customer = await caller.customers.getById({ id: createdId });
     expect(customer).toBeUndefined();
+  });
+});
+
+describe("order-customer sync", () => {
+  const ctx = createAdminContext();
+  const caller = appRouter.createCaller(ctx);
+  let orderId: number;
+  const testWhatsapp = "+86-sync-test-" + Date.now();
+
+  it("should create an order with customer fields and auto-create customer", async () => {
+    const result = await caller.orders.create({
+      orderDate: "2025-01-15",
+      account: "测试账号",
+      customerWhatsapp: testWhatsapp,
+      customerType: "零售复购",
+      orderNumber: "ORD-SYNC-" + Date.now(),
+      orderStatus: "处理中",
+      paymentStatus: "已付款",
+      customerName: "李四",
+      customerCountry: "英国",
+      customerTier: "新客户",
+      customerLevel: "B",
+      orderCategory: "服装",
+      customerBirthDate: "1985-03-20",
+      customerEmail: "lisi@test.com",
+    });
+    expect(result).toHaveProperty("id");
+    orderId = result.id;
+  });
+
+  it("should have auto-created a customer record from the order", async () => {
+    const customer = await caller.customers.getByWhatsapp({ whatsapp: testWhatsapp });
+    expect(customer).toBeDefined();
+    expect(customer!.customerName).toBe("李四");
+    expect(customer!.country).toBe("英国");
+    expect(customer!.customerTier).toBe("新客户");
+    expect(customer!.customerLevel).toBe("B");
+    expect(customer!.orderCategory).toBe("服装");
+    expect(customer!.customerEmail).toBe("lisi@test.com");
+  });
+
+  it("should update order customer fields and sync to customer", async () => {
+    await caller.orders.update({
+      id: orderId,
+      customerName: "李四更新",
+      customerCountry: "法国",
+      customerLevel: "A",
+    });
+
+    // Verify customer was updated
+    const customer = await caller.customers.getByWhatsapp({ whatsapp: testWhatsapp });
+    expect(customer).toBeDefined();
+    expect(customer!.customerName).toBe("李四更新");
+    expect(customer!.country).toBe("法国");
+    expect(customer!.customerLevel).toBe("A");
+  });
+
+  afterAll(async () => {
+    // Cleanup
+    try {
+      await caller.orders.delete({ id: orderId });
+      const customer = await caller.customers.getByWhatsapp({ whatsapp: testWhatsapp });
+      if (customer) {
+        await caller.customers.delete({ id: customer.id });
+      }
+    } catch {}
   });
 });

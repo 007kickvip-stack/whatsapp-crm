@@ -49,6 +49,7 @@ export const customers = mysqlTable("customers", {
   customerName: varchar("customerName", { length: 128 }), // 客户名字
   birthDate: date("birthDate"), // 出生日期
   customerEmail: varchar("customerEmail", { length: 320 }), // 客户邮箱
+  customerTier: varchar("customerTier", { length: 32 }), // 客户分层
   createdById: int("createdById"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
@@ -72,6 +73,14 @@ export const orders = mysqlTable("orders", {
   orderNumber: varchar("orderNumber", { length: 128 }).notNull(),
   orderStatus: varchar("orderStatus", { length: 64 }).default("已报货，待发货"),
   paymentStatus: varchar("paymentStatus", { length: 64 }).default("未付款"),
+  // 客户关联字段（从客户表同步）
+  customerName: varchar("customerName", { length: 128 }),
+  customerCountry: varchar("customerCountry", { length: 64 }),
+  customerTier: varchar("customerTier", { length: 32 }),
+  customerLevel: varchar("customerLevel", { length: 32 }),
+  orderCategory: varchar("orderCategory", { length: 255 }),
+  customerBirthDate: date("customerBirthDate"),
+  customerEmail: varchar("customerEmail", { length: 320 }),
   remarks: text("remarks"),
   // 汇总金额（所有子项合计）
   totalAmountUsd: decimal("totalAmountUsd", { precision: 12, scale: 2 }).default("0"),

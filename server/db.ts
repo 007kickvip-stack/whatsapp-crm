@@ -250,13 +250,12 @@ export async function listCustomers(params: {
 
 /**
  * 同步客户统计数据（累计订单数、累计消费金额、首次下单日期）
- * 从订单表自动汇总到客户表
+ * 从订单表自动汇总到客户表，通过customerName匹配
  */
 export async function syncCustomerStats(customerId?: number) {
   const db = await getDb();
   if (!db) return;
   
-  // 获取需要同步的客户列表
   let customerList;
   if (customerId) {
     const c = await db.select().from(customers).where(eq(customers.id, customerId)).limit(1);
@@ -266,13 +265,25 @@ export async function syncCustomerStats(customerId?: number) {
   }
   
   for (const customer of customerList) {
-    // 查询该客户的订单统计
+    // 通过customerName或whatsapp匹配订单
+    const matchConditions: SQL[] = [];
+    if (customer.customerName) {
+      matchConditions.push(
+        or(
+          eq(orders.customerName, customer.customerName),
+          eq(orders.customerWhatsapp, customer.whatsapp)
+        )!
+      );
+    } else {
+      matchConditions.push(eq(orders.customerWhatsapp, customer.whatsapp));
+    }
+    
     const statsResult = await db.select({
       orderCount: sql<number>`COUNT(*)`,
       totalUsd: sql<string>`COALESCE(SUM(totalAmountUsd), 0)`,
       totalCny: sql<string>`COALESCE(SUM(totalAmountCny), 0)`,
       firstDate: sql<string>`MIN(orderDate)`,
-    }).from(orders).where(eq(orders.customerWhatsapp, customer.whatsapp));
+    }).from(orders).where(and(...matchConditions));
     
     const stats = statsResult[0];
     if (stats) {
@@ -284,6 +295,127 @@ export async function syncCustomerStats(customerId?: number) {
       }).where(eq(customers.id, customer.id));
     }
   }
+}
+
+/**
+ * 订单创建/更新时自动同步客户数据
+ * 1. 如果客户不存在，自动创建新客户
+ * 2. 同步客户统计数据
+ */
+export async function syncCustomerFromOrder(orderData: {
+  customerWhatsapp: string;
+  customerName?: string | null;
+  staffName?: string | null;
+  account?: string | null;
+  customerType?: string | null;
+  customerCountry?: string | null;
+  customerTier?: string | null;
+  customerLevel?: string | null;
+  orderCategory?: string | null;
+  customerBirthDate?: string | Date | null;
+  customerEmail?: string | null;
+  staffId?: number | null;
+}) {
+  const db = await getDb();
+  if (!db) return;
+  
+  // 查找客户：先按customerName查找，再按whatsapp查找
+  let customer = null;
+  if (orderData.customerName) {
+    const byName = await db.select().from(customers)
+      .where(eq(customers.customerName, orderData.customerName)).limit(1);
+    if (byName.length > 0) customer = byName[0];
+  }
+  if (!customer) {
+    const byWhatsapp = await db.select().from(customers)
+      .where(eq(customers.whatsapp, orderData.customerWhatsapp)).limit(1);
+    if (byWhatsapp.length > 0) customer = byWhatsapp[0];
+  }
+  
+  if (!customer) {
+    // 自动创建新客户
+    const newCustomerData: any = {
+      whatsapp: orderData.customerWhatsapp,
+      customerName: orderData.customerName || null,
+      staffName: orderData.staffName || null,
+      account: orderData.account || null,
+      customerType: orderData.customerType || "新零售",
+      country: orderData.customerCountry || null,
+      customerTier: orderData.customerTier || null,
+      customerLevel: orderData.customerLevel || null,
+      orderCategory: orderData.orderCategory || null,
+      birthDate: orderData.customerBirthDate ? new Date(orderData.customerBirthDate as string) : null,
+      customerEmail: orderData.customerEmail || null,
+      createdById: orderData.staffId || null,
+    };
+    const result = await db.insert(customers).values(newCustomerData);
+    const customerId = result[0].insertId;
+    await syncCustomerStats(customerId);
+    return customerId;
+  } else {
+    // 更新客户信息（同步字段）
+    const updateData: any = {};
+    if (orderData.staffName) updateData.staffName = orderData.staffName;
+    if (orderData.account) updateData.account = orderData.account;
+    if (orderData.customerName) updateData.customerName = orderData.customerName;
+    if (orderData.customerType) updateData.customerType = orderData.customerType;
+    if (orderData.customerCountry) updateData.country = orderData.customerCountry;
+    if (orderData.customerTier) updateData.customerTier = orderData.customerTier;
+    if (orderData.customerLevel) updateData.customerLevel = orderData.customerLevel;
+    if (orderData.orderCategory) updateData.orderCategory = orderData.orderCategory;
+    if (orderData.customerBirthDate) updateData.birthDate = new Date(orderData.customerBirthDate as string);
+    if (orderData.customerEmail) updateData.customerEmail = orderData.customerEmail;
+    
+    if (Object.keys(updateData).length > 0) {
+      await db.update(customers).set(updateData).where(eq(customers.id, customer.id));
+    }
+    // 同步统计数据
+    await syncCustomerStats(customer.id);
+    return customer.id;
+  }
+}
+
+/**
+ * 获取客户订单历史数据（用于折线图）
+ */
+export async function getCustomerOrderHistory(customerId: number, startDate?: string, endDate?: string) {
+  const db = await getDb();
+  if (!db) return [];
+  
+  const customer = await db.select().from(customers).where(eq(customers.id, customerId)).limit(1);
+  if (customer.length === 0) return [];
+  
+  const conditions: SQL[] = [];
+  // 通过customerName或whatsapp匹配
+  if (customer[0].customerName) {
+    conditions.push(
+      or(
+        eq(orders.customerName, customer[0].customerName),
+        eq(orders.customerWhatsapp, customer[0].whatsapp)
+      )!
+    );
+  } else {
+    conditions.push(eq(orders.customerWhatsapp, customer[0].whatsapp));
+  }
+  if (startDate) conditions.push(sql`${orders.orderDate} >= ${startDate}`);
+  if (endDate) conditions.push(sql`${orders.orderDate} <= ${endDate}`);
+  
+  const result = await db.select({
+    date: orders.orderDate,
+    orderCount: sql<number>`COUNT(*)`,
+    totalUsd: sql<string>`COALESCE(SUM(${orders.totalAmountUsd}), 0)`,
+    totalCny: sql<string>`COALESCE(SUM(${orders.totalAmountCny}), 0)`,
+  }).from(orders)
+    .where(and(...conditions))
+    .groupBy(orders.orderDate)
+    .orderBy(orders.orderDate);
+  
+  return result.map(r => ({
+    date: r.date ? String(r.date) : null,
+    orderCount: Number(r.orderCount || 0),
+    totalUsd: String(r.totalUsd || "0"),
+    totalCny: String(r.totalCny || "0"),
+  }));
 }
 
 // ==================== Order Helpers ====================

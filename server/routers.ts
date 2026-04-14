@@ -7,7 +7,7 @@ import { z } from "zod";
 import {
   listUsers, updateUserRole, deleteUser, getUserById, createUser,
   getUserByUsername, verifyPassword, updateUserPassword, updateUserUsername, updateUserHireDate,
-  createCustomer, updateCustomer, deleteCustomer, getCustomerById, getCustomerByWhatsapp, listCustomers, syncCustomerStats,
+  createCustomer, updateCustomer, deleteCustomer, getCustomerById, getCustomerByWhatsapp, listCustomers, syncCustomerStats, syncCustomerFromOrder, getCustomerOrderHistory,
   createOrder, updateOrder, deleteOrder, getOrderById, getOrderWithItems, listOrders,
   createOrderItem, updateOrderItem, deleteOrderItem, getOrderItemById, getOrderItemsByOrderId, recalculateOrderTotals,
   getOrderStats, getOrderStatusDistribution, getPaymentStatusDistribution,
@@ -25,6 +25,7 @@ import {
   listAccounts, createAccount, updateAccount, deleteAccount, reorderAccounts,
   findOrderItemByDomesticTrackingNo, markLogisticsSubscribed,
 } from "./db";
+import type { SQL } from "drizzle-orm";
 import { sdk } from "./_core/sdk";
 import { ONE_YEAR_MS } from "@shared/const";
 import { storagePut } from "./storage";
@@ -161,6 +162,7 @@ export const appRouter = router({
       customerName: z.string().optional(),
       birthDate: z.string().optional(),
       customerEmail: z.string().optional(),
+      customerTier: z.string().optional(),
     })).mutation(async ({ input, ctx }) => {
       const id = await createCustomer({ ...input, createdById: ctx.user.id } as any);
       await logAction(ctx, "create", "customer", id, input.whatsapp, JSON.stringify(input));
@@ -186,6 +188,7 @@ export const appRouter = router({
       customerName: z.string().optional(),
       birthDate: z.string().optional(),
       customerEmail: z.string().optional(),
+      customerTier: z.string().optional(),
     })).mutation(async ({ input, ctx }) => {
       const { id, ...data } = input;
       await updateCustomer(id, data as any);
@@ -205,6 +208,12 @@ export const appRouter = router({
       await syncCustomerStats(input.customerId);
       return { success: true };
     }),
+
+    orderHistory: protectedProcedure.input(z.object({
+      customerId: z.number(),
+      startDate: z.string().optional(),
+      endDate: z.string().optional(),
+    })).query(({ input }) => getCustomerOrderHistory(input.customerId, input.startDate, input.endDate)),
   }),
 
   // ==================== Order Management ====================
@@ -252,14 +261,24 @@ export const appRouter = router({
       orderStatus: z.string().optional(),
       paymentStatus: z.string().optional(),
       remarks: z.string().optional(),
+      // 客户关联字段
+      customerName: z.string().optional(),
+      customerCountry: z.string().optional(),
+      customerTier: z.string().optional(),
+      customerLevel: z.string().optional(),
+      orderCategory: z.string().optional(),
+      customerBirthDate: z.string().optional(),
+      customerEmail: z.string().optional(),
     })).mutation(async ({ input, ctx }) => {
       const { orderDate, ...rest } = input;
+      const staffName = ctx.user.name || "未知客服";
       const id = await createOrder({
         ...rest,
         orderDate: orderDate ? new Date(orderDate) : null,
+        customerBirthDate: rest.customerBirthDate ? new Date(rest.customerBirthDate) : null,
         staffId: ctx.user.id,
-        staffName: ctx.user.name || "未知客服",
-      });
+        staffName,
+      } as any);
       // Auto-create an initial order item so the order is immediately editable in the table
       await createOrderItem({
         orderId: id,
@@ -272,6 +291,21 @@ export const appRouter = router({
         shippingProfitRate: "0.000000",
         totalProfit: "0.00",
         profitRate: "0.000000",
+      });
+      // 自动同步客户数据（创建新客户或更新现有客户）
+      await syncCustomerFromOrder({
+        customerWhatsapp: rest.customerWhatsapp,
+        customerName: rest.customerName,
+        staffName,
+        account: rest.account,
+        customerType: rest.customerType,
+        customerCountry: rest.customerCountry,
+        customerTier: rest.customerTier,
+        customerLevel: rest.customerLevel,
+        orderCategory: rest.orderCategory,
+        customerBirthDate: rest.customerBirthDate,
+        customerEmail: rest.customerEmail,
+        staffId: ctx.user.id,
       });
       await logAction(ctx, "create", "order", id, rest.orderNumber, JSON.stringify(input));
       return { id };
@@ -287,6 +321,14 @@ export const appRouter = router({
       orderStatus: z.string().optional(),
       paymentStatus: z.string().optional(),
       remarks: z.string().optional(),
+      // 客户关联字段
+      customerName: z.string().optional(),
+      customerCountry: z.string().optional(),
+      customerTier: z.string().optional(),
+      customerLevel: z.string().optional(),
+      orderCategory: z.string().optional(),
+      customerBirthDate: z.string().optional(),
+      customerEmail: z.string().optional(),
     })).mutation(async ({ input, ctx }) => {
       // 客服只能编辑自己的订单
       if (ctx.user.role !== 'admin') {
@@ -295,11 +337,30 @@ export const appRouter = router({
           throw new TRPCError({ code: 'FORBIDDEN', message: '您只能编辑自己的订单' });
         }
       }
-      const { id, orderDate, ...data } = input;
+      const { id, orderDate, customerBirthDate, ...data } = input;
       await updateOrder(id, {
         ...data,
         ...(orderDate !== undefined ? { orderDate: orderDate ? new Date(orderDate) : null } : {}),
-      });
+        ...(customerBirthDate !== undefined ? { customerBirthDate: customerBirthDate ? new Date(customerBirthDate) : null } : {}),
+      } as any);
+      // 订单更新后自动同步客户数据
+      const updatedOrder = await getOrderById(id);
+      if (updatedOrder) {
+        await syncCustomerFromOrder({
+          customerWhatsapp: updatedOrder.customerWhatsapp,
+          customerName: updatedOrder.customerName || undefined,
+          staffName: updatedOrder.staffName || undefined,
+          account: updatedOrder.account || undefined,
+          customerType: updatedOrder.customerType || undefined,
+          customerCountry: updatedOrder.customerCountry || undefined,
+          customerTier: updatedOrder.customerTier || undefined,
+          customerLevel: updatedOrder.customerLevel || undefined,
+          orderCategory: updatedOrder.orderCategory || undefined,
+          customerBirthDate: updatedOrder.customerBirthDate ? String(updatedOrder.customerBirthDate) : undefined,
+          customerEmail: updatedOrder.customerEmail || undefined,
+          staffId: updatedOrder.staffId,
+        });
+      }
       await logAction(ctx, "update", "order", id, undefined, JSON.stringify(data));
       return { success: true };
     }),
