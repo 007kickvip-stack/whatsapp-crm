@@ -17,6 +17,13 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Switch } from "@/components/ui/switch";
 import {
@@ -30,6 +37,7 @@ import {
   RefreshCw,
   XCircle,
   PlusCircle,
+  Columns3,
 } from "lucide-react";
 import { toast } from "sonner";
 import { trpc } from "@/lib/trpc";
@@ -40,7 +48,37 @@ interface ExcelImportDialogProps {
   onSuccess: () => void;
 }
 
-// The fields we display in the preview
+// System fields available for mapping
+const MAPPABLE_FIELDS = [
+  { key: "_skip", label: "跳过此列", group: "other" },
+  { key: "orderDate", label: "日期", group: "order" },
+  { key: "account", label: "账号", group: "order" },
+  { key: "customerWhatsapp", label: "客户WhatsApp", group: "order" },
+  { key: "customerType", label: "客户属性", group: "order" },
+  { key: "orderNumber", label: "订单编号", group: "order" },
+  { key: "originalOrderNo", label: "原订单号", group: "order" },
+  { key: "orderStatus", label: "订单状态", group: "order" },
+  { key: "paymentStatus", label: "付款状态", group: "order" },
+  { key: "remarks", label: "备注", group: "order" },
+  { key: "size", label: "Size/尺码", group: "item" },
+  { key: "domesticTrackingNo", label: "国内单号", group: "item" },
+  { key: "sizeRecommendation", label: "推荐码数", group: "item" },
+  { key: "contactInfo", label: "联系方式", group: "item" },
+  { key: "internationalTrackingNo", label: "国际跟踪单号", group: "item" },
+  { key: "shipDate", label: "发出日期", group: "item" },
+  { key: "quantity", label: "件数", group: "item" },
+  { key: "source", label: "货源", group: "item" },
+  { key: "amountUsd", label: "总金额$", group: "finance" },
+  { key: "amountCny", label: "总金额¥", group: "finance" },
+  { key: "sellingPrice", label: "售价", group: "finance" },
+  { key: "productCost", label: "产品成本", group: "finance" },
+  { key: "shippingCharged", label: "收取运费", group: "finance" },
+  { key: "shippingActual", label: "实际运费", group: "finance" },
+  { key: "orderImageUrl", label: "订单图片", group: "media" },
+  { key: "paymentScreenshotUrl", label: "付款截图", group: "media" },
+] as const;
+
+// The fields we display in the preview table
 const PREVIEW_FIELDS = [
   { key: "orderNumber", label: "订单编号" },
   { key: "originalOrderNo", label: "原订单号" },
@@ -89,16 +127,31 @@ type UpdateResult = {
   mapping: { header: string; field: string }[];
 };
 
+type HeadersResult = {
+  success: boolean;
+  headers: string[];
+  autoMapping: string[];
+  sampleData: string[][];
+  totalRows: number;
+};
+
 export default function ExcelImportDialog({ open, onOpenChange, onSuccess }: ExcelImportDialogProps) {
-  const [step, setStep] = useState<"upload" | "preview" | "result">("upload");
+  const [step, setStep] = useState<"upload" | "mapping" | "preview" | "result">("upload");
   const [file, setFile] = useState<File | null>(null);
   const [importing, setImporting] = useState(false);
   const [previewing, setPreviewing] = useState(false);
+  const [parsing, setParsing] = useState(false);
   const [previewResult, setPreviewResult] = useState<PreviewResult | null>(null);
   const [importResult, setImportResult] = useState<UpdateResult | null>(null);
   const [autoCreate, setAutoCreate] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const utils = trpc.useUtils();
+
+  // Field mapping state
+  const [excelHeaders, setExcelHeaders] = useState<string[]>([]);
+  const [columnMapping, setColumnMapping] = useState<string[]>([]);
+  const [sampleData, setSampleData] = useState<string[][]>([]);
+  const [totalDataRows, setTotalDataRows] = useState(0);
 
   const handleClose = useCallback(() => {
     setStep("upload");
@@ -107,7 +160,12 @@ export default function ExcelImportDialog({ open, onOpenChange, onSuccess }: Exc
     setImportResult(null);
     setImporting(false);
     setPreviewing(false);
+    setParsing(false);
     setAutoCreate(false);
+    setExcelHeaders([]);
+    setColumnMapping([]);
+    setSampleData([]);
+    setTotalDataRows(0);
     onOpenChange(false);
   }, [onOpenChange]);
 
@@ -136,10 +194,52 @@ export default function ExcelImportDialog({ open, onOpenChange, onSuccess }: Exc
     setFile(selected);
   }, []);
 
-  // Upload file to server for preview with match status
-  const handlePreview = useCallback(async () => {
+  // Step 1 → Step 2: Parse headers and go to mapping
+  const handleParseHeaders = useCallback(async () => {
     if (!file) {
       toast.error("请先选择文件");
+      return;
+    }
+
+    setParsing(true);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+
+      const response = await fetch("/api/excel-headers", {
+        method: "POST",
+        body: formData,
+      });
+
+      const result: HeadersResult = await response.json();
+
+      if (!response.ok) {
+        toast.error((result as any).error || "解析失败");
+        setParsing(false);
+        return;
+      }
+
+      setExcelHeaders(result.headers);
+      setColumnMapping(result.autoMapping);
+      setSampleData(result.sampleData);
+      setTotalDataRows(result.totalRows);
+      setStep("mapping");
+    } catch (err: any) {
+      toast.error(err.message || "解析失败");
+    } finally {
+      setParsing(false);
+    }
+  }, [file]);
+
+  // Step 2 → Step 3: Preview with custom mapping
+  const handlePreview = useCallback(async () => {
+    if (!file) return;
+
+    // Validate: must have orderNumber or originalOrderNo mapped
+    const hasOrderNumber = columnMapping.includes("orderNumber");
+    const hasOriginalOrderNo = columnMapping.includes("originalOrderNo");
+    if (!hasOrderNumber && !hasOriginalOrderNo) {
+      toast.error("必须映射「订单编号」或「原订单号」列（至少映射其中一个）");
       return;
     }
 
@@ -147,6 +247,7 @@ export default function ExcelImportDialog({ open, onOpenChange, onSuccess }: Exc
     try {
       const formData = new FormData();
       formData.append("file", file);
+      formData.append("customMapping", JSON.stringify(columnMapping));
 
       const response = await fetch("/api/excel-preview", {
         method: "POST",
@@ -168,9 +269,9 @@ export default function ExcelImportDialog({ open, onOpenChange, onSuccess }: Exc
     } finally {
       setPreviewing(false);
     }
-  }, [file]);
+  }, [file, columnMapping]);
 
-  // Upload file to server for matching & updating (with optional autoCreate)
+  // Step 3 → Step 4: Import with custom mapping
   const handleImport = useCallback(async () => {
     if (!file) return;
 
@@ -178,8 +279,11 @@ export default function ExcelImportDialog({ open, onOpenChange, onSuccess }: Exc
     try {
       const formData = new FormData();
       formData.append("file", file);
+      formData.append("customMapping", JSON.stringify(columnMapping));
 
-      const url = autoCreate ? "/api/excel-import?autoCreate=true" : "/api/excel-import";
+      let url = "/api/excel-import";
+      if (autoCreate) url += "?autoCreate=true";
+
       const response = await fetch(url, {
         method: "POST",
         body: formData,
@@ -212,7 +316,7 @@ export default function ExcelImportDialog({ open, onOpenChange, onSuccess }: Exc
     } finally {
       setImporting(false);
     }
-  }, [file, autoCreate, utils, onSuccess]);
+  }, [file, autoCreate, columnMapping, utils, onSuccess]);
 
   // Download template
   const handleDownloadTemplate = useCallback(async () => {
@@ -241,13 +345,15 @@ export default function ExcelImportDialog({ open, onOpenChange, onSuccess }: Exc
   const canAutoCreate = previewResult?.canAutoCreate || false;
   const visibleFields = PREVIEW_FIELDS.filter((f) => previewRows.some((row) => row[f.key]));
 
-  // Count unmatched rows that have required fields for auto-create
   const autoCreateableCount = autoCreate
     ? previewRows.filter((r) => !r._matched && r.customerWhatsapp && r.orderNumber).length
     : 0;
 
-  // Determine the action count for the button
   const actionableCount = matchedCount + (autoCreate ? autoCreateableCount : 0);
+
+  // Mapping stats
+  const mappedCount = columnMapping.filter((m) => m !== "_skip").length;
+  const hasRequiredMapping = columnMapping.includes("orderNumber") || columnMapping.includes("originalOrderNo");
 
   return (
     <Dialog open={open} onOpenChange={(v) => { if (!v) handleClose(); else onOpenChange(v); }}>
@@ -258,7 +364,7 @@ export default function ExcelImportDialog({ open, onOpenChange, onSuccess }: Exc
             导入 Excel 更新订单
           </DialogTitle>
           <DialogDescription>
-            上传 Excel 文件，系统通过订单编号或原订单号匹配已有订单，自动更新对应字段
+            上传 Excel 文件，自定义字段映射，预览匹配结果后导入
           </DialogDescription>
         </DialogHeader>
 
@@ -266,9 +372,11 @@ export default function ExcelImportDialog({ open, onOpenChange, onSuccess }: Exc
         <div className="flex items-center gap-2 text-xs text-muted-foreground px-1">
           <Badge variant={step === "upload" ? "default" : "secondary"} className="text-[10px]">1. 上传文件</Badge>
           <ArrowRight className="h-3 w-3" />
-          <Badge variant={step === "preview" ? "default" : "secondary"} className="text-[10px]">2. 预览匹配</Badge>
+          <Badge variant={step === "mapping" ? "default" : "secondary"} className="text-[10px]">2. 字段映射</Badge>
           <ArrowRight className="h-3 w-3" />
-          <Badge variant={step === "result" ? "default" : "secondary"} className="text-[10px]">3. 导入结果</Badge>
+          <Badge variant={step === "preview" ? "default" : "secondary"} className="text-[10px]">3. 预览匹配</Badge>
+          <ArrowRight className="h-3 w-3" />
+          <Badge variant={step === "result" ? "default" : "secondary"} className="text-[10px]">4. 导入结果</Badge>
         </div>
 
         {/* Step 1: Upload */}
@@ -280,10 +388,9 @@ export default function ExcelImportDialog({ open, onOpenChange, onSuccess }: Exc
                 <p className="font-medium">使用方法</p>
                 <p className="text-muted-foreground mt-1">
                   1. 准备包含订单数据的 Excel 文件（第一行为表头）<br />
-                  2. 必须包含「订单编号」或「原订单号」列（至少一个，用于匹配已有订单）<br />
-                  3. 系统会自动识别列名并将数据更新到匹配的订单字段<br />
-                  4. 开启「导入+新建」模式后，未匹配的行将自动创建新订单（需包含 WhatsApp 列）<br />
-                  5. 不确定格式？可以先下载模板填写
+                  2. 上传后可自定义每列与系统字段的映射关系<br />
+                  3. 系统会自动识别常见列名并预设映射，您可随时调整<br />
+                  4. 不确定格式？可以先下载模板填写
                 </p>
               </div>
             </div>
@@ -324,7 +431,131 @@ export default function ExcelImportDialog({ open, onOpenChange, onSuccess }: Exc
           </div>
         )}
 
-        {/* Step 2: Preview with match status */}
+        {/* Step 2: Field Mapping */}
+        {step === "mapping" && (
+          <div className="flex-1 flex flex-col gap-3 min-h-0">
+            <div className="flex items-center justify-between">
+              <p className="text-sm text-muted-foreground">
+                检测到 <span className="font-medium text-foreground">{excelHeaders.length}</span> 列，
+                <span className="font-medium text-foreground">{totalDataRows}</span> 行数据。
+                已自动映射 <span className="font-medium text-emerald-600">{mappedCount}</span> 列。
+              </p>
+              <Badge variant="outline" className="text-[10px]">
+                <span className="text-red-500">*</span> 订单编号 或 原订单号 至少映射一个
+              </Badge>
+            </div>
+
+            <ScrollArea className="flex-1 border rounded-md">
+              <div className="p-3 space-y-1.5">
+                {excelHeaders.map((header, idx) => {
+                  const currentField = columnMapping[idx] || "_skip";
+                  const isSkipped = currentField === "_skip";
+                  const isRequired = currentField === "orderNumber" || currentField === "originalOrderNo";
+
+                  return (
+                    <div
+                      key={idx}
+                      className={`flex items-center gap-3 p-2 rounded-md transition-colors ${
+                        isSkipped ? "opacity-50" : "bg-muted/30"
+                      }`}
+                    >
+                      {/* Column index */}
+                      <span className="text-[10px] text-muted-foreground w-5 text-right shrink-0">
+                        {String.fromCharCode(65 + (idx % 26))}
+                      </span>
+
+                      {/* Excel header name */}
+                      <div className="w-36 shrink-0">
+                        <p className="text-sm font-medium truncate" title={header}>{header}</p>
+                        <p className="text-[10px] text-muted-foreground truncate" title={sampleData[0]?.[idx]}>
+                          {sampleData[0]?.[idx] || "(空)"}
+                        </p>
+                      </div>
+
+                      {/* Arrow */}
+                      <ArrowRight className="h-4 w-4 text-muted-foreground shrink-0" />
+
+                      {/* System field select */}
+                      <Select
+                        value={currentField}
+                        onValueChange={(v) => {
+                          const newMapping = [...columnMapping];
+                          newMapping[idx] = v;
+                          setColumnMapping(newMapping);
+                        }}
+                      >
+                        <SelectTrigger className="w-44 h-8 text-xs">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="_skip">
+                            <span className="text-muted-foreground">跳过此列</span>
+                          </SelectItem>
+                          {/* Order fields */}
+                          <SelectItem value="_group_order" disabled>
+                            <span className="text-[10px] font-semibold text-muted-foreground">── 订单字段 ──</span>
+                          </SelectItem>
+                          {MAPPABLE_FIELDS.filter((f) => f.group === "order").map((f) => (
+                            <SelectItem key={f.key} value={f.key}>{f.label}</SelectItem>
+                          ))}
+                          {/* Item fields */}
+                          <SelectItem value="_group_item" disabled>
+                            <span className="text-[10px] font-semibold text-muted-foreground">── 子项字段 ──</span>
+                          </SelectItem>
+                          {MAPPABLE_FIELDS.filter((f) => f.group === "item").map((f) => (
+                            <SelectItem key={f.key} value={f.key}>{f.label}</SelectItem>
+                          ))}
+                          {/* Finance fields */}
+                          <SelectItem value="_group_finance" disabled>
+                            <span className="text-[10px] font-semibold text-muted-foreground">── 财务字段 ──</span>
+                          </SelectItem>
+                          {MAPPABLE_FIELDS.filter((f) => f.group === "finance").map((f) => (
+                            <SelectItem key={f.key} value={f.key}>{f.label}</SelectItem>
+                          ))}
+                          {/* Media fields */}
+                          <SelectItem value="_group_media" disabled>
+                            <span className="text-[10px] font-semibold text-muted-foreground">── 图片字段 ──</span>
+                          </SelectItem>
+                          {MAPPABLE_FIELDS.filter((f) => f.group === "media").map((f) => (
+                            <SelectItem key={f.key} value={f.key}>{f.label}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+
+                      {/* Sample data from other rows */}
+                      <div className="flex-1 flex gap-2 overflow-hidden">
+                        {sampleData.slice(1).map((row, sIdx) => (
+                          <span key={sIdx} className="text-[10px] text-muted-foreground truncate max-w-[100px]" title={row[idx]}>
+                            {row[idx] || ""}
+                          </span>
+                        ))}
+                      </div>
+
+                      {/* Required badge */}
+                      {isRequired && (
+                        <Badge className="bg-red-100 text-red-700 text-[9px] shrink-0">必填</Badge>
+                      )}
+                      {currentField === "customerWhatsapp" && (
+                        <Badge className="bg-blue-100 text-blue-700 text-[9px] shrink-0">新建必填</Badge>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </ScrollArea>
+
+            {!hasRequiredMapping && (
+              <div className="flex items-start gap-2 p-2 rounded-lg bg-red-50 border border-red-200 text-xs">
+                <AlertCircle className="h-3.5 w-3.5 mt-0.5 text-red-500 shrink-0" />
+                <span className="text-red-700">
+                  请至少将一列映射为「订单编号」或「原订单号」，用于匹配已有订单。
+                </span>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Step 3: Preview with match status */}
         {step === "preview" && previewResult && (
           <div className="flex-1 flex flex-col gap-3 min-h-0">
             {/* Match summary */}
@@ -369,7 +600,7 @@ export default function ExcelImportDialog({ open, onOpenChange, onSuccess }: Exc
                     <p className="text-xs text-muted-foreground mt-0.5">
                       {canAutoCreate
                         ? "开启后，未匹配的行将自动创建为新订单（需包含订单编号和 WhatsApp）"
-                        : "Excel 中未检测到「客户WhatsApp」列，无法自动创建新订单。请添加该列后重新上传。"}
+                        : "未映射「客户WhatsApp」列，无法自动创建新订单。请返回上一步添加该映射。"}
                     </p>
                   </div>
                 </div>
@@ -390,12 +621,12 @@ export default function ExcelImportDialog({ open, onOpenChange, onSuccess }: Exc
               </div>
             )}
 
-            {/* Mapping info */}
+            {/* Current mapping summary */}
             {previewResult.mapping.length > 0 && (
               <div className="flex flex-wrap gap-1">
                 {previewResult.mapping.filter((m) => m.field !== "_skip").map((m, i) => (
                   <Badge key={i} variant="outline" className="text-[10px] gap-1">
-                    {m.header} → {PREVIEW_FIELDS.find((f) => f.key === m.field)?.label || m.field}
+                    {m.header} → {MAPPABLE_FIELDS.find((f) => f.key === m.field)?.label || m.field}
                   </Badge>
                 ))}
               </div>
@@ -458,7 +689,7 @@ export default function ExcelImportDialog({ open, onOpenChange, onSuccess }: Exc
           </div>
         )}
 
-        {/* Step 3: Result */}
+        {/* Step 4: Result */}
         {step === "result" && importResult && (
           <div className="flex-1 flex flex-col gap-4 min-h-0 items-center justify-center">
             <CheckCircle2 className="h-16 w-16 text-emerald-500" />
@@ -504,16 +735,38 @@ export default function ExcelImportDialog({ open, onOpenChange, onSuccess }: Exc
           {step === "upload" && (
             <>
               <Button variant="outline" onClick={handleClose}>取消</Button>
-              <Button onClick={handlePreview} disabled={!file || previewing} className="gap-2">
+              <Button onClick={handleParseHeaders} disabled={!file || parsing} className="gap-2">
+                {parsing ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    解析中...
+                  </>
+                ) : (
+                  <>
+                    <Columns3 className="h-4 w-4" />
+                    解析列头
+                  </>
+                )}
+              </Button>
+            </>
+          )}
+          {step === "mapping" && (
+            <>
+              <Button variant="outline" onClick={() => { setStep("upload"); setExcelHeaders([]); setColumnMapping([]); setSampleData([]); }}>上一步</Button>
+              <Button
+                onClick={handlePreview}
+                disabled={previewing || !hasRequiredMapping}
+                className="gap-2"
+              >
                 {previewing ? (
                   <>
                     <Loader2 className="h-4 w-4 animate-spin" />
-                    检查匹配中...
+                    预览中...
                   </>
                 ) : (
                   <>
                     <ArrowRight className="h-4 w-4" />
-                    预览匹配
+                    预览匹配 ({mappedCount} 列已映射)
                   </>
                 )}
               </Button>
@@ -521,7 +774,7 @@ export default function ExcelImportDialog({ open, onOpenChange, onSuccess }: Exc
           )}
           {step === "preview" && (
             <>
-              <Button variant="outline" onClick={() => { setStep("upload"); setPreviewResult(null); setAutoCreate(false); }}>上一步</Button>
+              <Button variant="outline" onClick={() => { setStep("mapping"); setPreviewResult(null); setAutoCreate(false); }}>上一步</Button>
               <Button
                 onClick={handleImport}
                 disabled={importing || actionableCount === 0}

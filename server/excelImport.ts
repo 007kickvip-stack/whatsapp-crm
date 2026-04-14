@@ -205,6 +205,77 @@ async function extractEmbeddedImages(fileBuffer: Buffer): Promise<Map<string, st
 }
 
 export function registerExcelImportRoute(app: Express) {
+  // New endpoint: parse Excel headers only (for field mapping step)
+  app.post("/api/excel-headers", upload.single("file"), async (req: Request, res: Response) => {
+    try {
+      let user;
+      try {
+        user = await sdk.authenticateRequest(req);
+      } catch {
+        res.status(401).json({ error: "未登录或登录已过期" });
+        return;
+      }
+
+      if (!req.file) {
+        res.status(400).json({ error: "请上传 Excel 文件" });
+        return;
+      }
+
+      const workbook = XLSX.read(req.file.buffer, { type: "buffer" });
+      const sheetName = workbook.SheetNames[0];
+      if (!sheetName) {
+        res.status(400).json({ error: "Excel 文件中没有工作表" });
+        return;
+      }
+
+      const sheet = workbook.Sheets[sheetName];
+      const rawData: string[][] = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "" });
+
+      if (rawData.length < 2) {
+        res.status(400).json({ error: "Excel 文件至少需要包含表头行和一行数据" });
+        return;
+      }
+
+      const headerRow = rawData[0].map(String);
+      const autoMapping = mapHeaders(headerRow);
+      const dataRows = rawData.slice(1).filter((row) => row.some((cell) => String(cell).trim()));
+
+      // Return first 3 sample rows for each column
+      const sampleData: string[][] = dataRows.slice(0, 3).map((row) =>
+        headerRow.map((_, idx) => {
+          let val = String(row[idx] || "").trim();
+          val = cleanCellValue(val);
+          return val;
+        })
+      );
+
+      res.json({
+        success: true,
+        headers: headerRow,
+        autoMapping,
+        sampleData,
+        totalRows: dataRows.length,
+      });
+    } catch (err: any) {
+      console.error("[Excel Headers] Error:", err);
+      res.status(500).json({ error: err.message || "解析失败" });
+    }
+  });
+
+  // Helper: apply custom mapping or auto mapping
+  function resolveFieldMapping(headerRow: string[], customMapping?: string[]): string[] {
+    if (customMapping && customMapping.length === headerRow.length) {
+      // Validate custom mapping values
+      const validFields = new Set([
+        ...UPDATABLE_ITEM_FIELDS, ...UPDATABLE_ORDER_FIELDS,
+        "orderDate", "account", "customerWhatsapp", "customerType", "orderNumber", "originalOrderNo",
+        "_skip",
+      ]);
+      return customMapping.map((f) => validFields.has(f) ? f : "_skip");
+    }
+    return mapHeaders(headerRow);
+  }
+
   // Preview endpoint: parse Excel and check match status without updating
   app.post("/api/excel-preview", upload.single("file"), async (req: Request, res: Response) => {
     try {
@@ -237,13 +308,16 @@ export function registerExcelImportRoute(app: Express) {
       }
 
       const headerRow = rawData[0].map(String);
-      const fieldMapping = mapHeaders(headerRow);
+
+      // Support custom mapping from request body
+      const customMapping = req.body?.customMapping as string[] | undefined;
+      const fieldMapping = resolveFieldMapping(headerRow, customMapping);
 
       const hasOrderNumber = fieldMapping.includes("orderNumber");
       const hasOriginalOrderNo = fieldMapping.includes("originalOrderNo");
       if (!hasOrderNumber && !hasOriginalOrderNo) {
         res.status(400).json({
-          error: "Excel 文件必须包含「订单编号」或「原订单号」列（至少包含其中一个）",
+          error: "必须映射「订单编号」或「原订单号」列（至少映射其中一个）",
           detectedHeaders: headerRow,
           mapping: fieldMapping,
         });
@@ -391,16 +465,22 @@ export function registerExcelImportRoute(app: Express) {
         return;
       }
 
-      // Map headers
+      // Map headers - support custom mapping from request body or query
       const headerRow = rawData[0].map(String);
-      const fieldMapping = mapHeaders(headerRow);
+      let customMappingImport: string[] | undefined;
+      try {
+        const cm = req.query.customMapping || req.body?.customMapping;
+        if (typeof cm === "string") customMappingImport = JSON.parse(cm);
+        else if (Array.isArray(cm)) customMappingImport = cm;
+      } catch { /* ignore parse errors */ }
+      const fieldMapping = resolveFieldMapping(headerRow, customMappingImport);
 
       // Check required fields: must have orderNumber or originalOrderNo (at least one)
       const hasOrderNumber = fieldMapping.includes("orderNumber");
       const hasOriginalOrderNo = fieldMapping.includes("originalOrderNo");
       if (!hasOrderNumber && !hasOriginalOrderNo) {
         res.status(400).json({
-          error: "Excel 文件必须包含「订单编号」或「原订单号」列（至少包含其中一个）",
+          error: "必须映射「订单编号」或「原订单号」列（至少映射其中一个）",
           detectedHeaders: headerRow,
           mapping: fieldMapping,
         });
