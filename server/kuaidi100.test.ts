@@ -30,7 +30,7 @@ describe("快递100 API 密钥验证", () => {
     expect(sign).toMatch(/^[A-F0-9]{32}$/);
   });
 
-  it("调用快递100正式API验证密钥有效性", async () => {
+  it("调用快递100正式API验证密钥有效性", { timeout: 15000 }, async () => {
     // 使用一个测试单号调用API，验证密钥是否有效
     // 即使单号不存在，只要密钥有效，API应返回正常响应（非403/401）
     const param = JSON.stringify({ com: "shunfeng", num: "SF0000000000" });
