@@ -1294,12 +1294,16 @@ export const appRouter = router({
     create: protectedProcedure.input(z.object({
       customerName: z.string().min(1),
       contactInfo: z.string().optional(),
+      account: z.string().optional(),
+      customerWhatsapp: z.string().optional(),
       remarks: z.string().optional(),
     })).mutation(async ({ input, ctx }) => {
       const staffName = ctx.user.name || "未知客服";
       const id = await createQuotation({
         customerName: input.customerName,
         contactInfo: input.contactInfo || null,
+        account: input.account || null,
+        customerWhatsapp: input.customerWhatsapp || null,
         remarks: input.remarks || null,
         staffId: ctx.user.id,
         staffName,
@@ -1314,6 +1318,9 @@ export const appRouter = router({
       id: z.number(),
       customerName: z.string().optional(),
       contactInfo: z.string().optional(),
+      staffName: z.string().optional(),
+      account: z.string().optional(),
+      customerWhatsapp: z.string().optional(),
       status: z.string().optional(),
       remarks: z.string().optional(),
     })).mutation(async ({ input, ctx }) => {
@@ -1336,12 +1343,13 @@ export const appRouter = router({
       const quotation = await getQuotationWithItems(input.quotationId);
       if (!quotation) throw new TRPCError({ code: "NOT_FOUND", message: "报价表不存在" });
       const staffName = ctx.user.name || "未知客服";
-      const customerWhatsapp = quotation.contactInfo || quotation.customerName || "未知客户";
+      const customerWhatsapp = quotation.customerWhatsapp || quotation.contactInfo || quotation.customerName || "未知客户";
       // Create order
       const orderId = await createOrder({
         orderDate: new Date(),
-        staffName,
+        staffName: quotation.staffName || staffName,
         staffId: ctx.user.id,
+        account: quotation.account || null,
         customerWhatsapp,
         customerName: quotation.customerName,
         orderNumber: `Q${quotation.id}-${Date.now().toString(36)}`,

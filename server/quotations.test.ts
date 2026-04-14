@@ -127,6 +127,8 @@ describe("Quotation CRUD", () => {
     expect(createQuotation).toHaveBeenCalledWith({
       customerName: "New Customer",
       contactInfo: "+44 999",
+      account: null,
+      customerWhatsapp: null,
       remarks: null,
       staffId: 1,
       staffName: "Test Staff",

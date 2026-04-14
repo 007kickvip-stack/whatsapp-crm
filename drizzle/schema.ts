@@ -293,6 +293,8 @@ export const quotations = mysqlTable("quotations", {
   remarks: text("remarks"),
   staffId: int("staffId"),
   staffName: varchar("staffName", { length: 64 }),
+  account: varchar("account", { length: 64 }),
+  customerWhatsapp: varchar("customerWhatsapp", { length: 255 }),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });

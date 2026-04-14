@@ -254,7 +254,7 @@ export default function QuotationsPage() {
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [form, setForm] = useState({ customerName: "", contactInfo: "", remarks: "" });
+  const [form, setForm] = useState({ customerName: "", contactInfo: "", account: "", customerWhatsapp: "", remarks: "" });
   const [collapsedIds, setCollapsedIds] = useState<Set<number>>(new Set());
   const [previewImage, setPreviewImage] = useState<string | null>(null);
   const [exportingId, setExportingId] = useState<number | null>(null);
@@ -320,7 +320,7 @@ export default function QuotationsPage() {
     createMutation.mutate(form);
   };
 
-  // Export quotation as image
+  // Export quotation as image (不包含客服名字、账号、客户WhatsApp、联系方式)
   const exportAsImage = async (quotation: any) => {
     setExportingId(quotation.id);
     try {
@@ -330,10 +330,10 @@ export default function QuotationsPage() {
       const padding = 40;
       const rowHeight = 80;
       const imgSize = 60;
-      const headerHeight = 100;
+      const headerHeight = 80;
       const footerHeight = 80;
-      // Columns: #, 订单图片, Size, 联系方式, 数量, 总金额($), 总金额(¥)
-      const colWidths = [50, 120, 80, 150, 60, 110, 110];
+      // Export columns: #, 订单图片, Size, 数量, 总金额($), 总金额(¥), 备注
+      const colWidths = [50, 120, 80, 60, 110, 110, 120];
       const totalWidth = colWidths.reduce((s, w) => s + w, 0) + padding * 2;
       const totalHeight = headerHeight + 40 + items.length * rowHeight + footerHeight + padding * 2;
 
@@ -350,14 +350,12 @@ export default function QuotationsPage() {
       ctx.fillRect(0, 0, totalWidth, headerHeight);
       ctx.fillStyle = "#ffffff";
       ctx.font = "bold 22px sans-serif";
-      ctx.fillText("客户报价单", padding, 40);
+      ctx.fillText("客户报价单", padding, 35);
       ctx.font = "14px sans-serif";
-      ctx.fillText(`客户: ${quotation.customerName}`, padding, 65);
-      ctx.fillText(`联系方式: ${quotation.contactInfo || "-"}`, padding, 85);
+      ctx.fillText(`客户: ${quotation.customerName}`, padding, 60);
       const dateStr = new Date().toLocaleDateString("zh-CN");
       ctx.textAlign = "right";
-      ctx.fillText(`日期: ${dateStr}`, totalWidth - padding, 65);
-      ctx.fillText(`客服: ${quotation.staffName || "-"}`, totalWidth - padding, 85);
+      ctx.fillText(`日期: ${dateStr}`, totalWidth - padding, 60);
       ctx.textAlign = "left";
 
       // Table header
@@ -366,7 +364,7 @@ export default function QuotationsPage() {
       ctx.fillRect(padding, tableY, totalWidth - padding * 2, 30);
       ctx.fillStyle = "#065f46";
       ctx.font = "bold 12px sans-serif";
-      const headers = ["#", "图片", "Size", "联系方式", "数量", "金额($)", "金额(¥)"];
+      const headers = ["#", "图片", "Size", "数量", "金额($)", "金额(¥)", "备注"];
       let x = padding;
       headers.forEach((h, i) => {
         ctx.fillText(h, x + 8, tableY + 20);
@@ -414,17 +412,17 @@ export default function QuotationsPage() {
         // Size
         ctx.fillText(item.size || "-", rx + 8, y + rowHeight / 2 + 4);
         rx += colWidths[2];
-        // Contact info (from parent)
-        ctx.fillText(quotation.contactInfo || "-", rx + 8, y + rowHeight / 2 + 4);
-        rx += colWidths[3];
         // Quantity
         ctx.fillText(String(item.quantity || 1), rx + 8, y + rowHeight / 2 + 4);
-        rx += colWidths[4];
+        rx += colWidths[3];
         // Amount USD
         ctx.fillText(`$${fmtNum(item.amountUsd)}`, rx + 8, y + rowHeight / 2 + 4);
-        rx += colWidths[5];
+        rx += colWidths[4];
         // Amount CNY
         ctx.fillText(`¥${fmtNum(item.amountCny)}`, rx + 8, y + rowHeight / 2 + 4);
+        rx += colWidths[5];
+        // Remarks
+        ctx.fillText(item.remarks || "-", rx + 8, y + rowHeight / 2 + 4);
       });
 
       // Footer - totals
@@ -485,7 +483,7 @@ export default function QuotationsPage() {
           <h1 className="text-xl font-bold text-gray-900">客户报价表</h1>
           <p className="text-xs text-muted-foreground mt-0.5">管理客户报价，支持导出图片和一键同步到订单</p>
         </div>
-        <Button size="sm" onClick={() => { setForm({ customerName: "", contactInfo: "", remarks: "" }); setDialogOpen(true); }} className="bg-emerald-600 hover:bg-emerald-700">
+        <Button size="sm" onClick={() => { setForm({ customerName: "", contactInfo: "", account: "", customerWhatsapp: "", remarks: "" }); setDialogOpen(true); }} className="bg-emerald-600 hover:bg-emerald-700">
           <Plus className="h-4 w-4 mr-1" /> 新建报价
         </Button>
       </div>
@@ -527,7 +525,10 @@ export default function QuotationsPage() {
               <tr className="bg-emerald-50 text-gray-600 border-b border-emerald-200">
                 <th className="py-2 px-2 text-center w-[30px]"></th>
                 <th className="py-2 px-2 text-center w-[40px]">#</th>
+                <th className="py-2 px-2 text-center min-w-[80px]">客服名字</th>
+                <th className="py-2 px-2 text-center min-w-[80px]">账号</th>
                 <th className="py-2 px-2 text-center min-w-[100px]">客户名字</th>
+                <th className="py-2 px-2 text-center min-w-[100px]">客户WhatsApp</th>
                 <th className="py-2 px-2 text-center w-[80px]">订单图片</th>
                 <th className="py-2 px-2 text-center w-[80px]">Size</th>
                 <th className="py-2 px-2 text-center min-w-[120px]">联系方式</th>
@@ -573,6 +574,30 @@ export default function QuotationsPage() {
                       >
                         {rowIdx + 1}
                       </td>
+                      {/* 客服名字 - merged */}
+                      <td
+                        className="py-1 px-2 text-center align-middle border-r border-gray-100"
+                        rowSpan={visibleItemCount}
+                      >
+                        <EditableCell
+                          value={q.staffName || ""}
+                          onSave={(v) => saveQuotationField(q.id, "staffName", v)}
+                          placeholder="客服名字"
+                          className="text-xs"
+                        />
+                      </td>
+                      {/* 账号 - merged */}
+                      <td
+                        className="py-1 px-2 text-center align-middle border-r border-gray-100"
+                        rowSpan={visibleItemCount}
+                      >
+                        <EditableCell
+                          value={q.account || ""}
+                          onSave={(v) => saveQuotationField(q.id, "account", v)}
+                          placeholder="账号"
+                          className="text-xs"
+                        />
+                      </td>
                       {/* Customer name - merged */}
                       <td
                         className="py-1 px-2 text-center align-middle border-r border-gray-100"
@@ -583,6 +608,18 @@ export default function QuotationsPage() {
                           onSave={(v) => saveQuotationField(q.id, "customerName", v)}
                           placeholder="客户名字"
                           className="font-semibold text-xs text-gray-900"
+                        />
+                      </td>
+                      {/* 客户WhatsApp - merged */}
+                      <td
+                        className="py-1 px-2 text-center align-middle border-r border-gray-100"
+                        rowSpan={visibleItemCount}
+                      >
+                        <EditableCell
+                          value={q.customerWhatsapp || ""}
+                          onSave={(v) => saveQuotationField(q.id, "customerWhatsapp", v)}
+                          placeholder="WhatsApp"
+                          className="text-xs"
                         />
                       </td>
                       {/* Order image - per item */}
@@ -703,7 +740,7 @@ export default function QuotationsPage() {
                 // Child row
                 return (
                   <tr key={`child-${q.id}-${item?.id}`} className="border-t border-gray-100 hover:bg-gray-50/30">
-                    {/* No collapse, #, customer name, contact info, status, actions columns - they are rowSpan merged */}
+                    {/* No collapse, #, staffName, account, customer name, customerWhatsapp, contact info, status, actions columns - they are rowSpan merged */}
                     {/* Order image */}
                     <td className="py-1 px-2 text-center">
                       {item && (
@@ -754,7 +791,7 @@ export default function QuotationsPage() {
                 if (isCollapsed) return null;
                 return (
                   <tr key={`total-${q.id}`} className="border-t-2 border-emerald-200 bg-emerald-50/30">
-                    <td colSpan={7} className="py-1.5 px-2 text-right font-semibold text-gray-600 text-xs">
+                    <td colSpan={10} className="py-1.5 px-2 text-right font-semibold text-gray-600 text-xs">
                       {q.customerName} 合计
                     </td>
                     <td className="py-1.5 px-2 text-center font-bold text-emerald-700 text-xs">${fmtNum(q.totalAmountUsd)}</td>
@@ -793,11 +830,27 @@ export default function QuotationsPage() {
               />
             </div>
             <div className="space-y-2">
+              <Label>客户WhatsApp</Label>
+              <Input
+                placeholder="WhatsApp号码"
+                value={form.customerWhatsapp}
+                onChange={(e) => setForm({ ...form, customerWhatsapp: e.target.value })}
+              />
+            </div>
+            <div className="space-y-2">
               <Label>联系方式</Label>
               <Input
-                placeholder="WhatsApp / 电话 / 邮箱"
+                placeholder="电话 / 邮箱 / 地址"
                 value={form.contactInfo}
                 onChange={(e) => setForm({ ...form, contactInfo: e.target.value })}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>账号</Label>
+              <Input
+                placeholder="账号"
+                value={form.account}
+                onChange={(e) => setForm({ ...form, account: e.target.value })}
               />
             </div>
             <div className="space-y-2">

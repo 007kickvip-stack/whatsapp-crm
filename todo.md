@@ -488,3 +488,7 @@
 
 ## Bug修复：报价表同步到订单失败
 - [x] 修复syncToOrder中createOrder的字段参数不匹配导致SQL插入失败（扩大customerWhatsapp字段长度从32到25）
+
+## 报价表添加新列
+- [x] 添加客服名字、账号、客户WhatsApp列（父项子项合并居中）
+- [x] 导出报价图片时不包含客服名字、账号、客户WhatsApp、联系方式
