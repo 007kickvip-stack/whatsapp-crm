@@ -511,3 +511,6 @@
 ## 报价表售价同步与导出优化
 - [x] 后端：syncToOrder时将报价子项的sellingPrice同步到订单子项的sellingPrice
 - [x] 前端：导出报价图片中Shipping和Total分两行显示（Shipping深绿色背景，Total绿色背景）
+
+## 导出报价图片去掉Remarks列
+- [x] 导出报价图片中去掉Remarks列，列宽度重新分配

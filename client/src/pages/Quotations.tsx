@@ -333,8 +333,8 @@ export default function QuotationsPage() {
       const imgSize = 60;
       const headerHeight = 80;
       const footerHeight = 120;
-      // Export columns: #, Image, Size, Qty, Amount($), Shipping($), Remarks
-      const colWidths = [50, 120, 80, 60, 120, 120, 150];
+      // Export columns: #, Image, Size, Qty, Amount($), Shipping($)
+      const colWidths = [50, 140, 100, 80, 140, 140];
       const totalWidth = colWidths.reduce((s, w) => s + w, 0) + padding * 2;
       const totalHeight = headerHeight + 40 + items.length * rowHeight + footerHeight + padding * 2;
 
@@ -366,7 +366,7 @@ export default function QuotationsPage() {
       ctx.fillRect(padding, tableY, totalWidth - padding * 2, 30);
       ctx.fillStyle = "#065f46";
       ctx.font = "bold 12px sans-serif";
-      const headers = ["#", "Image", "Size", "Qty", "Amount($)", "Shipping($)", "Remarks"];
+      const headers = ["#", "Image", "Size", "Qty", "Amount($)", "Shipping($)"];
       let x = padding;
       headers.forEach((h, i) => {
         ctx.fillText(h, x + 8, tableY + 20);
@@ -428,9 +428,7 @@ export default function QuotationsPage() {
         const itemRate = itemAmountCny > 0 ? itemAmountUsd / itemAmountCny : 0;
         const itemShippingUsd = itemShippingCny * itemRate;
         ctx.fillText(`$${fmtNum(itemShippingUsd)}`, rx + 8, y + rowHeight / 2 + 4);
-        rx += colWidths[5];
-        // Remarks
-        ctx.fillText(item.remarks || "-", rx + 8, y + rowHeight / 2 + 4);
+
       });
 
       // Calculate total shipping
