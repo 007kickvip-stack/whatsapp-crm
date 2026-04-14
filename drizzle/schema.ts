@@ -84,6 +84,7 @@ export const orders = mysqlTable("orders", {
   customerEmail: varchar("customerEmail", { length: 320 }),
   wpEntryDate: date("wpEntryDate"), // 进入WP日期
   paymentAmount: decimal("paymentAmount", { precision: 12, scale: 2 }).default("0"), // 付款金额 $
+  receivingAccount: varchar("receivingAccount", { length: 64 }), // 收款账户
   remarks: text("remarks"),
   // 汇总金额（所有子项合计）
   totalAmountUsd: decimal("totalAmountUsd", { precision: 12, scale: 2 }).default("0"),

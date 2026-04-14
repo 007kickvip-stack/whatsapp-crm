@@ -338,6 +338,7 @@ export const appRouter = router({
       orderStatus: z.string().optional(),
       paymentStatus: z.string().optional(),
       paymentAmount: z.string().optional(),
+      receivingAccount: z.string().optional(),
       remarks: z.string().optional(),
       // 客户关联字段
       customerName: z.string().optional(),

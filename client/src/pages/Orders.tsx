@@ -832,6 +832,7 @@ export default function OrdersPage() {
     { key: "profitRate", label: "利润率", width: "70px" },
     { key: "paymentScreenshot", label: "付款截图", width: "80px" },
     { key: "paymentAmountDisplay", label: "付款金额($)", width: "100px" },
+    { key: "receivingAccount", label: "收款账户", width: "120px" },
     { key: "remarks", label: "备注", width: "120px" },
     { key: "paymentStatus", label: "付款状态", width: "80px" },
     { key: "customerName", label: "客户名字", width: "100px" },
@@ -886,6 +887,7 @@ export default function OrdersPage() {
     profitRate: string | null;
     paymentScreenshotUrl: string | null;
     paymentAmount: string | null;
+    receivingAccount: string | null;
     remarks: string | null;
     paymentStatus: string | null;
     customerName: string | null;
@@ -963,6 +965,7 @@ export default function OrdersPage() {
           profitRate: order.totalProfitRate,
           paymentScreenshotUrl: null,
           paymentAmount: order.paymentAmount || null,
+          receivingAccount: (order as any).receivingAccount || null,
           remarks: order.remarks,
           paymentStatus: order.paymentStatus,
           customerName: (order as any).customerName || null,
@@ -1019,6 +1022,7 @@ export default function OrdersPage() {
             profitRate: item.profitRate,
             paymentScreenshotUrl: item.paymentScreenshotUrl,
             paymentAmount: item.paymentAmount || (order as any).paymentAmount || null,
+            receivingAccount: idx === 0 ? ((order as any).receivingAccount || null) : null,
             remarks: item.remarks,
             paymentStatus: item.paymentStatus || (idx === 0 ? order.paymentStatus : null),
             customerName: idx === 0 ? ((order as any).customerName || null) : null,
@@ -1498,13 +1502,30 @@ export default function OrdersPage() {
         </td>
 
         {/* 29.5. 付款金额($) - order level */}
-        <td className="py-1 px-1 border-r border-gray-100 text-right text-[11px]">
+        <td className="py-1 px-1 border-r border-gray-100 text-center text-[11px]">
           {row.isFirstRow ? (
             <EditableCell
               value={row.paymentAmount || "0.00"}
               type="number"
               onSave={(v) => saveOrderField(row.orderId, "paymentAmount", v)}
               placeholder="0.00"
+            />
+          ) : null}
+        </td>
+
+        {/* 29.6. 收款账户 - order level */}
+        <td className="py-1 px-1 border-r border-gray-100 text-center text-[11px]">
+          {row.isFirstRow ? (
+            <EditableCell
+              value={row.receivingAccount || ""}
+              type="select"
+              selectOptions={[
+                "廖欧妹", "苏翊豪", "王国军", "成皇", "谢显禄", "罗胜",
+                "闪明", "龚双意", "旺吞", "项小丽", "马各端", "罗丹",
+                "支付宝", "飞来汇", "USDT ERC", "SDT（TRC20）"
+              ]}
+              onSave={(v) => saveOrderField(row.orderId, "receivingAccount", v)}
+              placeholder="选择收款账户"
             />
           ) : null}
         </td>

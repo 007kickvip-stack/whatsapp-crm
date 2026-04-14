@@ -2477,7 +2477,7 @@ export async function syncOrderToPaypalIncome(orderId: number, userId: number) {
   // 获取订单数据
   const orderResult = await db.execute(sql`
     SELECT o.id, o.orderDate, o.account, o.customerWhatsapp, o.customerName,
-           o.paymentAmount, o.staffName,
+           o.paymentAmount, o.staffName, o.receivingAccount,
            (SELECT oi.paymentScreenshotUrl FROM order_items oi WHERE oi.orderId = o.id AND oi.paymentScreenshotUrl IS NOT NULL LIMIT 1) as paymentScreenshotUrl
     FROM orders o
     WHERE o.id = ${orderId}
@@ -2495,7 +2495,7 @@ export async function syncOrderToPaypalIncome(orderId: number, userId: number) {
     paymentAmount: row.paymentAmount ? String(row.paymentAmount) : "0",
     actualReceived: "0",
     isReceived: "否",
-    receivingAccount: null,
+    receivingAccount: row.receivingAccount || null,
     staffName: row.staffName || null,
     remarks: `自动同步自订单#${row.id}`,
     orderId: orderId,
@@ -2511,7 +2511,7 @@ export async function updatePaypalIncomeFromOrder(orderId: number) {
   // 获取订单数据
   const orderResult = await db.execute(sql`
     SELECT o.id, o.orderDate, o.account, o.customerWhatsapp, o.customerName,
-           o.paymentAmount, o.staffName,
+           o.paymentAmount, o.staffName, o.receivingAccount,
            (SELECT oi.paymentScreenshotUrl FROM order_items oi WHERE oi.orderId = o.id AND oi.paymentScreenshotUrl IS NOT NULL LIMIT 1) as paymentScreenshotUrl
     FROM orders o
     WHERE o.id = ${orderId}
@@ -2528,6 +2528,7 @@ export async function updatePaypalIncomeFromOrder(orderId: number) {
       customerName = ${row.customerName || null},
       paymentScreenshotUrl = ${row.paymentScreenshotUrl || null},
       paymentAmount = ${row.paymentAmount ? String(row.paymentAmount) : "0"},
+      receivingAccount = ${row.receivingAccount || null},
       staffName = ${row.staffName || null}
     WHERE orderId = ${orderId}
   `);
@@ -2548,7 +2549,7 @@ export async function syncOrdersToPaypalIncome(userId: number) {
   // 查找所有有付款金额但未关联到paypal_income的订单
   const ordersWithPayment = await db.execute(sql`
     SELECT o.id, o.orderDate, o.account, o.customerWhatsapp, o.customerName,
-           o.paymentAmount, o.staffName,
+           o.paymentAmount, o.staffName, o.receivingAccount,
            (SELECT oi.paymentScreenshotUrl FROM order_items oi WHERE oi.orderId = o.id AND oi.paymentScreenshotUrl IS NOT NULL LIMIT 1) as paymentScreenshotUrl
     FROM orders o
     WHERE o.paymentAmount IS NOT NULL 
@@ -2573,7 +2574,7 @@ export async function syncOrdersToPaypalIncome(userId: number) {
       paymentAmount: row.paymentAmount ? String(row.paymentAmount) : "0",
       actualReceived: "0",
       isReceived: "否",
-      receivingAccount: null,
+      receivingAccount: row.receivingAccount || null,
       staffName: row.staffName || null,
       remarks: `自动同步自订单#${row.id}`,
       orderId: row.id,

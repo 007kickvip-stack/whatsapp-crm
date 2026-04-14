@@ -717,17 +717,17 @@ function IncomeTable({
         <table className="w-full text-[11px]">
           <thead>
             <tr className="bg-gray-50 text-gray-500 border-b border-gray-100">
-              <th className="px-2 py-2 text-left font-medium w-[90px]">日期</th>
-              <th className="px-2 py-2 text-left font-medium w-[80px]">账号</th>
-              <th className="px-2 py-2 text-left font-medium w-[90px]">客户名字</th>
-              <th className="px-2 py-2 text-left font-medium w-[120px]">客户WhatsApp</th>
+              <th className="px-2 py-2 text-center font-medium w-[90px]">日期</th>
+              <th className="px-2 py-2 text-center font-medium w-[80px]">账号</th>
+              <th className="px-2 py-2 text-center font-medium w-[90px]">客户名字</th>
+              <th className="px-2 py-2 text-center font-medium w-[120px]">客户WhatsApp</th>
               <th className="px-2 py-2 text-center font-medium w-[60px]">付款截图</th>
-              <th className="px-2 py-2 text-right font-medium w-[90px]">付款金额($)</th>
-              <th className="px-2 py-2 text-right font-medium w-[100px]">实际收到($)</th>
+              <th className="px-2 py-2 text-center font-medium w-[90px]">付款金额($)</th>
+              <th className="px-2 py-2 text-center font-medium w-[100px]">实际收到($)</th>
               <th className="px-2 py-2 text-center font-medium w-[80px]">是否收到</th>
-              <th className="px-2 py-2 text-left font-medium w-[110px]">收款账户</th>
-              <th className="px-2 py-2 text-left font-medium w-[70px]">客服名字</th>
-              <th className="px-2 py-2 text-left font-medium">备注</th>
+              <th className="px-2 py-2 text-center font-medium w-[110px]">收款账户</th>
+              <th className="px-2 py-2 text-center font-medium w-[70px]">客服名字</th>
+              <th className="px-2 py-2 text-center font-medium">备注</th>
               <th className="px-2 py-2 text-center font-medium w-[40px]">操作</th>
             </tr>
           </thead>
@@ -750,17 +750,17 @@ function IncomeTable({
                   key={row.id}
                   className="border-b border-gray-50 hover:bg-emerald-50/30 transition-colors"
                 >
-                  <td className="px-2 py-1.5">
+                  <td className="px-2 py-1.5 text-center">
                     <input
                       type="date"
                       value={row.incomeDate || ""}
                       onChange={(e) =>
                         handleUpdate(row.id, "incomeDate", e.target.value)
                       }
-                      className="border border-gray-200 rounded px-1 py-0.5 text-[11px] w-full bg-transparent"
+                      className="border border-gray-200 rounded px-1 py-0.5 text-[11px] w-full bg-transparent text-center"
                     />
                   </td>
-                  <td className="px-2 py-1.5">
+                  <td className="px-2 py-1.5 text-center">
                     <AccountSelect
                       value={row.account || ""}
                       onValueChange={(v) => handleUpdate(row.id, "account", v)}
@@ -768,22 +768,24 @@ function IncomeTable({
                       placeholder="账号"
                     />
                   </td>
-                  <td className="px-2 py-1.5">
+                  <td className="px-2 py-1.5 text-center">
                     <EditableCell
                       value={row.customerName || ""}
                       onSave={(v) =>
                         handleUpdate(row.id, "customerName", v)
                       }
                       placeholder="客户名字"
+                      className="text-center"
                     />
                   </td>
-                  <td className="px-2 py-1.5">
+                  <td className="px-2 py-1.5 text-center">
                     <EditableCell
                       value={row.customerWhatsapp || ""}
                       onSave={(v) =>
                         handleUpdate(row.id, "customerWhatsapp", v)
                       }
                       placeholder="WhatsApp"
+                      className="text-center"
                     />
                   </td>
                   <td className="px-2 py-1.5 text-center">
@@ -794,24 +796,24 @@ function IncomeTable({
                       }
                     />
                   </td>
-                  <td className="px-2 py-1.5 text-right">
+                  <td className="px-2 py-1.5 text-center">
                     <EditableCell
                       value={fmtNum(row.paymentAmount)}
                       onSave={(v) =>
                         handleUpdate(row.id, "paymentAmount", v)
                       }
                       type="number"
-                      className="text-right"
+                      className="text-center"
                     />
                   </td>
-                  <td className="px-2 py-1.5 text-right">
+                  <td className="px-2 py-1.5 text-center">
                     <EditableCell
                       value={fmtNum(row.actualReceived)}
                       onSave={(v) =>
                         handleUpdate(row.id, "actualReceived", v)
                       }
                       type="number"
-                      className="text-right"
+                      className="text-center"
                     />
                   </td>
                   <td className="px-2 py-1.5 text-center">
@@ -822,7 +824,7 @@ function IncomeTable({
                       }
                     />
                   </td>
-                  <td className="px-2 py-1.5">
+                  <td className="px-2 py-1.5 text-center">
                     <ReceivingAccountSelect
                       value={row.receivingAccount || ""}
                       onValueChange={(v) =>
@@ -831,18 +833,20 @@ function IncomeTable({
                       compact
                     />
                   </td>
-                  <td className="px-2 py-1.5">
+                  <td className="px-2 py-1.5 text-center">
                     <EditableCell
                       value={row.staffName || ""}
                       onSave={(v) => handleUpdate(row.id, "staffName", v)}
                       placeholder="客服"
+                      className="text-center"
                     />
                   </td>
-                  <td className="px-2 py-1.5">
+                  <td className="px-2 py-1.5 text-center">
                     <EditableCell
                       value={row.remarks || ""}
                       onSave={(v) => handleUpdate(row.id, "remarks", v)}
                       placeholder="备注"
+                      className="text-center"
                     />
                   </td>
                   <td className="px-2 py-1.5 text-center">
