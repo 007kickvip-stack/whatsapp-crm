@@ -538,3 +538,6 @@
 - [x] 后端API：PayPal收入表自动同步订单表数据（按账号+日期匹配）
 - [x] 前端：订单表格付款截图后面添加付款金额($)列
 - [x] 测试：21条PayPal测试全部通过（含customerName、日期范围筛选、同步订单），总计175条测试通过
+
+## Bug修复：PayPal同步订单失败
+- [x] 排查并修复PayPal收入表“同步订单”功能报错的问题（原因：SQL查询引用了orders表不存在的paymentScreenshotUrl字段，该字段在order_items表中）

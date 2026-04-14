@@ -2469,12 +2469,11 @@ export async function syncOrdersToPaypalIncome(userId: number) {
   if (!db) return { created: 0 };
   
   // Get all orders that have payment amount and are not yet synced to paypal_income
-  // We match by: order has paymentAmount > 0 and there's no paypal_income record with matching
-  // customerWhatsapp + account + paymentAmount + incomeDate
+  // paymentScreenshotUrl is in order_items table, so we LEFT JOIN to get it
   const ordersWithPayment = await db.execute(sql`
     SELECT o.id, o.orderDate, o.account, o.customerWhatsapp, o.customerName,
-           o.paymentScreenshotUrl, o.paymentAmount, o.paymentStatus,
-           o.staffName
+           o.paymentAmount, o.paymentStatus, o.staffName,
+           (SELECT oi.paymentScreenshotUrl FROM order_items oi WHERE oi.orderId = o.id AND oi.paymentScreenshotUrl IS NOT NULL LIMIT 1) as paymentScreenshotUrl
     FROM orders o
     WHERE o.paymentAmount IS NOT NULL 
       AND o.paymentAmount > 0
