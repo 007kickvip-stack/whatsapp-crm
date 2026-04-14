@@ -2138,16 +2138,25 @@ export async function getOrderCategoryDistribution(filters: DashboardFilters) {
   if (filters.staffId) conditions.push(sql`staffId = ${filters.staffId}`);
   const whereStr = conditions.length > 0 ? sql.join([sql`WHERE `, sql.join(conditions, sql` AND `)], sql``) : sql``;
 
+  // 订购类目可能是逗号分隔的多选值，需要拆分后统计
   const result = await db.execute(sql`
-    SELECT orderCategory as name, COUNT(*) as value
-    FROM orders ${whereStr}
-    GROUP BY orderCategory
-    ORDER BY value DESC
+    SELECT orderCategory as name FROM orders ${whereStr}
   `);
-  return ((result as any)[0] || []).map((r: any) => ({
-    name: r.name || "未设置",
-    value: Number(r.value),
-  }));
+  const rows = (result as any)[0] || [];
+  const countMap = new Map<string, number>();
+  for (const r of rows) {
+    const cats = (r.name || "").split(",").map((s: string) => s.trim()).filter(Boolean);
+    if (cats.length === 0) {
+      countMap.set("未设置", (countMap.get("未设置") || 0) + 1);
+    } else {
+      for (const cat of cats) {
+        countMap.set(cat, (countMap.get(cat) || 0) + 1);
+      }
+    }
+  }
+  return Array.from(countMap.entries())
+    .map(([name, value]) => ({ name, value }))
+    .sort((a, b) => b.value - a.value);
 }
 
 /**

@@ -76,34 +76,43 @@ function SimplePie({ data, title }: { data: { name: string; value: number }[]; t
   if (!data || data.length === 0) return (
     <Card className="border-0 shadow-sm">
       <CardHeader className="pb-2"><CardTitle className="text-sm">{title}</CardTitle></CardHeader>
-      <CardContent><div className="h-[220px] flex items-center justify-center text-muted-foreground text-sm">暂无数据</div></CardContent>
+      <CardContent><div className="h-[280px] flex items-center justify-center text-muted-foreground text-sm">暂无数据</div></CardContent>
     </Card>
   );
+  const total = data.reduce((s, d) => s + d.value, 0);
   return (
     <Card className="border-0 shadow-sm">
       <CardHeader className="pb-2"><CardTitle className="text-sm">{title}</CardTitle></CardHeader>
       <CardContent>
-        <div className="h-[220px]">
+        <div className="h-[200px]">
           <ResponsiveContainer width="100%" height="100%">
             <PieChart>
               <Pie
                 data={data}
                 cx="50%"
                 cy="50%"
-                innerRadius={45}
-                outerRadius={80}
+                innerRadius={40}
+                outerRadius={70}
                 paddingAngle={2}
                 dataKey="value"
-                label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
-                labelLine={{ strokeWidth: 1 }}
               >
-                {data.map((_, i) => (
+                {data.map((_: any, i: number) => (
                   <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />
                 ))}
               </Pie>
               <Tooltip formatter={(v: number) => [v, "数量"]} />
             </PieChart>
           </ResponsiveContainer>
+        </div>
+        {/* 图例列表 */}
+        <div className="flex flex-wrap gap-x-4 gap-y-1.5 mt-2 justify-center">
+          {data.map((d, i) => (
+            <div key={d.name} className="flex items-center gap-1.5 text-xs">
+              <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: PIE_COLORS[i % PIE_COLORS.length] }} />
+              <span className="text-muted-foreground">{d.name}</span>
+              <span className="font-medium">{total > 0 ? ((d.value / total) * 100).toFixed(0) : 0}%</span>
+            </div>
+          ))}
         </div>
       </CardContent>
     </Card>

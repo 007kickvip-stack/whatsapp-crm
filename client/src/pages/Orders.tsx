@@ -67,6 +67,8 @@ import TrackingDialog from "@/components/TrackingDialog";
 import TrackingHoverCard from "@/components/TrackingHoverCard";
 import AccountSelect from "@/components/AccountSelect";
 import BulkAddItemsDialog from "@/components/BulkAddItemsDialog";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Checkbox } from "@/components/ui/checkbox";
 
 type OrderForm = {
   orderDate: string;
@@ -104,6 +106,8 @@ const ORDER_STATUSES = [
   "已退款",
 ];
 const PAYMENT_STATUSES = ["未付款", "待付款", "已付款", "部分付款"];
+
+const ORDER_CATEGORIES = ["服饰", "鞋子", "配饰", "包包", "电子产品", "其他"];
 
 function fmtNum(val: string | number | null | undefined): string {
   const n = Number(val);
@@ -195,7 +199,7 @@ function EditableCell({
 }: {
   value: string;
   onSave: (val: string) => void;
-  type?: "text" | "number" | "date" | "select" | "textarea";
+  type?: "text" | "number" | "date" | "select" | "textarea" | "multiSelect";
   className?: string;
   placeholder?: string;
   selectOptions?: string[];
@@ -225,6 +229,47 @@ function EditableCell({
     setEditing(false);
     setDraft(value);
   };
+
+  // 多选下拉（订购类目）
+  if (type === "multiSelect" && selectOptions) {
+    const selected = value ? value.split(",").map(s => s.trim()).filter(Boolean) : [];
+    return (
+      <Popover>
+        <PopoverTrigger asChild>
+          <div className="cursor-pointer min-h-[22px] px-0.5 py-0.5 rounded hover:bg-emerald-50 transition-colors">
+            {selected.length > 0 ? (
+              <div className="flex flex-wrap gap-0.5 justify-center">
+                {selected.map(item => (
+                  <span key={item} className="inline-block px-1 py-0 rounded text-[10px] bg-blue-100 text-blue-800 border border-blue-200">{item}</span>
+                ))}
+              </div>
+            ) : (
+              <span className="text-gray-300 italic text-[10px]">{placeholder || "点击选择"}</span>
+            )}
+          </div>
+        </PopoverTrigger>
+        <PopoverContent className="w-[180px] p-2" align="start">
+          <div className="space-y-1">
+            {selectOptions.map(cat => {
+              const isChecked = selected.includes(cat);
+              return (
+                <label key={cat} className="flex items-center gap-2 cursor-pointer hover:bg-muted/50 rounded px-1 py-0.5">
+                  <Checkbox
+                    checked={isChecked}
+                    onCheckedChange={(checked) => {
+                      const newSel = checked ? [...selected, cat] : selected.filter(s => s !== cat);
+                      onSave(newSel.join(","));
+                    }}
+                  />
+                  <span className="text-xs">{cat}</span>
+                </label>
+              );
+            })}
+          </div>
+        </PopoverContent>
+      </Popover>
+    );
+  }
 
   if (type === "select" && selectOptions) {
     if (selectColorFn) {
@@ -1519,7 +1564,8 @@ export default function OrdersPage() {
             <td className="py-1 px-1 text-center text-[11px] align-middle" rowSpan={row.visibleItemCount || 1}>
               <EditableCell
                 value={row.orderCategory || ""}
-                type="text"
+                type="multiSelect"
+                selectOptions={ORDER_CATEGORIES}
                 onSave={(v) => saveOrderField(row.orderId, "orderCategory", v)}
                 placeholder="订购类目"
               />

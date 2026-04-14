@@ -648,6 +648,19 @@ export const appRouter = router({
       }
 
       await recalculateOrderTotals(orderId);
+
+      // 如果联系方式变更，同步到客户表
+      if (data.contactInfo) {
+        const order = await getOrderById(orderId);
+        if (order && order.customerWhatsapp) {
+          await syncCustomerFromOrder({
+            customerWhatsapp: order.customerWhatsapp,
+            customerName: order.customerName || undefined,
+            contactInfo: data.contactInfo,
+          });
+        }
+      }
+
       return { success: true };
     }),
 

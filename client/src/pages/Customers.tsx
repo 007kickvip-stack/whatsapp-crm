@@ -43,6 +43,8 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import AccountSelect from "@/components/AccountSelect";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   ResponsiveContainer,
   LineChart,
@@ -67,8 +69,11 @@ const customerTypeOptions = ["零售复购", "新零售"];
 const customerTiers = ["低质量", "中等质量", "高质量", "批发商-低质量", "批发商-高质量", "经销商-低质量", "经销商-高质量"];
 
 // 表格列定义 - 按用户要求的顺序
+const ORDER_CATEGORIES = ["服饰", "鞋子", "配饰", "包包", "电子产品", "其他"];
+
 const columns = [
   { key: "index", label: "序号", width: "w-[50px]", editable: false },
+  { key: "wpEntryDate", label: "进入WP日期", width: "w-[110px]", editable: true, type: "date" },
   { key: "firstOrderDate", label: "首次下单日期", width: "w-[110px]", editable: false, type: "date" },
   { key: "staffName", label: "客服名字", width: "w-[90px]", editable: true, type: "text" },
   { key: "account", label: "账号", width: "w-[120px]", editable: true, type: "account" },
@@ -82,9 +87,8 @@ const columns = [
   { key: "totalSpentCny", label: "累计消费(¥)", width: "w-[100px]", editable: false, type: "money" },
   { key: "customerType", label: "客户属性", width: "w-[110px]", editable: true, type: "customerType" },
   { key: "customerTier", label: "客户分层", width: "w-[90px]", editable: true, type: "tier" },
-  { key: "orderCategory", label: "订购类目", width: "w-[120px]", editable: true, type: "text" },
+  { key: "orderCategory", label: "订购类目", width: "w-[150px]", editable: true, type: "multiSelect" },
   { key: "birthDate", label: "出生日期", width: "w-[110px]", editable: true, type: "date" },
-  { key: "wpEntryDate", label: "进入WP日期", width: "w-[110px]", editable: true, type: "date" },
 ];
 
 // 订单状态颜色映射
@@ -537,6 +541,35 @@ export default function CustomersPage() {
           />
         );
       }
+      // 多选下拉（订购类目）
+      if (col.type === "multiSelect") {
+        const selected = editValue ? editValue.split(",").map((s: string) => s.trim()).filter(Boolean) : [];
+        return (
+          <Popover open onOpenChange={(open) => { if (!open) { updateMutation.mutate({ id: customer.id, [col.key]: selected.join(",") }); setEditingCell(null); } }}>
+            <PopoverTrigger asChild>
+              <button className="w-full h-7 text-xs border border-primary rounded px-1 bg-background text-left truncate">
+                {selected.length > 0 ? selected.join(", ") : "请选择"}
+              </button>
+            </PopoverTrigger>
+            <PopoverContent className="w-[180px] p-2" align="start">
+              <div className="space-y-1">
+                {ORDER_CATEGORIES.map(cat => (
+                  <label key={cat} className="flex items-center gap-2 cursor-pointer hover:bg-muted/50 rounded px-1 py-0.5">
+                    <Checkbox
+                      checked={selected.includes(cat)}
+                      onCheckedChange={(checked) => {
+                        const newSel = checked ? [...selected, cat] : selected.filter((s: string) => s !== cat);
+                        setEditValue(newSel.join(","));
+                      }}
+                    />
+                    <span className="text-xs">{cat}</span>
+                  </label>
+                ))}
+              </div>
+            </PopoverContent>
+          </Popover>
+        );
+      }
       // 日期输入
       if (col.type === "date") {
         return (
@@ -604,6 +637,20 @@ export default function CustomersPage() {
       );
     }
 
+    if (col.type === "multiSelect") {
+      const items = cellValue ? cellValue.split(",").map((s: string) => s.trim()).filter(Boolean) : [];
+      return (
+        <span
+          className="flex flex-wrap gap-0.5 cursor-pointer min-h-[20px] items-center"
+          onClick={() => startEdit(customer.id, col.key, cellValue)}
+        >
+          {items.length > 0 ? items.map((item: string) => (
+            <span key={item} className="inline-block px-1 py-0 rounded text-[10px] bg-blue-100 text-blue-800 border border-blue-200">{item}</span>
+          )) : <span className="text-muted-foreground/40 text-xs">-</span>}
+        </span>
+      );
+    }
+
     return (
       <span
         className="text-xs cursor-pointer hover:bg-muted/50 block w-full min-h-[20px] px-0.5 rounded"
@@ -655,6 +702,34 @@ export default function CustomersPage() {
           onValueChange={(v: string) => setNewCustomer(prev => ({ ...prev, account: v }))}
           compact
         />
+      );
+    }
+    if (col.type === "multiSelect") {
+      const selected = newCustomer[col.key] ? newCustomer[col.key].split(",").filter(Boolean) : [];
+      return (
+        <Popover>
+          <PopoverTrigger asChild>
+            <button className="w-full h-7 text-xs border rounded px-1 bg-background text-left truncate">
+              {selected.length > 0 ? selected.join(", ") : "请选择"}
+            </button>
+          </PopoverTrigger>
+          <PopoverContent className="w-[180px] p-2" align="start">
+            <div className="space-y-1">
+              {ORDER_CATEGORIES.map(cat => (
+                <label key={cat} className="flex items-center gap-2 cursor-pointer hover:bg-muted/50 rounded px-1 py-0.5">
+                  <Checkbox
+                    checked={selected.includes(cat)}
+                    onCheckedChange={(checked) => {
+                      const newSel = checked ? [...selected, cat] : selected.filter((s: string) => s !== cat);
+                      setNewCustomer(prev => ({ ...prev, [col.key]: newSel.join(",") }));
+                    }}
+                  />
+                  <span className="text-xs">{cat}</span>
+                </label>
+              ))}
+            </div>
+          </PopoverContent>
+        </Popover>
       );
     }
     if (col.type === "date") {
