@@ -558,3 +558,10 @@
 
 ## 网页图标设置
 - [x] 将用户提供的WhatsApp CRM图标设置为网页favicon
+
+## PayPal收支Excel导出功能
+- [ ] 后端：PayPal收入表Excel导出API（支持按日期范围和收款账户筛选导出）
+- [ ] 后端：PayPal支出表Excel导出API（支持按日期范围筛选导出）
+- [ ] 前端：PayPal收入Tab添加导出按钮
+- [ ] 前端：PayPal支出Tab添加导出按钮
+- [ ] 测试：导出API测试用例
