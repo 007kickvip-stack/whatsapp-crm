@@ -1367,6 +1367,7 @@ export const appRouter = router({
           quantity: item.quantity,
           amountUsd: String(item.amountUsd || "0"),
           amountCny: String(item.amountCny || "0"),
+          sellingPrice: String(item.sellingPrice || "0"),
           contactInfo: quotation.contactInfo,
           remarks: item.remarks,
         } as any);

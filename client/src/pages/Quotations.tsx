@@ -332,7 +332,7 @@ export default function QuotationsPage() {
       const rowHeight = 80;
       const imgSize = 60;
       const headerHeight = 80;
-      const footerHeight = 80;
+      const footerHeight = 120;
       // Export columns: #, Image, Size, Qty, Amount($), Shipping($), Remarks
       const colWidths = [50, 120, 80, 60, 120, 120, 150];
       const totalWidth = colWidths.reduce((s, w) => s + w, 0) + padding * 2;
@@ -441,15 +441,25 @@ export default function QuotationsPage() {
       const rateExport = totalAmountCnyExport > 0 ? totalAmountUsdExport / totalAmountCnyExport : 0;
       const totalShippingUsdExport = totalShippingCnyExport * rateExport;
 
-      // Footer - totals (USD only + shipping)
+      // Footer - Shipping row + Total row
       const footerY = tableY + 30 + items.length * rowHeight + 10;
+      // Shipping row
+      ctx.fillStyle = "#065f46";
+      ctx.fillRect(padding, footerY, totalWidth - padding * 2, 40);
+      ctx.fillStyle = "#ffffff";
+      ctx.font = "bold 15px sans-serif";
+      ctx.fillText("Shipping", padding + 16, footerY + 26);
+      ctx.textAlign = "right";
+      ctx.fillText(`$${fmtNum(totalShippingUsdExport)}`, totalWidth - padding - 16, footerY + 26);
+      ctx.textAlign = "left";
+      // Total row
       ctx.fillStyle = "#059669";
-      ctx.fillRect(padding, footerY, totalWidth - padding * 2, 50);
+      ctx.fillRect(padding, footerY + 40, totalWidth - padding * 2, 40);
       ctx.fillStyle = "#ffffff";
       ctx.font = "bold 16px sans-serif";
-      ctx.fillText("Total", padding + 16, footerY + 32);
+      ctx.fillText("Total", padding + 16, footerY + 40 + 26);
       ctx.textAlign = "right";
-      ctx.fillText(`$${fmtNum(quotation.totalAmountUsd)}  |  Shipping: $${fmtNum(totalShippingUsdExport)}`, totalWidth - padding - 16, footerY + 32);
+      ctx.fillText(`$${fmtNum(quotation.totalAmountUsd)}`, totalWidth - padding - 16, footerY + 40 + 26);
       ctx.textAlign = "left";
 
       // Download
