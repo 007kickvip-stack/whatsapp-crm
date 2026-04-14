@@ -97,6 +97,50 @@ function normalizeHeader(h: string): string {
   return h.trim().toLowerCase().replace(/\s+/g, "");
 }
 
+// Parse various date formats from Excel cells into a valid Date or null
+function parseExcelDate(value: string | undefined): Date | null {
+  if (!value) return null;
+  const v = value.trim();
+  if (!v) return null;
+
+  // ISO date string: "2026-02-01T00:00:00.000Z"
+  if (/^\d{4}-\d{2}-\d{2}T/.test(v)) {
+    const d = new Date(v);
+    if (!isNaN(d.getTime()) && d.getFullYear() > 1970 && d.getFullYear() < 2100) return d;
+  }
+
+  // YYYY-MM-DD or YYYY/MM/DD
+  if (/^\d{4}[-/]\d{1,2}[-/]\d{1,2}$/.test(v)) {
+    const d = new Date(v.replace(/\//g, "-"));
+    if (!isNaN(d.getTime()) && d.getFullYear() > 1970 && d.getFullYear() < 2100) return d;
+  }
+
+  // Excel serial number (e.g. 44927 for 2023-01-01)
+  const num = parseFloat(v);
+  if (!isNaN(num) && num > 25569 && num < 100000) {
+    // Excel serial date to JS date
+    const d = new Date((num - 25569) * 86400 * 1000);
+    if (!isNaN(d.getTime()) && d.getFullYear() > 1970 && d.getFullYear() < 2100) return d;
+  }
+
+  return null;
+}
+
+// Format a Date to "YYYY-MM-DD" string for MySQL date column
+function formatDateForDb(d: Date): string {
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+// Clean cell value: remove formula artifacts like DISPIMG(...)
+function cleanCellValue(val: string): string {
+  // DISPIMG formula from WPS/Excel 365 image cells
+  if (/^=?_?xlfn\.?DISPIMG/i.test(val) || /^=DISPIMG/i.test(val)) return "";
+  return val;
+}
+
 function mapHeaders(rawHeaders: string[]): string[] {
   return rawHeaders.map((h) => {
     const normalized = normalizeHeader(h);
@@ -224,7 +268,8 @@ export function registerExcelImportRoute(app: Express) {
         const obj: Record<string, string> = {};
         fieldMapping.forEach((field, idx) => {
           if (field !== "_skip" && row[idx] !== undefined) {
-            const val = String(row[idx]).trim();
+            let val = String(row[idx]).trim();
+            val = cleanCellValue(val);
             if (val) obj[field] = val;
           }
         });
@@ -380,7 +425,8 @@ export function registerExcelImportRoute(app: Express) {
         const obj: Record<string, string> = {};
         fieldMapping.forEach((field, idx) => {
           if (field !== "_skip" && row[idx] !== undefined) {
-            const val = String(row[idx]).trim();
+            let val = String(row[idx]).trim();
+            val = cleanCellValue(val);
             if (val) obj[field] = val;
           }
         });
@@ -582,10 +628,13 @@ export function registerExcelImportRoute(app: Express) {
               customerId = existingCustomer.id;
             }
 
+            // Parse and validate order date
+            const parsedDate = parseExcelDate(first.orderDate);
+
             // Create order
             const orderId = await createOrder({
-              orderDate: first.orderDate ? new Date(first.orderDate) : null,
-              account: first.account || undefined,
+              orderDate: parsedDate ? formatDateForDb(parsedDate) as any : null,
+              account: first.account || user.name || "默认账号",
               customerWhatsapp: first.customerWhatsapp!,
               customerId,
               customerType: first.customerType || "新零售",

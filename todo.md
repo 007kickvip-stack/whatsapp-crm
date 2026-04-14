@@ -382,3 +382,6 @@
 ## 导入模板下载
 - [x] 后端：创建模板生成接口（GET /api/excel-template），生成含示例数据和列说明的 .xlsx 模板文件
 - [x] 前端：导入弹窗中「下载导入模板」按钮改为调用后端接口下载
+
+## Bug修复：导入Excel创建新订单失败
+- [x] 修复 auto-create 模式下 SQL insert 参数错误（日期解析、account默认值、DISPIMG公式清理）
