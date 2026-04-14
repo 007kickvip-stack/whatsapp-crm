@@ -5,6 +5,13 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
   DollarSign,
   TrendingUp,
   Users,
@@ -109,11 +116,17 @@ export default function Home() {
 
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
+  const [selectedStaffId, setSelectedStaffId] = useState<string>("");
+
+  // 管理员获取客服列表
+  const { data: staffListData } = trpc.staffTargets.staffList.useQuery(undefined, { enabled: isAdmin });
+  const staffList = staffListData || [];
 
   const queryInput = useMemo(() => ({
     dateFrom: dateFrom || undefined,
     dateTo: dateTo || undefined,
-  }), [dateFrom, dateTo]);
+    staffId: (selectedStaffId && selectedStaffId !== "all") ? Number(selectedStaffId) : undefined,
+  }), [dateFrom, dateTo, selectedStaffId]);
 
   const { data, isLoading } = trpc.stats.dashboardV2.useQuery(queryInput);
 
@@ -177,8 +190,21 @@ export default function Home() {
             className="w-[140px] h-8 text-xs"
             placeholder="结束日期"
           />
-          {(dateFrom || dateTo) && (
-            <Button variant="ghost" size="sm" className="h-8 px-2" onClick={() => { setDateFrom(""); setDateTo(""); }}>
+          {isAdmin && (
+            <Select value={selectedStaffId} onValueChange={setSelectedStaffId}>
+              <SelectTrigger className="w-[130px] h-8 text-xs">
+                <SelectValue placeholder="全部客服" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">全部客服</SelectItem>
+                {staffList.map((s: any) => (
+                  <SelectItem key={s.id} value={String(s.id)}>{s.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+          {(dateFrom || dateTo || selectedStaffId) && (
+            <Button variant="ghost" size="sm" className="h-8 px-2" onClick={() => { setDateFrom(""); setDateTo(""); setSelectedStaffId(""); }}>
               <RotateCcw className="h-3.5 w-3.5" />
             </Button>
           )}

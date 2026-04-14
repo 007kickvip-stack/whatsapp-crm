@@ -776,9 +776,11 @@ export const appRouter = router({
     dashboardV2: protectedProcedure.input(z.object({
       dateFrom: z.string().optional(),
       dateTo: z.string().optional(),
+      staffId: z.number().optional(),
     }).optional()).query(async ({ input, ctx }) => {
       const isAdmin = ctx.user.role === "admin";
-      const staffId = isAdmin ? undefined : ctx.user.id;
+      // 管理员可选择查看某个客服的数据，客服只能看自己的
+      const staffId = isAdmin ? (input?.staffId || undefined) : ctx.user.id;
       const filters = { dateFrom: input?.dateFrom, dateTo: input?.dateTo, staffId };
       const [summary, staffRanking, monthlyNewOld, accountRevenue, monthlyRevenue, staffMonthlyRevenue, customerTypeDist, customerTierDist, orderCategoryDist, countryDist] = await Promise.all([
         getDashboardSummary(filters),
