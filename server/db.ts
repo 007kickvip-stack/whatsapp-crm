@@ -207,11 +207,11 @@ export async function listCustomers(params: {
   staffName?: string;
   account?: string;
   customerType?: string;
-  customerLevel?: string;
+
 }) {
   const db = await getDb();
   if (!db) return { data: [], total: 0 };
-  const { page = 1, pageSize = 50, search, createdById, staffName, account, customerType, customerLevel } = params;
+  const { page = 1, pageSize = 50, search, createdById, staffName, account, customerType } = params;
   const offset = (page - 1) * pageSize;
   const conditions: SQL[] = [];
   if (search) {
@@ -237,9 +237,7 @@ export async function listCustomers(params: {
   if (customerType) {
     conditions.push(eq(customers.customerType, customerType));
   }
-  if (customerLevel) {
-    conditions.push(eq(customers.customerLevel, customerLevel));
-  }
+
   const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
   const [data, countResult] = await Promise.all([
     db.select().from(customers).where(whereClause).orderBy(desc(customers.createdAt)).limit(pageSize).offset(offset),
@@ -310,10 +308,10 @@ export async function syncCustomerFromOrder(orderData: {
   customerType?: string | null;
   customerCountry?: string | null;
   customerTier?: string | null;
-  customerLevel?: string | null;
   orderCategory?: string | null;
   customerBirthDate?: string | Date | null;
   customerEmail?: string | null;
+  contactInfo?: string | null;
   staffId?: number | null;
 }) {
   const db = await getDb();
@@ -342,8 +340,8 @@ export async function syncCustomerFromOrder(orderData: {
       customerType: orderData.customerType || "新零售",
       country: orderData.customerCountry || null,
       customerTier: orderData.customerTier || null,
-      customerLevel: orderData.customerLevel || null,
       orderCategory: orderData.orderCategory || null,
+      contactInfo: orderData.contactInfo || null,
       birthDate: orderData.customerBirthDate ? new Date(orderData.customerBirthDate as string) : null,
       customerEmail: orderData.customerEmail || null,
       createdById: orderData.staffId || null,
@@ -361,8 +359,8 @@ export async function syncCustomerFromOrder(orderData: {
     if (orderData.customerType) updateData.customerType = orderData.customerType;
     if (orderData.customerCountry) updateData.country = orderData.customerCountry;
     if (orderData.customerTier) updateData.customerTier = orderData.customerTier;
-    if (orderData.customerLevel) updateData.customerLevel = orderData.customerLevel;
     if (orderData.orderCategory) updateData.orderCategory = orderData.orderCategory;
+    if (orderData.contactInfo) updateData.contactInfo = orderData.contactInfo;
     if (orderData.customerBirthDate) updateData.birthDate = new Date(orderData.customerBirthDate as string);
     if (orderData.customerEmail) updateData.customerEmail = orderData.customerEmail;
     

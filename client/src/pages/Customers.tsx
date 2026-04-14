@@ -58,15 +58,13 @@ import {
 const customerTypeColors: Record<string, string> = {
   "新零售": "bg-yellow-200 text-yellow-900 border-yellow-300",
   "零售复购": "bg-yellow-400 text-yellow-900 border-yellow-500",
-  "定金-新零售": "bg-pink-400 text-white border-pink-500",
-  "定金-零售复购": "bg-red-600 text-white border-red-700",
 };
 
-// 顾客等级选项
-const customerLevels = ["A", "B", "C", "D", "VIP", "普通"];
+// 客户属性选项
+const customerTypeOptions = ["零售复购", "新零售"];
 
 // 客户分层选项
-const customerTiers = ["高价值", "中价值", "低价值", "新客户", "流失客户"];
+const customerTiers = ["低质量", "中等质量", "高质量", "批发商-低质量", "批发商-高质量", "经销商-低质量", "经销商-高质量"];
 
 // 表格列定义 - 按用户要求的顺序
 const columns = [
@@ -84,7 +82,6 @@ const columns = [
   { key: "totalSpentCny", label: "累计消费(¥)", width: "w-[100px]", editable: false, type: "money" },
   { key: "customerType", label: "客户属性", width: "w-[110px]", editable: true, type: "customerType" },
   { key: "customerTier", label: "客户分层", width: "w-[90px]", editable: true, type: "tier" },
-  { key: "customerLevel", label: "顾客等级", width: "w-[80px]", editable: true, type: "level" },
   { key: "orderCategory", label: "订购类目", width: "w-[120px]", editable: true, type: "text" },
   { key: "birthDate", label: "出生日期", width: "w-[110px]", editable: true, type: "date" },
 ];
@@ -317,7 +314,7 @@ export default function CustomersPage() {
   const [filterStaffName, setFilterStaffName] = useState("");
   const [filterAccount, setFilterAccount] = useState("");
   const [filterCustomerType, setFilterCustomerType] = useState("");
-  const [filterCustomerLevel, setFilterCustomerLevel] = useState("");
+
   const [showNewRow, setShowNewRow] = useState(false);
   const [expandedCustomers, setExpandedCustomers] = useState<Set<number>>(new Set());
   const [newCustomer, setNewCustomer] = useState<Record<string, string>>({
@@ -327,7 +324,7 @@ export default function CustomersPage() {
     contactInfo: "",
     customerType: "新零售",
     address: "",
-    customerLevel: "",
+
     orderCategory: "",
     customerName: "",
     birthDate: "",
@@ -345,8 +342,7 @@ export default function CustomersPage() {
     staffName: filterStaffName || undefined,
     account: filterAccount || undefined,
     customerType: filterCustomerType || undefined,
-    customerLevel: filterCustomerLevel || undefined,
-  }), [page, search, filterStaffName, filterAccount, filterCustomerType, filterCustomerLevel]);
+  }), [page, search, filterStaffName, filterAccount, filterCustomerType]);
 
   const { data, isLoading } = trpc.customers.list.useQuery(queryInput);
 
@@ -357,7 +353,7 @@ export default function CustomersPage() {
       setShowNewRow(false);
       setNewCustomer({
         whatsapp: "", staffName: "", account: "", contactInfo: "",
-        customerType: "新零售", address: "", customerLevel: "",
+        customerType: "新零售", address: "",
         orderCategory: "", customerName: "", birthDate: "", customerEmail: "",
         country: "", customerTier: "",
       });
@@ -462,7 +458,7 @@ export default function CustomersPage() {
   };
 
   const totalPages = Math.ceil((data?.total ?? 0) / 50);
-  const hasActiveFilters = filterStaffName || filterAccount || filterCustomerType || filterCustomerLevel;
+  const hasActiveFilters = filterStaffName || filterAccount || filterCustomerType;
 
   // 渲染可编辑单元格
   const renderCell = (customer: any, col: typeof columns[0], rowIndex: number) => {
@@ -501,32 +497,14 @@ export default function CustomersPage() {
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="新零售">新零售</SelectItem>
-              <SelectItem value="零售复购">零售复购</SelectItem>
-              <SelectItem value="定金-新零售">定金-新零售</SelectItem>
-              <SelectItem value="定金-零售复购">定金-零售复购</SelectItem>
-            </SelectContent>
-          </Select>
-        );
-      }
-      // 顾客等级下拉
-      if (col.type === "level") {
-        return (
-          <Select value={editValue} onValueChange={(v) => {
-            updateMutation.mutate({ id: customer.id, [col.key]: v });
-            setEditingCell(null);
-          }}>
-            <SelectTrigger className="h-7 text-xs border-primary">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {customerLevels.map(l => (
-                <SelectItem key={l} value={l}>{l}</SelectItem>
+              {customerTypeOptions.map(t => (
+                <SelectItem key={t} value={t}>{t}</SelectItem>
               ))}
             </SelectContent>
           </Select>
         );
       }
+
       // 客户分层下拉
       if (col.type === "tier") {
         return (
@@ -647,28 +625,14 @@ export default function CustomersPage() {
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="新零售">新零售</SelectItem>
-            <SelectItem value="零售复购">零售复购</SelectItem>
-            <SelectItem value="定金-新零售">定金-新零售</SelectItem>
-            <SelectItem value="定金-零售复购">定金-零售复购</SelectItem>
-          </SelectContent>
-        </Select>
-      );
-    }
-    if (col.type === "level") {
-      return (
-        <Select value={newCustomer.customerLevel || ""} onValueChange={(v) => setNewCustomer(prev => ({ ...prev, customerLevel: v }))}>
-          <SelectTrigger className="h-7 text-xs">
-            <SelectValue placeholder="-" />
-          </SelectTrigger>
-          <SelectContent>
-            {customerLevels.map(l => (
-              <SelectItem key={l} value={l}>{l}</SelectItem>
+            {customerTypeOptions.map(t => (
+              <SelectItem key={t} value={t}>{t}</SelectItem>
             ))}
           </SelectContent>
         </Select>
       );
     }
+
     if (col.type === "tier") {
       return (
         <Select value={newCustomer.customerTier || ""} onValueChange={(v) => setNewCustomer(prev => ({ ...prev, customerTier: v }))}>
@@ -803,34 +767,20 @@ export default function CustomersPage() {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">全部</SelectItem>
-                    <SelectItem value="新零售">新零售</SelectItem>
-                    <SelectItem value="零售复购">零售复购</SelectItem>
-                    <SelectItem value="定金-新零售">定金-新零售</SelectItem>
-                    <SelectItem value="定金-零售复购">定金-零售复购</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
-                <label className="text-xs text-muted-foreground mb-1 block">顾客等级</label>
-                <Select value={filterCustomerLevel} onValueChange={(v) => { setFilterCustomerLevel(v === "all" ? "" : v); setPage(1); }}>
-                  <SelectTrigger className="h-8 text-xs">
-                    <SelectValue placeholder="全部" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">全部</SelectItem>
-                    {customerLevels.map(l => (
-                      <SelectItem key={l} value={l}>{l}</SelectItem>
+                    {customerTypeOptions.map(t => (
+                      <SelectItem key={t} value={t}>{t}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
               </div>
+
             </div>
             {hasActiveFilters && (
               <div className="mt-2 flex items-center gap-2">
                 <span className="text-xs text-muted-foreground">已筛选</span>
                 <Button variant="ghost" size="sm" className="h-6 text-xs gap-1" onClick={() => {
                   setSearch(""); setFilterStaffName(""); setFilterAccount("");
-                  setFilterCustomerType(""); setFilterCustomerLevel(""); setPage(1);
+                  setFilterCustomerType(""); setPage(1);
                 }}>
                   <X className="h-3 w-3" /> 清除全部
                 </Button>

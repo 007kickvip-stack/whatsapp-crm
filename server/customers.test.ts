@@ -42,14 +42,13 @@ describe("customers CRUD with new fields", () => {
       staffName: "客服小王",
       account: "测试账号",
       contactInfo: "WeChat: test123",
-      customerLevel: "A",
       orderCategory: "鞋类",
       customerName: "张三",
       birthDate: "1990-05-15",
       customerEmail: "zhangsan@test.com",
       address: "北京市朝阳区",
       country: "中国",
-      customerTier: "高价值",
+      customerTier: "高质量",
     });
     expect(result).toHaveProperty("id");
     expect(typeof result.id).toBe("number");
@@ -62,31 +61,28 @@ describe("customers CRUD with new fields", () => {
     expect(customer!.staffName).toBe("客服小王");
     expect(customer!.account).toBe("测试账号");
     expect(customer!.contactInfo).toBe("WeChat: test123");
-    expect(customer!.customerLevel).toBe("A");
     expect(customer!.orderCategory).toBe("鞋类");
     expect(customer!.customerName).toBe("张三");
     expect(customer!.customerEmail).toBe("zhangsan@test.com");
     expect(customer!.address).toBe("北京市朝阳区");
     expect(customer!.country).toBe("中国");
-    expect(customer!.customerTier).toBe("高价值");
+    expect(customer!.customerTier).toBe("高质量");
   });
 
   it("should update customer fields including customerTier", async () => {
     const result = await caller.customers.update({
       id: createdId,
-      customerLevel: "VIP",
       orderCategory: "鞋类,服装",
       customerEmail: "updated@test.com",
-      customerTier: "中价值",
+      customerTier: "中等质量",
       country: "美国",
     });
     expect(result).toEqual({ success: true });
 
     const customer = await caller.customers.getById({ id: createdId });
-    expect(customer!.customerLevel).toBe("VIP");
     expect(customer!.orderCategory).toBe("鞋类,服装");
     expect(customer!.customerEmail).toBe("updated@test.com");
-    expect(customer!.customerTier).toBe("中价值");
+    expect(customer!.customerTier).toBe("中等质量");
     expect(customer!.country).toBe("美国");
   });
 
@@ -146,8 +142,7 @@ describe("order-customer sync", () => {
       paymentStatus: "已付款",
       customerName: "李四",
       customerCountry: "英国",
-      customerTier: "新客户",
-      customerLevel: "B",
+      customerTier: "低质量",
       orderCategory: "服装",
       customerBirthDate: "1985-03-20",
       customerEmail: "lisi@test.com",
@@ -161,8 +156,7 @@ describe("order-customer sync", () => {
     expect(customer).toBeDefined();
     expect(customer!.customerName).toBe("李四");
     expect(customer!.country).toBe("英国");
-    expect(customer!.customerTier).toBe("新客户");
-    expect(customer!.customerLevel).toBe("B");
+    expect(customer!.customerTier).toBe("低质量");
     expect(customer!.orderCategory).toBe("服装");
     expect(customer!.customerEmail).toBe("lisi@test.com");
   });
@@ -172,7 +166,7 @@ describe("order-customer sync", () => {
       id: orderId,
       customerName: "李四更新",
       customerCountry: "法国",
-      customerLevel: "A",
+      customerTier: "高质量",
     });
 
     // Verify customer was updated
@@ -180,7 +174,7 @@ describe("order-customer sync", () => {
     expect(customer).toBeDefined();
     expect(customer!.customerName).toBe("李四更新");
     expect(customer!.country).toBe("法国");
-    expect(customer!.customerLevel).toBe("A");
+    expect(customer!.customerTier).toBe("高质量");
   });
 
   afterAll(async () => {

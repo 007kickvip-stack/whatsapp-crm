@@ -136,8 +136,7 @@ function customerTypeColor(type: string | null): string {
   switch (type) {
     case "新零售": return "bg-yellow-200 text-yellow-900 border-yellow-300";
     case "零售复购": return "bg-yellow-400 text-yellow-900 border-yellow-500";
-    case "定金-新零售": return "bg-pink-400 text-white border-pink-500";
-    case "定金-零售复购": return "bg-red-600 text-white border-red-700";
+
     default: return "bg-gray-100 text-gray-700 border-gray-200";
   }
 }
@@ -792,7 +791,6 @@ export default function OrdersPage() {
     { key: "customerName", label: "客户名字", width: "100px" },
     { key: "customerCountry", label: "国家", width: "80px" },
     { key: "customerTier", label: "客户分层", width: "90px" },
-    { key: "customerLevel", label: "顾客等级", width: "80px" },
     { key: "orderCategory", label: "订购类目", width: "100px" },
     { key: "customerBirthDate", label: "出生日期", width: "100px" },
     { key: "customerEmail", label: "客户邮箱", width: "140px" },
@@ -845,7 +843,6 @@ export default function OrdersPage() {
     customerName: string | null;
     customerCountry: string | null;
     customerTier: string | null;
-    customerLevel: string | null;
     orderCategory: string | null;
     customerBirthDate: string | null;
     customerEmail: string | null;
@@ -921,7 +918,6 @@ export default function OrdersPage() {
           customerName: (order as any).customerName || null,
           customerCountry: (order as any).customerCountry || null,
           customerTier: (order as any).customerTier || null,
-          customerLevel: (order as any).customerLevel || null,
           orderCategory: (order as any).orderCategory || null,
           customerBirthDate: (order as any).customerBirthDate ? new Date((order as any).customerBirthDate).toISOString().split('T')[0] : null,
           customerEmail: (order as any).customerEmail || null,
@@ -976,7 +972,6 @@ export default function OrdersPage() {
             customerName: idx === 0 ? ((order as any).customerName || null) : null,
             customerCountry: idx === 0 ? ((order as any).customerCountry || null) : null,
             customerTier: idx === 0 ? ((order as any).customerTier || null) : null,
-            customerLevel: idx === 0 ? ((order as any).customerLevel || null) : null,
             orderCategory: idx === 0 ? ((order as any).orderCategory || null) : null,
             customerBirthDate: idx === 0 ? ((order as any).customerBirthDate ? new Date((order as any).customerBirthDate).toISOString().split('T')[0] : null) : null,
             customerEmail: idx === 0 ? ((order as any).customerEmail || null) : null,
@@ -1136,7 +1131,7 @@ export default function OrdersPage() {
             <EditableCell
               value={row.customerType || "新零售"}
               type="select"
-              selectOptions={["新零售", "零售复购", "定金-新零售", "定金-零售复购"]}
+              selectOptions={["零售复购", "新零售"]}
               onSave={(v) => saveOrderField(row.orderId, "customerType", v)}
               selectColorFn={customerTypeColor}
             />
@@ -1489,7 +1484,7 @@ export default function OrdersPage() {
           ) : null}
         </td>
 
-        {/* 32-38: 客户名字、国家、客户分层、顾客等级、订购类目、出生日期、客户邮箱 - rowSpan合并 */}
+        {/* 客户名字、国家、客户分层、订购类目、出生日期、客户邮箱 - rowSpan合并 */}
         {row.isFirstRow && (
           <>
             <td className="py-1 px-1 text-center text-[11px] align-middle" rowSpan={row.visibleItemCount || 1}>
@@ -1512,18 +1507,11 @@ export default function OrdersPage() {
               <EditableCell
                 value={row.customerTier || ""}
                 type="select"
-                selectOptions={["高价值", "中价值", "低价值", "新客户", "流失客户"]}
+                selectOptions={["低质量", "中等质量", "高质量", "批发商-低质量", "批发商-高质量", "经销商-低质量", "经销商-高质量"]}
                 onSave={(v) => saveOrderField(row.orderId, "customerTier", v)}
               />
             </td>
-            <td className="py-1 px-1 text-center text-[11px] align-middle" rowSpan={row.visibleItemCount || 1}>
-              <EditableCell
-                value={row.customerLevel || ""}
-                type="select"
-                selectOptions={["A", "B", "C", "D", "VIP", "普通"]}
-                onSave={(v) => saveOrderField(row.orderId, "customerLevel", v)}
-              />
-            </td>
+
             <td className="py-1 px-1 text-center text-[11px] align-middle" rowSpan={row.visibleItemCount || 1}>
               <EditableCell
                 value={row.orderCategory || ""}
@@ -1682,7 +1670,7 @@ export default function OrdersPage() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">全部</SelectItem>
-                  {["新零售", "零售复购", "定金-新零售", "定金-零售复购"].map((t) => (
+                  {["零售复购", "新零售"].map((t) => (
                     <SelectItem key={t} value={t}>
                       <span className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-medium border ${customerTypeColor(t)}`}>{t}</span>
                     </SelectItem>
@@ -1891,10 +1879,8 @@ export default function OrdersPage() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="新零售">新零售</SelectItem>
                     <SelectItem value="零售复购">零售复购</SelectItem>
-                    <SelectItem value="定金-新零售">定金-新零售</SelectItem>
-                    <SelectItem value="定金-零售复购">定金-零售复购</SelectItem>
+                    <SelectItem value="新零售">新零售</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
