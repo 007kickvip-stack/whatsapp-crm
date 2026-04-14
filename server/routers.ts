@@ -1336,12 +1336,13 @@ export const appRouter = router({
       const quotation = await getQuotationWithItems(input.quotationId);
       if (!quotation) throw new TRPCError({ code: "NOT_FOUND", message: "报价表不存在" });
       const staffName = ctx.user.name || "未知客服";
+      const customerWhatsapp = quotation.contactInfo || quotation.customerName || "未知客户";
       // Create order
       const orderId = await createOrder({
         orderDate: new Date(),
         staffName,
         staffId: ctx.user.id,
-        customerWhatsapp: quotation.contactInfo || quotation.customerName,
+        customerWhatsapp,
         customerName: quotation.customerName,
         orderNumber: `Q${quotation.id}-${Date.now().toString(36)}`,
         orderStatus: "已报货，待发货",

@@ -1,0 +1,1 @@
+ALTER TABLE `orders` MODIFY COLUMN `customerWhatsapp` varchar(255) NOT NULL;

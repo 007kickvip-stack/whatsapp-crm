@@ -68,7 +68,7 @@ export const orders = mysqlTable("orders", {
   staffName: varchar("staffName", { length: 64 }),
   staffId: int("staffId"),
   account: varchar("account", { length: 64 }),
-  customerWhatsapp: varchar("customerWhatsapp", { length: 32 }).notNull(),
+  customerWhatsapp: varchar("customerWhatsapp", { length: 255 }).notNull(),
   customerId: int("customerId"),
   customerType: varchar("customerType", { length: 32 }),
   orderNumber: varchar("orderNumber", { length: 128 }).notNull(),
