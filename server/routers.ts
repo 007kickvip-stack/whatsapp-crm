@@ -33,7 +33,7 @@ import {
   getCurrentExchangeRate as getExchangeRateForQuotation,
   createPaypalIncome, updatePaypalIncome, deletePaypalIncome, listPaypalIncome,
   createPaypalExpense, updatePaypalExpense, deletePaypalExpense, listPaypalExpense,
-  getPaypalBalanceSummary,
+  getPaypalBalanceSummary, syncOrdersToPaypalIncome,
 } from "./db";
 import type { SQL } from "drizzle-orm";
 import { sdk } from "./_core/sdk";
@@ -334,6 +334,7 @@ export const appRouter = router({
       orderNumber: z.string().optional(),
       orderStatus: z.string().optional(),
       paymentStatus: z.string().optional(),
+      paymentAmount: z.string().optional(),
       remarks: z.string().optional(),
       // 客户关联字段
       customerName: z.string().optional(),
@@ -1458,6 +1459,7 @@ export const appRouter = router({
       actualReceived: z.string().optional(),
       isReceived: z.string().optional(),
       receivingAccount: z.string().optional(),
+      customerName: z.string().optional(),
       staffName: z.string().optional(),
       remarks: z.string().optional(),
     })).mutation(async ({ input, ctx }) => {
@@ -1480,6 +1482,7 @@ export const appRouter = router({
       actualReceived: z.string().optional(),
       isReceived: z.string().optional(),
       receivingAccount: z.string().optional(),
+      customerName: z.string().optional(),
       staffName: z.string().optional(),
       remarks: z.string().optional(),
     })).mutation(async ({ input, ctx }) => {
@@ -1555,6 +1558,17 @@ export const appRouter = router({
   paypalBalance: router({
     summary: protectedProcedure.query(async () => {
       return getPaypalBalanceSummary();
+    }),
+  }),
+
+  // ==================== PayPal Sync from Orders ====================
+  paypalSync: router({
+    syncFromOrders: protectedProcedure.mutation(async ({ ctx }) => {
+      const result = await syncOrdersToPaypalIncome(ctx.user.id);
+      if (result.created > 0) {
+        await logAction(ctx, "sync", "paypalIncome", 0, undefined, `同步${result.created}条订单数据`);
+      }
+      return result;
     }),
   }),
 });

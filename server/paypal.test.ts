@@ -11,6 +11,7 @@ vi.mock("./db", () => ({
         id: 1,
         incomeDate: "2026-04-10",
         account: "Account1",
+        customerName: "张三",
         customerWhatsapp: "+86 13800138000",
         paymentScreenshotUrl: null,
         paymentAmount: "100.00",
@@ -24,6 +25,7 @@ vi.mock("./db", () => ({
     ],
     total: 1,
   }),
+  syncOrdersToPaypalIncome: vi.fn().mockResolvedValue({ created: 3 }),
   createPaypalExpense: vi.fn().mockResolvedValue(2),
   updatePaypalExpense: vi.fn().mockResolvedValue(undefined),
   deletePaypalExpense: vi.fn().mockResolvedValue(undefined),
@@ -61,6 +63,11 @@ vi.mock("./db", () => ({
   createOrderItem: vi.fn(),
   recalculateOrderTotals: vi.fn(),
   getCurrentExchangeRate: vi.fn().mockResolvedValue({ rate: "7.00" }),
+  getOrderById: vi.fn(),
+  updateOrder: vi.fn(),
+  getOrderItemById: vi.fn(),
+  updateOrderItem: vi.fn(),
+  syncCustomerFromOrder: vi.fn(),
 }));
 
 // Mock other dependencies
@@ -88,6 +95,7 @@ import {
   deletePaypalExpense,
   listPaypalExpense,
   getPaypalBalanceSummary,
+  syncOrdersToPaypalIncome,
 } from "./db";
 
 const mockCtx = {
@@ -143,10 +151,28 @@ describe("PayPal Income CRUD", () => {
     });
   });
 
-  it("should create an income record", async () => {
+  it("should list income with customerName in results", async () => {
+    const result = await caller.paypalIncome.list({ page: 1, pageSize: 50 });
+    expect(result.data[0].customerName).toBe("张三");
+  });
+
+  it("should list income with date range filter", async () => {
+    await caller.paypalIncome.list({ page: 1, pageSize: 50, dateFrom: "2026-04-01", dateTo: "2026-04-30" });
+    expect(listPaypalIncome).toHaveBeenCalledWith({
+      page: 1,
+      pageSize: 50,
+      search: undefined,
+      receivingAccount: undefined,
+      dateFrom: "2026-04-01",
+      dateTo: "2026-04-30",
+    });
+  });
+
+  it("should create an income record with customerName", async () => {
     const result = await caller.paypalIncome.create({
       incomeDate: "2026-04-10",
       account: "Account1",
+      customerName: "张三",
       customerWhatsapp: "+86 13800138000",
       paymentAmount: "100.00",
       actualReceived: "95.00",
@@ -159,6 +185,7 @@ describe("PayPal Income CRUD", () => {
     expect(createPaypalIncome).toHaveBeenCalledTimes(1);
     const callArgs = (createPaypalIncome as any).mock.calls[0][0];
     expect(callArgs.account).toBe("Account1");
+    expect(callArgs.customerName).toBe("张三");
     expect(callArgs.receivingAccount).toBe("廖欧妹");
     expect(callArgs.paymentAmount).toBe("100.00");
     expect(callArgs.createdById).toBe(1);
@@ -320,5 +347,18 @@ describe("PayPal Balance Summary", () => {
     expect(result[1].account).toBe("苏翊豪");
     expect(result[1].balance).toBe(200);
     expect(getPaypalBalanceSummary).toHaveBeenCalledTimes(1);
+  });
+});
+
+// ==================== PayPal Sync From Orders Tests ====================
+describe("PayPal Sync From Orders", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("should sync orders to paypal income", async () => {
+    const result = await caller.paypalSync.syncFromOrders();
+    expect(result.created).toBe(3);
+    expect(syncOrdersToPaypalIncome).toHaveBeenCalledTimes(1);
   });
 });

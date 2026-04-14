@@ -1,0 +1,1 @@
+ALTER TABLE `orders` ADD `paymentAmount` decimal(12,2) DEFAULT '0';

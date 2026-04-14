@@ -25,6 +25,9 @@ import {
   TrendingDown,
   DollarSign,
   ChevronDown,
+  RefreshCw,
+  Filter,
+  Calendar,
 } from "lucide-react";
 import AccountSelect from "@/components/AccountSelect";
 
@@ -138,10 +141,12 @@ function ReceivingAccountSelect({
   value,
   onValueChange,
   compact = false,
+  showAll = false,
 }: {
   value: string;
   onValueChange: (v: string) => void;
   compact?: boolean;
+  showAll?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -177,7 +182,7 @@ function ReceivingAccountSelect({
         `}
       >
         <span className="truncate flex-1">
-          {value || "选择收款账户"}
+          {value || (showAll ? "全部账户" : "选择收款账户")}
         </span>
         <ChevronDown
           className={`shrink-0 text-muted-foreground transition-transform ${
@@ -197,7 +202,7 @@ function ReceivingAccountSelect({
               !value ? "bg-accent font-medium" : ""
             }`}
           >
-            选择收款账户
+            {showAll ? "全部账户" : "选择收款账户"}
           </button>
           {RECEIVING_ACCOUNTS.map((acct) => (
             <button
@@ -253,9 +258,9 @@ function IsReceivedSelect({
       <button
         type="button"
         onClick={() => setOpen(!open)}
-        className={`w-full flex items-center gap-1 border border-gray-200 rounded px-1 py-0.5 text-[11px] hover:bg-emerald-50 focus:ring-1 focus:ring-emerald-400 transition-colors text-left
+        className={`w-full flex items-center gap-1 border border-gray-200 rounded px-1.5 py-0.5 text-[11px] hover:bg-emerald-50 focus:ring-1 focus:ring-emerald-400 transition-colors text-left
           ${open ? "ring-1 ring-emerald-400" : ""}
-          ${value === "是" ? "text-emerald-700 bg-emerald-50" : value === "否" ? "text-red-600 bg-red-50" : "text-muted-foreground"}
+          ${value === "是" ? "text-emerald-700 bg-emerald-50 border-emerald-200" : value === "否" ? "text-red-600 bg-red-50 border-red-200" : "text-muted-foreground"}
         `}
       >
         <span className="truncate flex-1">{value || "选择"}</span>
@@ -389,6 +394,79 @@ function ImageUploadCell({
 }
 
 // ============================================================
+// Filter Bar Component
+// ============================================================
+function FilterBar({
+  dateFrom,
+  dateTo,
+  receivingAccount,
+  onDateFromChange,
+  onDateToChange,
+  onReceivingAccountChange,
+  onReset,
+}: {
+  dateFrom: string;
+  dateTo: string;
+  receivingAccount: string;
+  onDateFromChange: (v: string) => void;
+  onDateToChange: (v: string) => void;
+  onReceivingAccountChange: (v: string) => void;
+  onReset: () => void;
+}) {
+  const hasFilter = dateFrom || dateTo || receivingAccount;
+
+  return (
+    <div className="bg-white rounded-xl border border-gray-100 px-4 py-3 mb-4">
+      <div className="flex items-center gap-3 flex-wrap">
+        <div className="flex items-center gap-1.5 text-xs text-gray-500">
+          <Filter className="w-3.5 h-3.5" />
+          <span className="font-medium">数据筛选</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1">
+            <Calendar className="w-3 h-3 text-gray-400" />
+            <input
+              type="date"
+              value={dateFrom}
+              onChange={(e) => onDateFromChange(e.target.value)}
+              className="border border-gray-200 rounded px-2 py-1 text-xs bg-transparent focus:ring-1 focus:ring-emerald-400 outline-none"
+              placeholder="开始日期"
+            />
+          </div>
+          <span className="text-gray-300 text-xs">至</span>
+          <div className="flex items-center gap-1">
+            <input
+              type="date"
+              value={dateTo}
+              onChange={(e) => onDateToChange(e.target.value)}
+              className="border border-gray-200 rounded px-2 py-1 text-xs bg-transparent focus:ring-1 focus:ring-emerald-400 outline-none"
+            />
+          </div>
+        </div>
+        <div className="w-40">
+          <ReceivingAccountSelect
+            value={receivingAccount}
+            onValueChange={onReceivingAccountChange}
+            showAll
+          />
+        </div>
+        {hasFilter && (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={onReset}
+            className="h-7 text-xs text-gray-500"
+          >
+            <X className="w-3 h-3 mr-1" />
+            清除筛选
+          </Button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ============================================================
 // Balance Cards
 // ============================================================
 function BalanceCards({
@@ -434,7 +512,7 @@ function BalanceCards({
   const totalBalance = totalIncome - totalExpense;
 
   return (
-    <div className="mb-6">
+    <div className="mb-4">
       {/* Total summary card */}
       <div className="grid grid-cols-3 gap-3 mb-3">
         <div className="bg-gradient-to-br from-emerald-500 to-emerald-600 rounded-xl p-4 text-white shadow-sm">
@@ -501,17 +579,31 @@ function BalanceCards({
 // ============================================================
 // Income Table
 // ============================================================
-function IncomeTable() {
+function IncomeTable({
+  dateFrom,
+  dateTo,
+  receivingAccountFilter,
+}: {
+  dateFrom: string;
+  dateTo: string;
+  receivingAccountFilter: string;
+}) {
   const utils = trpc.useUtils();
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState("");
-  const [receivingAccountFilter, setReceivingAccountFilter] = useState("");
+
+  // Reset page when filters change
+  useEffect(() => {
+    setPage(1);
+  }, [dateFrom, dateTo, receivingAccountFilter]);
 
   const { data, isLoading } = trpc.paypalIncome.list.useQuery({
     page,
     pageSize: 50,
     search: search || undefined,
     receivingAccount: receivingAccountFilter || undefined,
+    dateFrom: dateFrom || undefined,
+    dateTo: dateTo || undefined,
   });
 
   const createMut = trpc.paypalIncome.create.useMutation({
@@ -534,6 +626,21 @@ function IncomeTable() {
       utils.paypalIncome.list.invalidate();
       utils.paypalBalance.summary.invalidate();
       toast.success("已删除收入记录");
+    },
+  });
+
+  const syncMut = trpc.paypalSync.syncFromOrders.useMutation({
+    onSuccess: (result) => {
+      utils.paypalIncome.list.invalidate();
+      utils.paypalBalance.summary.invalidate();
+      if (result.created > 0) {
+        toast.success(`已从订单同步 ${result.created} 条收入记录`);
+      } else {
+        toast.info("没有新的订单数据需要同步");
+      }
+    },
+    onError: () => {
+      toast.error("同步失败");
     },
   });
 
@@ -578,16 +685,20 @@ function IncomeTable() {
               className="h-7 pl-7 text-xs w-40"
             />
           </div>
-          <div className="w-32">
-            <ReceivingAccountSelect
-              value={receivingAccountFilter}
-              onValueChange={(v) => {
-                setReceivingAccountFilter(v);
-                setPage(1);
-              }}
-              compact
-            />
-          </div>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => syncMut.mutate()}
+            disabled={syncMut.isPending}
+            className="h-7 text-xs border-emerald-200 text-emerald-700 hover:bg-emerald-50"
+          >
+            {syncMut.isPending ? (
+              <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+            ) : (
+              <RefreshCw className="w-3 h-3 mr-1" />
+            )}
+            同步订单
+          </Button>
           <Button
             size="sm"
             onClick={handleAddRow}
@@ -607,12 +718,13 @@ function IncomeTable() {
             <tr className="bg-gray-50 text-gray-500 border-b border-gray-100">
               <th className="px-2 py-2 text-left font-medium w-[90px]">日期</th>
               <th className="px-2 py-2 text-left font-medium w-[80px]">账号</th>
+              <th className="px-2 py-2 text-left font-medium w-[90px]">客户名字</th>
               <th className="px-2 py-2 text-left font-medium w-[120px]">客户WhatsApp</th>
               <th className="px-2 py-2 text-center font-medium w-[60px]">付款截图</th>
               <th className="px-2 py-2 text-right font-medium w-[90px]">付款金额($)</th>
               <th className="px-2 py-2 text-right font-medium w-[100px]">实际收到($)</th>
-              <th className="px-2 py-2 text-center font-medium w-[70px]">是否收到</th>
-              <th className="px-2 py-2 text-left font-medium w-[100px]">收款账户</th>
+              <th className="px-2 py-2 text-center font-medium w-[80px]">是否收到</th>
+              <th className="px-2 py-2 text-left font-medium w-[110px]">收款账户</th>
               <th className="px-2 py-2 text-left font-medium w-[70px]">客服名字</th>
               <th className="px-2 py-2 text-left font-medium">备注</th>
               <th className="px-2 py-2 text-center font-medium w-[40px]">操作</th>
@@ -621,13 +733,13 @@ function IncomeTable() {
           <tbody>
             {isLoading ? (
               <tr>
-                <td colSpan={11} className="text-center py-8 text-gray-400">
+                <td colSpan={12} className="text-center py-8 text-gray-400">
                   <Loader2 className="w-5 h-5 animate-spin mx-auto" />
                 </td>
               </tr>
             ) : rows.length === 0 ? (
               <tr>
-                <td colSpan={11} className="text-center py-8 text-gray-400">
+                <td colSpan={12} className="text-center py-8 text-gray-400">
                   暂无收入记录
                 </td>
               </tr>
@@ -653,6 +765,15 @@ function IncomeTable() {
                       onValueChange={(v) => handleUpdate(row.id, "account", v)}
                       compact
                       placeholder="账号"
+                    />
+                  </td>
+                  <td className="px-2 py-1.5">
+                    <EditableCell
+                      value={row.customerName || ""}
+                      onSave={(v) =>
+                        handleUpdate(row.id, "customerName", v)
+                      }
+                      placeholder="客户名字"
                     />
                   </td>
                   <td className="px-2 py-1.5">
@@ -774,15 +895,28 @@ function IncomeTable() {
 // ============================================================
 // Expense Table
 // ============================================================
-function ExpenseTable() {
+function ExpenseTable({
+  dateFrom,
+  dateTo,
+}: {
+  dateFrom: string;
+  dateTo: string;
+}) {
   const utils = trpc.useUtils();
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState("");
+
+  // Reset page when filters change
+  useEffect(() => {
+    setPage(1);
+  }, [dateFrom, dateTo]);
 
   const { data, isLoading } = trpc.paypalExpense.list.useQuery({
     page,
     pageSize: 50,
     search: search || undefined,
+    dateFrom: dateFrom || undefined,
+    dateTo: dateTo || undefined,
   });
 
   const createMut = trpc.paypalExpense.create.useMutation({
@@ -983,6 +1117,17 @@ export default function PaypalPage() {
 
   const [activeTab, setActiveTab] = useState<"income" | "expense">("income");
 
+  // Shared filter state
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
+  const [receivingAccountFilter, setReceivingAccountFilter] = useState("");
+
+  const handleResetFilters = () => {
+    setDateFrom("");
+    setDateTo("");
+    setReceivingAccountFilter("");
+  };
+
   return (
     <div className="space-y-4">
       {/* Page title */}
@@ -1000,6 +1145,17 @@ export default function PaypalPage() {
       <BalanceCards
         balanceData={balanceData || []}
         isLoading={balanceLoading}
+      />
+
+      {/* Filter Bar */}
+      <FilterBar
+        dateFrom={dateFrom}
+        dateTo={dateTo}
+        receivingAccount={receivingAccountFilter}
+        onDateFromChange={setDateFrom}
+        onDateToChange={setDateTo}
+        onReceivingAccountChange={setReceivingAccountFilter}
+        onReset={handleResetFilters}
       />
 
       {/* Tab Switch */}
@@ -1029,7 +1185,15 @@ export default function PaypalPage() {
       </div>
 
       {/* Tables */}
-      {activeTab === "income" ? <IncomeTable /> : <ExpenseTable />}
+      {activeTab === "income" ? (
+        <IncomeTable
+          dateFrom={dateFrom}
+          dateTo={dateTo}
+          receivingAccountFilter={receivingAccountFilter}
+        />
+      ) : (
+        <ExpenseTable dateFrom={dateFrom} dateTo={dateTo} />
+      )}
     </div>
   );
 }

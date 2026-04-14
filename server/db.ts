@@ -2337,6 +2337,7 @@ export async function listPaypalIncome(params: {
     conditions.push(
       or(
         like(paypalIncome.customerWhatsapp, `%${search}%`),
+        like(paypalIncome.customerName, `%${search}%`),
         like(paypalIncome.staffName, `%${search}%`),
         like(paypalIncome.account, `%${search}%`),
         like(paypalIncome.remarks, `%${search}%`)
@@ -2459,4 +2460,54 @@ export async function getPaypalBalanceSummary() {
     expense,
     balance: income - expense,
   }));
+}
+
+// ==================== PayPal Sync from Orders ====================
+
+export async function syncOrdersToPaypalIncome(userId: number) {
+  const db = await getDb();
+  if (!db) return { created: 0 };
+  
+  // Get all orders that have payment amount and are not yet synced to paypal_income
+  // We match by: order has paymentAmount > 0 and there's no paypal_income record with matching
+  // customerWhatsapp + account + paymentAmount + incomeDate
+  const ordersWithPayment = await db.execute(sql`
+    SELECT o.id, o.orderDate, o.account, o.customerWhatsapp, o.customerName,
+           o.paymentScreenshotUrl, o.paymentAmount, o.paymentStatus,
+           o.staffName
+    FROM orders o
+    WHERE o.paymentAmount IS NOT NULL 
+      AND o.paymentAmount > 0
+      AND NOT EXISTS (
+        SELECT 1 FROM paypal_income pi
+        WHERE pi.customerWhatsapp = o.customerWhatsapp
+          AND pi.account = o.account
+          AND pi.paymentAmount = o.paymentAmount
+          AND pi.incomeDate = o.orderDate
+      )
+    ORDER BY o.orderDate DESC
+  `);
+  
+  const rows = (ordersWithPayment as any)[0] || [];
+  let created = 0;
+  
+  for (const row of rows) {
+    await db.insert(paypalIncome).values({
+      incomeDate: row.orderDate || null,
+      account: row.account || null,
+      customerWhatsapp: row.customerWhatsapp || null,
+      customerName: row.customerName || null,
+      paymentScreenshotUrl: row.paymentScreenshotUrl || null,
+      paymentAmount: row.paymentAmount ? String(row.paymentAmount) : "0",
+      actualReceived: "0",
+      isReceived: "否",
+      receivingAccount: null,
+      staffName: row.staffName || null,
+      remarks: `自动同步自订单#${row.id}`,
+      createdById: userId,
+    });
+    created++;
+  }
+  
+  return { created };
 }

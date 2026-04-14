@@ -831,6 +831,7 @@ export default function OrdersPage() {
     { key: "totalProfit", label: "总利润", width: "80px" },
     { key: "profitRate", label: "利润率", width: "70px" },
     { key: "paymentScreenshot", label: "付款截图", width: "80px" },
+    { key: "paymentAmountDisplay", label: "付款金额($)", width: "100px" },
     { key: "remarks", label: "备注", width: "120px" },
     { key: "paymentStatus", label: "付款状态", width: "80px" },
     { key: "customerName", label: "客户名字", width: "100px" },
@@ -884,6 +885,7 @@ export default function OrdersPage() {
     totalProfit: string | null;
     profitRate: string | null;
     paymentScreenshotUrl: string | null;
+    paymentAmount: string | null;
     remarks: string | null;
     paymentStatus: string | null;
     customerName: string | null;
@@ -960,6 +962,7 @@ export default function OrdersPage() {
           totalProfit: order.totalProfit,
           profitRate: order.totalProfitRate,
           paymentScreenshotUrl: null,
+          paymentAmount: order.paymentAmount || null,
           remarks: order.remarks,
           paymentStatus: order.paymentStatus,
           customerName: (order as any).customerName || null,
@@ -1015,6 +1018,7 @@ export default function OrdersPage() {
             totalProfit: item.totalProfit,
             profitRate: item.profitRate,
             paymentScreenshotUrl: item.paymentScreenshotUrl,
+            paymentAmount: item.paymentAmount || (order as any).paymentAmount || null,
             remarks: item.remarks,
             paymentStatus: item.paymentStatus || (idx === 0 ? order.paymentStatus : null),
             customerName: idx === 0 ? ((order as any).customerName || null) : null,
@@ -1489,6 +1493,18 @@ export default function OrdersPage() {
               onRemove={() => saveItemField(row.itemId!, row.orderId, "paymentScreenshotUrl", "")}
               onPreview={setPreviewImage}
               uploadMutation={uploadMutation}
+            />
+          ) : null}
+        </td>
+
+        {/* 29.5. 付款金额($) - order level */}
+        <td className="py-1 px-1 border-r border-gray-100 text-right text-[11px]">
+          {row.isFirstRow ? (
+            <EditableCell
+              value={row.paymentAmount || "0.00"}
+              type="number"
+              onSave={(v) => saveOrderField(row.orderId, "paymentAmount", v)}
+              placeholder="0.00"
             />
           ) : null}
         </td>

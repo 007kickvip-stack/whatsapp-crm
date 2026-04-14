@@ -155,6 +155,20 @@
       "when": 1776167574895,
       "tag": "0021_free_cobalt_man",
       "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "5",
+      "when": 1776168729176,
+      "tag": "0022_mute_moon_knight",
+      "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "5",
+      "when": 1776169273741,
+      "tag": "0023_boring_eternity",
+      "breakpoints": true
     }
   ]
 }

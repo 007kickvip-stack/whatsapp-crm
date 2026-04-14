@@ -83,6 +83,7 @@ export const orders = mysqlTable("orders", {
   customerBirthDate: date("customerBirthDate"),
   customerEmail: varchar("customerEmail", { length: 320 }),
   wpEntryDate: date("wpEntryDate"), // 进入WP日期
+  paymentAmount: decimal("paymentAmount", { precision: 12, scale: 2 }).default("0"), // 付款金额 $
   remarks: text("remarks"),
   // 汇总金额（所有子项合计）
   totalAmountUsd: decimal("totalAmountUsd", { precision: 12, scale: 2 }).default("0"),
@@ -336,6 +337,7 @@ export const paypalIncome = mysqlTable("paypal_income", {
   actualReceived: decimal("actualReceived", { precision: 12, scale: 2 }).default("0"), // 实际收到金额 $
   isReceived: varchar("isReceived", { length: 32 }).default("否"), // 是否收到
   receivingAccount: varchar("receivingAccount", { length: 128 }), // 收款账户
+  customerName: varchar("customerName", { length: 128 }), // 客户名字
   staffName: varchar("staffName", { length: 64 }),
   remarks: text("remarks"),
   createdById: int("createdById"),
