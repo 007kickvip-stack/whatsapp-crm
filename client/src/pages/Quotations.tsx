@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import {
   Plus, Trash2, Search, Upload, X, Loader2, Image as ImageIcon,
-  Download, ArrowRightLeft, ChevronDown, ChevronUp, FileText
+  Download, ArrowRightLeft, FileText, ChevronDown, ChevronRight
 } from "lucide-react";
 
 // ============================================================
@@ -255,7 +255,7 @@ export default function QuotationsPage() {
   const [page, setPage] = useState(1);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [form, setForm] = useState({ customerName: "", contactInfo: "", remarks: "" });
-  const [expandedIds, setExpandedIds] = useState<Set<number>>(new Set());
+  const [collapsedIds, setCollapsedIds] = useState<Set<number>>(new Set());
   const [previewImage, setPreviewImage] = useState<string | null>(null);
   const [exportingId, setExportingId] = useState<number | null>(null);
 
@@ -295,9 +295,9 @@ export default function QuotationsPage() {
   });
   const uploadMutation = trpc.upload.image.useMutation();
 
-  // Toggle expand
-  const toggleExpand = (id: number) => {
-    setExpandedIds(prev => {
+  // Toggle collapse
+  const toggleCollapse = (id: number) => {
+    setCollapsedIds(prev => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id); else next.add(id);
       return next;
@@ -332,11 +332,12 @@ export default function QuotationsPage() {
       const imgSize = 60;
       const headerHeight = 100;
       const footerHeight = 80;
-      const colWidths = [60, 120, 80, 80, 150, 100, 100]; // #, 图片, 商品, Size, 联系方式, $, ¥
+      // Columns: #, 订单图片, Size, 联系方式, 数量, 总金额($), 总金额(¥)
+      const colWidths = [50, 120, 80, 150, 60, 110, 110];
       const totalWidth = colWidths.reduce((s, w) => s + w, 0) + padding * 2;
       const totalHeight = headerHeight + 40 + items.length * rowHeight + footerHeight + padding * 2;
 
-      canvas.width = totalWidth * 2; // 2x for retina
+      canvas.width = totalWidth * 2;
       canvas.height = totalHeight * 2;
       ctx.scale(2, 2);
 
@@ -365,7 +366,7 @@ export default function QuotationsPage() {
       ctx.fillRect(padding, tableY, totalWidth - padding * 2, 30);
       ctx.fillStyle = "#065f46";
       ctx.font = "bold 12px sans-serif";
-      const headers = ["#", "图片", "商品", "Size", "联系方式", "金额($)", "金额(¥)"];
+      const headers = ["#", "图片", "Size", "联系方式", "数量", "金额($)", "金额(¥)"];
       let x = padding;
       headers.forEach((h, i) => {
         ctx.fillText(h, x + 8, tableY + 20);
@@ -389,12 +390,10 @@ export default function QuotationsPage() {
       ctx.font = "12px sans-serif";
       items.forEach((item: any, idx: number) => {
         const y = tableY + 30 + idx * rowHeight;
-        // Alternate row bg
         if (idx % 2 === 0) {
           ctx.fillStyle = "#fafafa";
           ctx.fillRect(padding, y, totalWidth - padding * 2, rowHeight);
         }
-        // Row border
         ctx.strokeStyle = "#e5e7eb";
         ctx.beginPath();
         ctx.moveTo(padding, y + rowHeight);
@@ -409,19 +408,17 @@ export default function QuotationsPage() {
         // Image
         const loadedImg = loadedImages[idx];
         if (loadedImg) {
-          try {
-            ctx.drawImage(loadedImg, rx + 8, y + (rowHeight - imgSize) / 2, imgSize, imgSize);
-          } catch { /* ignore */ }
+          try { ctx.drawImage(loadedImg, rx + 8, y + (rowHeight - imgSize) / 2, imgSize, imgSize); } catch {}
         }
         rx += colWidths[1];
-        // Product name
-        ctx.fillText(item.productName || "-", rx + 8, y + rowHeight / 2 + 4);
-        rx += colWidths[2];
         // Size
         ctx.fillText(item.size || "-", rx + 8, y + rowHeight / 2 + 4);
-        rx += colWidths[3];
-        // Contact info
+        rx += colWidths[2];
+        // Contact info (from parent)
         ctx.fillText(quotation.contactInfo || "-", rx + 8, y + rowHeight / 2 + 4);
+        rx += colWidths[3];
+        // Quantity
+        ctx.fillText(String(item.quantity || 1), rx + 8, y + rowHeight / 2 + 4);
         rx += colWidths[4];
         // Amount USD
         ctx.fillText(`$${fmtNum(item.amountUsd)}`, rx + 8, y + rowHeight / 2 + 4);
@@ -438,7 +435,7 @@ export default function QuotationsPage() {
       ctx.font = "bold 16px sans-serif";
       ctx.fillText("合计", padding + 16, footerY + 32);
       ctx.textAlign = "right";
-      ctx.fillText(`$${fmtNum(quotation.totalAmountUsd)}`, totalWidth - padding - 120, footerY + 32);
+      ctx.fillText(`$${fmtNum(quotation.totalAmountUsd)}`, totalWidth - padding - 130, footerY + 32);
       ctx.fillText(`¥${fmtNum(quotation.totalAmountCny)}`, totalWidth - padding - 16, footerY + 32);
       ctx.textAlign = "left";
 
@@ -455,6 +452,30 @@ export default function QuotationsPage() {
       setExportingId(null);
     }
   };
+
+  // Build flat rows: parent row + child rows for each quotation
+  const tableRows = useMemo(() => {
+    const rows: Array<{
+      type: "parent" | "child";
+      quotation: any;
+      item?: any;
+      itemIndex?: number;
+      itemCount: number;
+    }> = [];
+    quotations.forEach((q: any) => {
+      const items = q.items || [];
+      const isCollapsed = collapsedIds.has(q.id);
+      // Parent row (first item merged)
+      rows.push({ type: "parent", quotation: q, item: items[0] || null, itemIndex: 0, itemCount: items.length });
+      // Child rows (remaining items)
+      if (!isCollapsed) {
+        items.slice(1).forEach((item: any, idx: number) => {
+          rows.push({ type: "child", quotation: q, item, itemIndex: idx + 1, itemCount: items.length });
+        });
+      }
+    });
+    return rows;
+  }, [quotations, collapsedIds]);
 
   return (
     <div className="space-y-4">
@@ -488,7 +509,7 @@ export default function QuotationsPage() {
         <span className="text-xs text-muted-foreground">共 {total} 条报价</span>
       </div>
 
-      {/* Quotation Cards */}
+      {/* Main Table */}
       {isLoading ? (
         <div className="flex items-center justify-center h-40">
           <Loader2 className="h-6 w-6 animate-spin text-emerald-600" />
@@ -500,165 +521,250 @@ export default function QuotationsPage() {
           <p className="text-xs mt-1">点击"新建报价"开始创建</p>
         </div>
       ) : (
-        <div className="space-y-3">
-          {quotations.map((q: any) => {
-            const isExpanded = expandedIds.has(q.id);
-            const items = q.items || [];
-            return (
-              <div key={q.id} className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden">
-                {/* Quotation Header Row */}
-                <div className="flex items-center gap-3 px-4 py-3 bg-gray-50/80 border-b">
-                  <button onClick={() => toggleExpand(q.id)} className="text-gray-500 hover:text-gray-700">
-                    {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-                  </button>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs text-gray-400">#{q.id}</span>
-                      <EditableCell
-                        value={q.customerName || ""}
-                        onSave={(v) => saveQuotationField(q.id, "customerName", v)}
-                        placeholder="客户名字"
-                        className="font-semibold text-sm text-gray-900"
-                      />
-                      <Badge variant="outline" className={`text-[10px] ${statusColor(q.status)}`}>{q.status}</Badge>
-                    </div>
-                    <div className="flex items-center gap-4 mt-0.5 text-xs text-gray-500">
-                      <span>联系方式: <EditableCell value={q.contactInfo || ""} onSave={(v) => saveQuotationField(q.id, "contactInfo", v)} placeholder="输入联系方式" className="inline text-xs" /></span>
-                      <span>客服: {q.staffName || "-"}</span>
-                      <span>{new Date(q.createdAt).toLocaleDateString("zh-CN")}</span>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2 text-sm font-medium shrink-0">
-                    <span className="text-emerald-700">${fmtNum(q.totalAmountUsd)}</span>
-                    <span className="text-gray-400">/</span>
-                    <span className="text-orange-600">¥{fmtNum(q.totalAmountCny)}</span>
-                  </div>
-                  <div className="flex items-center gap-1 shrink-0">
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="h-7 text-xs"
-                      onClick={() => exportAsImage(q)}
-                      disabled={exportingId === q.id}
-                    >
-                      {exportingId === q.id ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <Download className="h-3 w-3 mr-1" />}
-                      导出图片
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="h-7 text-xs text-blue-600 border-blue-200 hover:bg-blue-50"
-                      onClick={() => {
-                        if (confirm("确定要将此报价表同步到订单管理吗？")) {
-                          syncMutation.mutate({ quotationId: q.id });
-                        }
-                      }}
-                      disabled={syncMutation.isPending || q.status === "已同步"}
-                    >
-                      <ArrowRightLeft className="h-3 w-3 mr-1" />
-                      {q.status === "已同步" ? "已同步" : "同步订单"}
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      className="h-7 w-7 p-0 text-red-500 hover:text-red-700 hover:bg-red-50"
-                      onClick={() => {
-                        if (confirm("确定要删除此报价表吗？")) {
-                          deleteMutation.mutate({ id: q.id });
-                        }
-                      }}
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </Button>
-                  </div>
-                </div>
+        <div className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-x-auto">
+          <table className="w-full text-[11px] border-collapse">
+            <thead className="sticky top-0 z-10">
+              <tr className="bg-emerald-50 text-gray-600 border-b border-emerald-200">
+                <th className="py-2 px-2 text-center w-[30px]"></th>
+                <th className="py-2 px-2 text-center w-[40px]">#</th>
+                <th className="py-2 px-2 text-center min-w-[100px]">客户名字</th>
+                <th className="py-2 px-2 text-center w-[80px]">订单图片</th>
+                <th className="py-2 px-2 text-center w-[80px]">Size</th>
+                <th className="py-2 px-2 text-center min-w-[120px]">联系方式</th>
+                <th className="py-2 px-2 text-center w-[60px]">数量</th>
+                <th className="py-2 px-2 text-center w-[100px]">总金额($)</th>
+                <th className="py-2 px-2 text-center w-[100px]">总金额(¥)</th>
+                <th className="py-2 px-2 text-center w-[100px]">备注</th>
+                <th className="py-2 px-2 text-center min-w-[60px]">状态</th>
+                <th className="py-2 px-2 text-center min-w-[200px]">操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              {tableRows.map((row, rowIdx) => {
+                const q = row.quotation;
+                const item = row.item;
+                const isParent = row.type === "parent";
+                const isCollapsed = collapsedIds.has(q.id);
+                const visibleItemCount = isCollapsed ? 1 : row.itemCount;
 
-                {/* Items Table */}
-                {isExpanded && (
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-[11px]">
-                      <thead>
-                        <tr className="bg-emerald-50/50 text-gray-600">
-                          <th className="py-1.5 px-2 text-center w-[40px]">#</th>
-                          <th className="py-1.5 px-2 text-center w-[80px]">订单图片</th>
-                          <th className="py-1.5 px-2 text-center w-[120px]">商品名称</th>
-                          <th className="py-1.5 px-2 text-center w-[80px]">Size</th>
-                          <th className="py-1.5 px-2 text-center w-[60px]">数量</th>
-                          <th className="py-1.5 px-2 text-center w-[100px]">总金额($)</th>
-                          <th className="py-1.5 px-2 text-center w-[100px]">总金额(¥)</th>
-                          <th className="py-1.5 px-2 text-center w-[120px]">备注</th>
-                          <th className="py-1.5 px-2 text-center w-[40px]">操作</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {items.map((item: any, idx: number) => (
-                          <tr key={item.id} className="border-t border-gray-100 hover:bg-gray-50/50">
-                            <td className="py-1 px-2 text-center text-gray-400">{idx + 1}</td>
-                            <td className="py-1 px-2 text-center">
-                              <ImageUploadCell
-                                imageUrl={item.orderImageUrl}
-                                onUploaded={(url) => saveItemField(item.id, q.id, "orderImageUrl", url)}
-                                onPreview={(url) => setPreviewImage(url)}
-                                onRemove={() => saveItemField(item.id, q.id, "orderImageUrl", "")}
-                                uploadMutation={uploadMutation}
-                              />
-                            </td>
-                            <td className="py-1 px-2 text-center">
-                              <EditableCell value={item.productName || ""} onSave={(v) => saveItemField(item.id, q.id, "productName", v)} placeholder="商品名称" />
-                            </td>
-                            <td className="py-1 px-2 text-center">
-                              <EditableCell value={item.size || ""} onSave={(v) => saveItemField(item.id, q.id, "size", v)} placeholder="Size" />
-                            </td>
-                            <td className="py-1 px-2 text-center">
-                              <EditableCell value={String(item.quantity || 1)} onSave={(v) => saveItemField(item.id, q.id, "quantity", v)} placeholder="1" type="number" />
-                            </td>
-                            <td className="py-1 px-2 text-center">
-                              <EditableCell value={fmtNum(item.amountUsd)} onSave={(v) => saveItemField(item.id, q.id, "amountUsd", v)} placeholder="0.00" type="number" />
-                            </td>
-                            <td className="py-1 px-2 text-center text-gray-500">
-                              ¥{fmtNum(item.amountCny)}
-                            </td>
-                            <td className="py-1 px-2 text-center">
-                              <EditableCell value={item.remarks || ""} onSave={(v) => saveItemField(item.id, q.id, "remarks", v)} placeholder="备注" />
-                            </td>
-                            <td className="py-1 px-2 text-center">
-                              <button
-                                onClick={() => {
-                                  if (items.length <= 1) { toast.error("至少保留一个子项"); return; }
-                                  deleteItemMutation.mutate({ id: item.id, quotationId: q.id });
-                                }}
-                                className="text-red-400 hover:text-red-600"
-                              >
-                                <Trash2 className="h-3 w-3" />
-                              </button>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                      <tfoot>
-                        <tr className="border-t-2 border-emerald-200 bg-emerald-50/30">
-                          <td colSpan={5} className="py-2 px-2 text-right font-semibold text-gray-600">合计</td>
-                          <td className="py-2 px-2 text-center font-bold text-emerald-700">${fmtNum(q.totalAmountUsd)}</td>
-                          <td className="py-2 px-2 text-center font-bold text-orange-600">¥{fmtNum(q.totalAmountCny)}</td>
-                          <td colSpan={2}></td>
-                        </tr>
-                      </tfoot>
-                    </table>
-                    <div className="px-4 py-2 border-t border-gray-100">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="h-6 text-[10px]"
-                        onClick={() => createItemMutation.mutate({ quotationId: q.id })}
+                if (isParent) {
+                  return (
+                    <tr
+                      key={`parent-${q.id}`}
+                      className="border-t-2 border-emerald-100 hover:bg-gray-50/50"
+                    >
+                      {/* Collapse toggle */}
+                      <td
+                        className="py-1 px-1 text-center align-middle border-r border-gray-100"
+                        rowSpan={visibleItemCount}
                       >
-                        <Plus className="h-3 w-3 mr-0.5" /> 添加商品
-                      </Button>
-                    </div>
-                  </div>
-                )}
-              </div>
-            );
-          })}
+                        <button
+                          onClick={() => toggleCollapse(q.id)}
+                          className="text-gray-400 hover:text-gray-600 p-0.5"
+                          title={isCollapsed ? "展开子项" : "折叠子项"}
+                        >
+                          {isCollapsed ? <ChevronRight className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+                        </button>
+                      </td>
+                      {/* # - parent index */}
+                      <td
+                        className="py-1 px-2 text-center align-middle text-gray-400 font-medium border-r border-gray-100"
+                        rowSpan={visibleItemCount}
+                      >
+                        {rowIdx + 1}
+                      </td>
+                      {/* Customer name - merged */}
+                      <td
+                        className="py-1 px-2 text-center align-middle border-r border-gray-100"
+                        rowSpan={visibleItemCount}
+                      >
+                        <EditableCell
+                          value={q.customerName || ""}
+                          onSave={(v) => saveQuotationField(q.id, "customerName", v)}
+                          placeholder="客户名字"
+                          className="font-semibold text-xs text-gray-900"
+                        />
+                      </td>
+                      {/* Order image - per item */}
+                      <td className="py-1 px-2 text-center">
+                        {item && (
+                          <ImageUploadCell
+                            imageUrl={item.orderImageUrl}
+                            onUploaded={(url) => saveItemField(item.id, q.id, "orderImageUrl", url)}
+                            onPreview={(url) => setPreviewImage(url)}
+                            onRemove={() => saveItemField(item.id, q.id, "orderImageUrl", "")}
+                            uploadMutation={uploadMutation}
+                          />
+                        )}
+                      </td>
+                      {/* Size - per item */}
+                      <td className="py-1 px-2 text-center">
+                        {item && (
+                          <EditableCell value={item.size || ""} onSave={(v) => saveItemField(item.id, q.id, "size", v)} placeholder="Size" />
+                        )}
+                      </td>
+                      {/* Contact info - merged */}
+                      <td
+                        className="py-1 px-2 text-center align-middle border-r border-gray-100"
+                        rowSpan={visibleItemCount}
+                      >
+                        <EditableCell
+                          value={q.contactInfo || ""}
+                          onSave={(v) => saveQuotationField(q.id, "contactInfo", v)}
+                          placeholder="联系方式"
+                          className="text-xs"
+                        />
+                      </td>
+                      {/* Quantity - per item */}
+                      <td className="py-1 px-2 text-center">
+                        {item && (
+                          <EditableCell value={String(item.quantity || 1)} onSave={(v) => saveItemField(item.id, q.id, "quantity", v)} placeholder="1" type="number" />
+                        )}
+                      </td>
+                      {/* Amount USD - per item */}
+                      <td className="py-1 px-2 text-center">
+                        {item && (
+                          <EditableCell value={fmtNum(item.amountUsd)} onSave={(v) => saveItemField(item.id, q.id, "amountUsd", v)} placeholder="0.00" type="number" />
+                        )}
+                      </td>
+                      {/* Amount CNY - per item (auto calculated) */}
+                      <td className="py-1 px-2 text-center text-gray-500">
+                        {item ? `¥${fmtNum(item.amountCny)}` : ""}
+                      </td>
+                      {/* Remarks - per item */}
+                      <td className="py-1 px-2 text-center">
+                        {item && (
+                          <EditableCell value={item.remarks || ""} onSave={(v) => saveItemField(item.id, q.id, "remarks", v)} placeholder="备注" />
+                        )}
+                      </td>
+                      {/* Status - merged */}
+                      <td
+                        className="py-1 px-2 text-center align-middle border-r border-gray-100"
+                        rowSpan={visibleItemCount}
+                      >
+                        <Badge variant="outline" className={`text-[10px] ${statusColor(q.status)}`}>{q.status}</Badge>
+                      </td>
+                      {/* Actions - merged */}
+                      <td
+                        className="py-1 px-2 text-center align-middle"
+                        rowSpan={visibleItemCount}
+                      >
+                        <div className="flex items-center justify-center gap-1 flex-wrap">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-6 text-[10px] px-1.5"
+                            onClick={() => createItemMutation.mutate({ quotationId: q.id })}
+                          >
+                            <Plus className="h-3 w-3 mr-0.5" /> 添加
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-6 text-[10px] px-1.5"
+                            onClick={() => exportAsImage(q)}
+                            disabled={exportingId === q.id}
+                          >
+                            {exportingId === q.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Download className="h-3 w-3 mr-0.5" />}
+                            导出
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-6 text-[10px] px-1.5 text-blue-600 border-blue-200 hover:bg-blue-50"
+                            onClick={() => {
+                              if (confirm("确定要将此报价表同步到订单管理吗？")) {
+                                syncMutation.mutate({ quotationId: q.id });
+                              }
+                            }}
+                            disabled={q.status === "已同步" || syncMutation.isPending}
+                          >
+                            <ArrowRightLeft className="h-3 w-3 mr-0.5" />
+                            {q.status === "已同步" ? "已同步" : "同步"}
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="h-6 w-6 p-0 text-red-500 hover:text-red-700 hover:bg-red-50"
+                            onClick={() => {
+                              if (confirm("确定要删除此报价表吗？")) {
+                                deleteMutation.mutate({ id: q.id });
+                              }
+                            }}
+                          >
+                            <Trash2 className="h-3 w-3" />
+                          </Button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                }
+
+                // Child row
+                return (
+                  <tr key={`child-${q.id}-${item?.id}`} className="border-t border-gray-100 hover:bg-gray-50/30">
+                    {/* No collapse, #, customer name, contact info, status, actions columns - they are rowSpan merged */}
+                    {/* Order image */}
+                    <td className="py-1 px-2 text-center">
+                      {item && (
+                        <ImageUploadCell
+                          imageUrl={item.orderImageUrl}
+                          onUploaded={(url) => saveItemField(item.id, q.id, "orderImageUrl", url)}
+                          onPreview={(url) => setPreviewImage(url)}
+                          onRemove={() => saveItemField(item.id, q.id, "orderImageUrl", "")}
+                          uploadMutation={uploadMutation}
+                        />
+                      )}
+                    </td>
+                    {/* Size */}
+                    <td className="py-1 px-2 text-center">
+                      {item && (
+                        <EditableCell value={item.size || ""} onSave={(v) => saveItemField(item.id, q.id, "size", v)} placeholder="Size" />
+                      )}
+                    </td>
+                    {/* Quantity */}
+                    <td className="py-1 px-2 text-center">
+                      {item && (
+                        <EditableCell value={String(item.quantity || 1)} onSave={(v) => saveItemField(item.id, q.id, "quantity", v)} placeholder="1" type="number" />
+                      )}
+                    </td>
+                    {/* Amount USD */}
+                    <td className="py-1 px-2 text-center">
+                      {item && (
+                        <EditableCell value={fmtNum(item.amountUsd)} onSave={(v) => saveItemField(item.id, q.id, "amountUsd", v)} placeholder="0.00" type="number" />
+                      )}
+                    </td>
+                    {/* Amount CNY */}
+                    <td className="py-1 px-2 text-center text-gray-500">
+                      {item ? `¥${fmtNum(item.amountCny)}` : ""}
+                    </td>
+                    {/* Remarks */}
+                    <td className="py-1 px-2 text-center">
+                      {item && (
+                        <EditableCell value={item.remarks || ""} onSave={(v) => saveItemField(item.id, q.id, "remarks", v)} placeholder="备注" />
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+
+              {/* Totals row for each quotation */}
+              {quotations.map((q: any) => {
+                const isCollapsed = collapsedIds.has(q.id);
+                if (isCollapsed) return null;
+                return (
+                  <tr key={`total-${q.id}`} className="border-t-2 border-emerald-200 bg-emerald-50/30">
+                    <td colSpan={7} className="py-1.5 px-2 text-right font-semibold text-gray-600 text-xs">
+                      {q.customerName} 合计
+                    </td>
+                    <td className="py-1.5 px-2 text-center font-bold text-emerald-700 text-xs">${fmtNum(q.totalAmountUsd)}</td>
+                    <td className="py-1.5 px-2 text-center font-bold text-orange-600 text-xs">¥{fmtNum(q.totalAmountCny)}</td>
+                    <td colSpan={3}></td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
         </div>
       )}
 
