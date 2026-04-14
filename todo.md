@@ -541,3 +541,10 @@
 
 ## Bug修复：PayPal同步订单失败
 - [x] 排查并修复PayPal收入表“同步订单”功能报错的问题（原因：SQL查询引用了orders表不存在的paymentScreenshotUrl字段，该字段在order_items表中）
+
+## PayPal自动同步改进
+- [x] 后端：订单创建时自动同步到PayPal收入表（通过orderId关联避免重复）
+- [x] 后端：订单更新paymentAmount时也同步更新对应PayPal收入记录
+- [x] 数据库：paypal_income表添加orderId字段用于关联订单
+- [x] 清理已有重复同步数据（3条重复记录已删除）
+- [x] 前端：手动同步按钮改为“补充同步”（用于补充同步历史订单）

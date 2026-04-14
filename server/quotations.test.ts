@@ -48,6 +48,9 @@ vi.mock("./db", () => ({
   createOrderItem: vi.fn().mockResolvedValue(200),
   recalculateOrderTotals: vi.fn().mockResolvedValue(undefined),
   getCurrentExchangeRate: vi.fn().mockResolvedValue({ rate: "7.00" }),
+  syncOrderToPaypalIncome: vi.fn().mockResolvedValue(undefined),
+  updatePaypalIncomeFromOrder: vi.fn().mockResolvedValue(undefined),
+  deletePaypalIncomeByOrderId: vi.fn().mockResolvedValue(undefined),
   createAuditLog: vi.fn().mockResolvedValue(undefined),
 }));
 

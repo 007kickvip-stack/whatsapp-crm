@@ -34,6 +34,7 @@ import {
   createPaypalIncome, updatePaypalIncome, deletePaypalIncome, listPaypalIncome,
   createPaypalExpense, updatePaypalExpense, deletePaypalExpense, listPaypalExpense,
   getPaypalBalanceSummary, syncOrdersToPaypalIncome,
+  syncOrderToPaypalIncome, updatePaypalIncomeFromOrder, deletePaypalIncomeByOrderId,
 } from "./db";
 import type { SQL } from "drizzle-orm";
 import { sdk } from "./_core/sdk";
@@ -321,6 +322,8 @@ export const appRouter = router({
         customerEmail: rest.customerEmail,
         staffId: ctx.user.id,
       });
+      // 自动同步到PayPal收入表
+      await syncOrderToPaypalIncome(id, ctx.user.id);
       await logAction(ctx, "create", "order", id, rest.orderNumber, JSON.stringify(input));
       return { id };
     }),
@@ -375,6 +378,8 @@ export const appRouter = router({
           staffId: updatedOrder.staffId,
         });
       }
+      // 订单更新时同步更新对应的PayPal收入记录
+      await updatePaypalIncomeFromOrder(id);
       await logAction(ctx, "update", "order", id, undefined, JSON.stringify(data));
       return { success: true };
     }),
@@ -387,6 +392,8 @@ export const appRouter = router({
           throw new TRPCError({ code: 'FORBIDDEN', message: '您只能删除自己的订单' });
         }
       }
+      // 删除订单时清理对应的PayPal收入记录
+      await deletePaypalIncomeByOrderId(input.id);
       await deleteOrder(input.id);
       await logAction(ctx, "delete", "order", input.id);
       return { success: true };
@@ -506,6 +513,8 @@ export const appRouter = router({
         }
 
         await recalculateOrderTotals(orderId);
+        // 自动同步到PayPal收入表
+        await syncOrderToPaypalIncome(orderId, ctx.user.id);
         results.push({ orderId, orderNumber: first.orderNumber });
       }
 
@@ -1378,6 +1387,8 @@ export const appRouter = router({
       }
       // Recalculate order totals
       await recalculateOrderTotals(orderId);
+      // 自动同步到PayPal收入表
+      await syncOrderToPaypalIncome(orderId, ctx.user.id);
       // Mark quotation as synced
       await updateQuotation(input.quotationId, { status: "已同步" } as any);
       await logAction(ctx, "create", "order", orderId, `从报价表#${input.quotationId}同步`, JSON.stringify({ quotationId: input.quotationId }));

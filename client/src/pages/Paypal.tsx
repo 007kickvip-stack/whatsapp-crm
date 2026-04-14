@@ -634,9 +634,9 @@ function IncomeTable({
       utils.paypalIncome.list.invalidate();
       utils.paypalBalance.summary.invalidate();
       if (result.created > 0) {
-        toast.success(`已从订单同步 ${result.created} 条收入记录`);
+        toast.success(`已补充同步 ${result.created} 条历史订单记录`);
       } else {
-        toast.info("没有新的订单数据需要同步");
+        toast.info("所有订单已同步，无需补充");
       }
     },
     onError: () => {
@@ -691,13 +691,14 @@ function IncomeTable({
             onClick={() => syncMut.mutate()}
             disabled={syncMut.isPending}
             className="h-7 text-xs border-emerald-200 text-emerald-700 hover:bg-emerald-50"
+            title="订单创建时会自动同步，此按钮用于补充同步历史订单"
           >
             {syncMut.isPending ? (
               <Loader2 className="w-3 h-3 mr-1 animate-spin" />
             ) : (
               <RefreshCw className="w-3 h-3 mr-1" />
             )}
-            同步订单
+            补充同步
           </Button>
           <Button
             size="sm"

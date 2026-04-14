@@ -340,6 +340,7 @@ export const paypalIncome = mysqlTable("paypal_income", {
   customerName: varchar("customerName", { length: 128 }), // 客户名字
   staffName: varchar("staffName", { length: 64 }),
   remarks: text("remarks"),
+  orderId: int("orderId"), // 关联订单ID，用于避免重复同步
   createdById: int("createdById"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),

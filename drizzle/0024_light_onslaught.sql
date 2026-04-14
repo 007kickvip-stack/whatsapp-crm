@@ -1,0 +1,1 @@
+ALTER TABLE `paypal_income` ADD `orderId` int;

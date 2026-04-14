@@ -169,6 +169,13 @@
       "when": 1776169273741,
       "tag": "0023_boring_eternity",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "5",
+      "when": 1776171086827,
+      "tag": "0024_light_onslaught",
+      "breakpoints": true
     }
   ]
 }

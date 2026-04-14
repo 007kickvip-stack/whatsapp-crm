@@ -2464,33 +2464,106 @@ export async function getPaypalBalanceSummary() {
 
 // ==================== PayPal Sync from Orders ====================
 
+// 订单创建时自动同步到PayPal收入表（通过orderId关联避免重复）
+export async function syncOrderToPaypalIncome(orderId: number, userId: number) {
+  const db = await getDb();
+  if (!db) return;
+  
+  // 检查是否已存在关联记录
+  const existing = await db.execute(sql`SELECT id FROM paypal_income WHERE orderId = ${orderId} LIMIT 1`);
+  const existingRows = (existing as any)[0] || [];
+  if (existingRows.length > 0) return; // 已存在，不重复创建
+  
+  // 获取订单数据
+  const orderResult = await db.execute(sql`
+    SELECT o.id, o.orderDate, o.account, o.customerWhatsapp, o.customerName,
+           o.paymentAmount, o.staffName,
+           (SELECT oi.paymentScreenshotUrl FROM order_items oi WHERE oi.orderId = o.id AND oi.paymentScreenshotUrl IS NOT NULL LIMIT 1) as paymentScreenshotUrl
+    FROM orders o
+    WHERE o.id = ${orderId}
+  `);
+  const rows = (orderResult as any)[0] || [];
+  if (rows.length === 0) return;
+  
+  const row = rows[0];
+  await db.insert(paypalIncome).values({
+    incomeDate: row.orderDate || null,
+    account: row.account || null,
+    customerWhatsapp: row.customerWhatsapp || null,
+    customerName: row.customerName || null,
+    paymentScreenshotUrl: row.paymentScreenshotUrl || null,
+    paymentAmount: row.paymentAmount ? String(row.paymentAmount) : "0",
+    actualReceived: "0",
+    isReceived: "否",
+    receivingAccount: null,
+    staffName: row.staffName || null,
+    remarks: `自动同步自订单#${row.id}`,
+    orderId: orderId,
+    createdById: userId,
+  });
+}
+
+// 订单更新时同步更新对应的PayPal收入记录
+export async function updatePaypalIncomeFromOrder(orderId: number) {
+  const db = await getDb();
+  if (!db) return;
+  
+  // 获取订单数据
+  const orderResult = await db.execute(sql`
+    SELECT o.id, o.orderDate, o.account, o.customerWhatsapp, o.customerName,
+           o.paymentAmount, o.staffName,
+           (SELECT oi.paymentScreenshotUrl FROM order_items oi WHERE oi.orderId = o.id AND oi.paymentScreenshotUrl IS NOT NULL LIMIT 1) as paymentScreenshotUrl
+    FROM orders o
+    WHERE o.id = ${orderId}
+  `);
+  const rows = (orderResult as any)[0] || [];
+  if (rows.length === 0) return;
+  
+  const row = rows[0];
+  await db.execute(sql`
+    UPDATE paypal_income SET
+      incomeDate = ${row.orderDate || null},
+      account = ${row.account || null},
+      customerWhatsapp = ${row.customerWhatsapp || null},
+      customerName = ${row.customerName || null},
+      paymentScreenshotUrl = ${row.paymentScreenshotUrl || null},
+      paymentAmount = ${row.paymentAmount ? String(row.paymentAmount) : "0"},
+      staffName = ${row.staffName || null}
+    WHERE orderId = ${orderId}
+  `);
+}
+
+// 订单删除时清理对应的PayPal收入记录
+export async function deletePaypalIncomeByOrderId(orderId: number) {
+  const db = await getDb();
+  if (!db) return;
+  await db.execute(sql`DELETE FROM paypal_income WHERE orderId = ${orderId}`);
+}
+
+// 批量同步所有未同步的订单（保留手动同步按钮作为补救）
 export async function syncOrdersToPaypalIncome(userId: number) {
   const db = await getDb();
   if (!db) return { created: 0 };
   
-  // Get all orders that have payment amount and are not yet synced to paypal_income
-  // paymentScreenshotUrl is in order_items table, so we LEFT JOIN to get it
+  // 查找所有有付款金额但未关联到paypal_income的订单
   const ordersWithPayment = await db.execute(sql`
     SELECT o.id, o.orderDate, o.account, o.customerWhatsapp, o.customerName,
-           o.paymentAmount, o.paymentStatus, o.staffName,
+           o.paymentAmount, o.staffName,
            (SELECT oi.paymentScreenshotUrl FROM order_items oi WHERE oi.orderId = o.id AND oi.paymentScreenshotUrl IS NOT NULL LIMIT 1) as paymentScreenshotUrl
     FROM orders o
     WHERE o.paymentAmount IS NOT NULL 
       AND o.paymentAmount > 0
       AND NOT EXISTS (
         SELECT 1 FROM paypal_income pi
-        WHERE pi.customerWhatsapp = o.customerWhatsapp
-          AND pi.account = o.account
-          AND pi.paymentAmount = o.paymentAmount
-          AND pi.incomeDate = o.orderDate
+        WHERE pi.orderId = o.id
       )
     ORDER BY o.orderDate DESC
   `);
   
-  const rows = (ordersWithPayment as any)[0] || [];
+  const orderRows = (ordersWithPayment as any)[0] || [];
   let created = 0;
   
-  for (const row of rows) {
+  for (const row of orderRows) {
     await db.insert(paypalIncome).values({
       incomeDate: row.orderDate || null,
       account: row.account || null,
@@ -2503,6 +2576,7 @@ export async function syncOrdersToPaypalIncome(userId: number) {
       receivingAccount: null,
       staffName: row.staffName || null,
       remarks: `自动同步自订单#${row.id}`,
+      orderId: row.id,
       createdById: userId,
     });
     created++;

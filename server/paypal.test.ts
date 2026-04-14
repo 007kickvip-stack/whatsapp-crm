@@ -26,6 +26,9 @@ vi.mock("./db", () => ({
     total: 1,
   }),
   syncOrdersToPaypalIncome: vi.fn().mockResolvedValue({ created: 3 }),
+  syncOrderToPaypalIncome: vi.fn().mockResolvedValue(undefined),
+  updatePaypalIncomeFromOrder: vi.fn().mockResolvedValue(undefined),
+  deletePaypalIncomeByOrderId: vi.fn().mockResolvedValue(undefined),
   createPaypalExpense: vi.fn().mockResolvedValue(2),
   updatePaypalExpense: vi.fn().mockResolvedValue(undefined),
   deletePaypalExpense: vi.fn().mockResolvedValue(undefined),
@@ -68,6 +71,10 @@ vi.mock("./db", () => ({
   getOrderItemById: vi.fn(),
   updateOrderItem: vi.fn(),
   syncCustomerFromOrder: vi.fn(),
+  deleteOrder: vi.fn(),
+  listOrders: vi.fn().mockResolvedValue({ data: [], total: 0 }),
+  deleteOrderItem: vi.fn(),
+  getOrderItemsByOrderId: vi.fn().mockResolvedValue([]),
 }));
 
 // Mock other dependencies
