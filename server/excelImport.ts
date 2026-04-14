@@ -241,10 +241,19 @@ export function registerExcelImportRoute(app: Express) {
       const dataRows = rawData.slice(1).filter((row) => row.some((cell) => String(cell).trim()));
 
       // Return first 3 sample rows for each column
+      // For date-mapped columns, convert Excel serial numbers to readable dates
+      const dateFields = new Set(["orderDate", "shipDate"]);
       const sampleData: string[][] = dataRows.slice(0, 3).map((row) =>
         headerRow.map((_, idx) => {
           let val = String(row[idx] || "").trim();
           val = cleanCellValue(val);
+          // If this column is mapped to a date field, try to convert serial numbers
+          if (val && dateFields.has(autoMapping[idx])) {
+            const parsed = parseExcelDate(val);
+            if (parsed) {
+              val = formatDateForDb(parsed);
+            }
+          }
           return val;
         })
       );
