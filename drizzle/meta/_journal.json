@@ -148,6 +148,13 @@
       "when": 1776164667646,
       "tag": "0020_parallel_loa",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "5",
+      "when": 1776167574895,
+      "tag": "0021_free_cobalt_man",
+      "breakpoints": true
     }
   ]
 }

@@ -322,3 +322,43 @@ export const quotationItems = mysqlTable("quotation_items", {
 
 export type QuotationItem = typeof quotationItems.$inferSelect;
 export type InsertQuotationItem = typeof quotationItems.$inferInsert;
+
+/**
+ * PayPal收入表
+ */
+export const paypalIncome = mysqlTable("paypal_income", {
+  id: int("id").autoincrement().primaryKey(),
+  incomeDate: date("incomeDate"),
+  account: varchar("account", { length: 64 }),
+  customerWhatsapp: varchar("customerWhatsapp", { length: 255 }),
+  paymentScreenshotUrl: text("paymentScreenshotUrl"),
+  paymentAmount: decimal("paymentAmount", { precision: 12, scale: 2 }).default("0"), // 付款金额 $
+  actualReceived: decimal("actualReceived", { precision: 12, scale: 2 }).default("0"), // 实际收到金额 $
+  isReceived: varchar("isReceived", { length: 32 }).default("否"), // 是否收到
+  receivingAccount: varchar("receivingAccount", { length: 128 }), // 收款账户
+  staffName: varchar("staffName", { length: 64 }),
+  remarks: text("remarks"),
+  createdById: int("createdById"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type PaypalIncome = typeof paypalIncome.$inferSelect;
+export type InsertPaypalIncome = typeof paypalIncome.$inferInsert;
+
+/**
+ * PayPal支出表
+ */
+export const paypalExpense = mysqlTable("paypal_expense", {
+  id: int("id").autoincrement().primaryKey(),
+  expenseDate: date("expenseDate"),
+  account: varchar("account", { length: 64 }),
+  amount: decimal("amount", { precision: 12, scale: 2 }).default("0"), // 金额 $
+  remarks: text("remarks"),
+  createdById: int("createdById"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type PaypalExpense = typeof paypalExpense.$inferSelect;
+export type InsertPaypalExpense = typeof paypalExpense.$inferInsert;

@@ -31,6 +31,9 @@ import {
   createQuotation, updateQuotation, deleteQuotation, getQuotationById, getQuotationWithItems, listQuotations, recalculateQuotationTotals,
   createQuotationItem, updateQuotationItem, deleteQuotationItem, getQuotationItemsByQuotationId,
   getCurrentExchangeRate as getExchangeRateForQuotation,
+  createPaypalIncome, updatePaypalIncome, deletePaypalIncome, listPaypalIncome,
+  createPaypalExpense, updatePaypalExpense, deletePaypalExpense, listPaypalExpense,
+  getPaypalBalanceSummary,
 } from "./db";
 import type { SQL } from "drizzle-orm";
 import { sdk } from "./_core/sdk";
@@ -1430,6 +1433,128 @@ export const appRouter = router({
       await deleteQuotationItem(input.id);
       await recalculateQuotationTotals(input.quotationId);
       return { success: true };
+    }),
+  }),
+
+  // ==================== PayPal Income Routes ====================
+  paypalIncome: router({
+    list: protectedProcedure.input(z.object({
+      page: z.number().default(1),
+      pageSize: z.number().default(50),
+      search: z.string().optional(),
+      receivingAccount: z.string().optional(),
+      dateFrom: z.string().optional(),
+      dateTo: z.string().optional(),
+    })).query(({ input }) => {
+      return listPaypalIncome(input);
+    }),
+
+    create: protectedProcedure.input(z.object({
+      incomeDate: z.string().optional(),
+      account: z.string().optional(),
+      customerWhatsapp: z.string().optional(),
+      paymentScreenshotUrl: z.string().optional(),
+      paymentAmount: z.string().optional(),
+      actualReceived: z.string().optional(),
+      isReceived: z.string().optional(),
+      receivingAccount: z.string().optional(),
+      staffName: z.string().optional(),
+      remarks: z.string().optional(),
+    })).mutation(async ({ input, ctx }) => {
+      const id = await createPaypalIncome({
+        ...input,
+        incomeDate: input.incomeDate ? new Date(input.incomeDate + "T00:00:00") : null,
+        createdById: ctx.user.id,
+      } as any);
+      await logAction(ctx, "create", "paypalIncome", id);
+      return { id };
+    }),
+
+    update: protectedProcedure.input(z.object({
+      id: z.number(),
+      incomeDate: z.string().optional(),
+      account: z.string().optional(),
+      customerWhatsapp: z.string().optional(),
+      paymentScreenshotUrl: z.string().optional(),
+      paymentAmount: z.string().optional(),
+      actualReceived: z.string().optional(),
+      isReceived: z.string().optional(),
+      receivingAccount: z.string().optional(),
+      staffName: z.string().optional(),
+      remarks: z.string().optional(),
+    })).mutation(async ({ input, ctx }) => {
+      const { id, ...data } = input;
+      const updateData: any = { ...data };
+      if (data.incomeDate !== undefined) {
+        updateData.incomeDate = data.incomeDate ? new Date(data.incomeDate + "T00:00:00") : null;
+      }
+      await updatePaypalIncome(id, updateData);
+      await logAction(ctx, "update", "paypalIncome", id, undefined, JSON.stringify(data));
+      return { success: true };
+    }),
+
+    delete: protectedProcedure.input(z.object({ id: z.number() })).mutation(async ({ input, ctx }) => {
+      await deletePaypalIncome(input.id);
+      await logAction(ctx, "delete", "paypalIncome", input.id);
+      return { success: true };
+    }),
+  }),
+
+  // ==================== PayPal Expense Routes ====================
+  paypalExpense: router({
+    list: protectedProcedure.input(z.object({
+      page: z.number().default(1),
+      pageSize: z.number().default(50),
+      search: z.string().optional(),
+      dateFrom: z.string().optional(),
+      dateTo: z.string().optional(),
+    })).query(({ input }) => {
+      return listPaypalExpense(input);
+    }),
+
+    create: protectedProcedure.input(z.object({
+      expenseDate: z.string().optional(),
+      account: z.string().optional(),
+      amount: z.string().optional(),
+      remarks: z.string().optional(),
+    })).mutation(async ({ input, ctx }) => {
+      const id = await createPaypalExpense({
+        ...input,
+        expenseDate: input.expenseDate ? new Date(input.expenseDate + "T00:00:00") : null,
+        createdById: ctx.user.id,
+      } as any);
+      await logAction(ctx, "create", "paypalExpense", id);
+      return { id };
+    }),
+
+    update: protectedProcedure.input(z.object({
+      id: z.number(),
+      expenseDate: z.string().optional(),
+      account: z.string().optional(),
+      amount: z.string().optional(),
+      remarks: z.string().optional(),
+    })).mutation(async ({ input, ctx }) => {
+      const { id, ...data } = input;
+      const updateData: any = { ...data };
+      if (data.expenseDate !== undefined) {
+        updateData.expenseDate = data.expenseDate ? new Date(data.expenseDate + "T00:00:00") : null;
+      }
+      await updatePaypalExpense(id, updateData);
+      await logAction(ctx, "update", "paypalExpense", id, undefined, JSON.stringify(data));
+      return { success: true };
+    }),
+
+    delete: protectedProcedure.input(z.object({ id: z.number() })).mutation(async ({ input, ctx }) => {
+      await deletePaypalExpense(input.id);
+      await logAction(ctx, "delete", "paypalExpense", input.id);
+      return { success: true };
+    }),
+  }),
+
+  // ==================== PayPal Balance Summary ====================
+  paypalBalance: router({
+    summary: protectedProcedure.query(async () => {
+      return getPaypalBalanceSummary();
     }),
   }),
 });

@@ -22,6 +22,7 @@ const StaffTargetsPage = lazy(() => import("./pages/StaffTargets"));
 const DailyDataPage = lazy(() => import("./pages/DailyData"));
 const AccountManagementPage = lazy(() => import("./pages/AccountManagement"));
 const QuotationsPage = lazy(() => import("./pages/Quotations"));
+const PaypalPage = lazy(() => import("./pages/Paypal"));
 
 function PageLoading() {
   return (
@@ -54,6 +55,7 @@ function Router() {
                 <Route path="/daily-data" component={DailyDataPage} />
                 <Route path="/account-management" component={AccountManagementPage} />
                 <Route path="/quotations" component={QuotationsPage} />
+                <Route path="/paypal" component={PaypalPage} />
                 <Route path="/404" component={NotFound} />
                 <Route component={NotFound} />
               </Switch>

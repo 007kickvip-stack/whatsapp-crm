@@ -1,6 +1,6 @@
 import { eq, like, and, sql, desc, or, SQL, inArray, isNotNull } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
-import { InsertUser, users, customers, orders, orderItems, InsertCustomer, InsertOrder, InsertOrderItem, auditLogs, InsertAuditLog, exchangeRates, InsertExchangeRate, profitAlertSettings, InsertProfitAlertSetting, staffMonthlyTargets, InsertStaffMonthlyTarget, dailyData, InsertDailyData, accounts, InsertAccount, dailyReportNotes, InsertDailyReportNote, quotations, quotationItems, InsertQuotation, InsertQuotationItem } from "../drizzle/schema";
+import { InsertUser, users, customers, orders, orderItems, InsertCustomer, InsertOrder, InsertOrderItem, auditLogs, InsertAuditLog, exchangeRates, InsertExchangeRate, profitAlertSettings, InsertProfitAlertSetting, staffMonthlyTargets, InsertStaffMonthlyTarget, dailyData, InsertDailyData, accounts, InsertAccount, dailyReportNotes, InsertDailyReportNote, quotations, quotationItems, InsertQuotation, InsertQuotationItem, paypalIncome, paypalExpense, InsertPaypalIncome, InsertPaypalExpense } from "../drizzle/schema";
 import { ENV } from './_core/env';
 import { nanoid } from 'nanoid';
 import { createHash, randomBytes } from 'crypto';
@@ -2296,4 +2296,167 @@ export async function getQuotationItemsByQuotationId(quotationId: number) {
   const db = await getDb();
   if (!db) return [];
   return db.select().from(quotationItems).where(eq(quotationItems.quotationId, quotationId)).orderBy(quotationItems.id);
+}
+
+
+// ==================== PayPal Income Helpers ====================
+
+export async function createPaypalIncome(data: InsertPaypalIncome) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const result = await db.insert(paypalIncome).values(data);
+  return result[0].insertId;
+}
+
+export async function updatePaypalIncome(id: number, data: Partial<InsertPaypalIncome>) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.update(paypalIncome).set(data).where(eq(paypalIncome.id, id));
+}
+
+export async function deletePaypalIncome(id: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.delete(paypalIncome).where(eq(paypalIncome.id, id));
+}
+
+export async function listPaypalIncome(params: {
+  page?: number;
+  pageSize?: number;
+  search?: string;
+  receivingAccount?: string;
+  dateFrom?: string;
+  dateTo?: string;
+}) {
+  const db = await getDb();
+  if (!db) return { data: [], total: 0 };
+  const { page = 1, pageSize = 50, search, receivingAccount, dateFrom, dateTo } = params;
+  const offset = (page - 1) * pageSize;
+  const conditions: SQL[] = [];
+  if (search) {
+    conditions.push(
+      or(
+        like(paypalIncome.customerWhatsapp, `%${search}%`),
+        like(paypalIncome.staffName, `%${search}%`),
+        like(paypalIncome.account, `%${search}%`),
+        like(paypalIncome.remarks, `%${search}%`)
+      )!
+    );
+  }
+  if (receivingAccount) {
+    conditions.push(eq(paypalIncome.receivingAccount, receivingAccount));
+  }
+  if (dateFrom) {
+    conditions.push(sql`${paypalIncome.incomeDate} >= ${dateFrom}`);
+  }
+  if (dateTo) {
+    conditions.push(sql`${paypalIncome.incomeDate} <= ${dateTo}`);
+  }
+  const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
+  const [data, countResult] = await Promise.all([
+    db.select().from(paypalIncome).where(whereClause).orderBy(desc(paypalIncome.id)).limit(pageSize).offset(offset),
+    db.select({ count: sql<number>`count(*)` }).from(paypalIncome).where(whereClause),
+  ]);
+  return { data, total: countResult[0]?.count ?? 0 };
+}
+
+// ==================== PayPal Expense Helpers ====================
+
+export async function createPaypalExpense(data: InsertPaypalExpense) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const result = await db.insert(paypalExpense).values(data);
+  return result[0].insertId;
+}
+
+export async function updatePaypalExpense(id: number, data: Partial<InsertPaypalExpense>) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.update(paypalExpense).set(data).where(eq(paypalExpense.id, id));
+}
+
+export async function deletePaypalExpense(id: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.delete(paypalExpense).where(eq(paypalExpense.id, id));
+}
+
+export async function listPaypalExpense(params: {
+  page?: number;
+  pageSize?: number;
+  search?: string;
+  dateFrom?: string;
+  dateTo?: string;
+}) {
+  const db = await getDb();
+  if (!db) return { data: [], total: 0 };
+  const { page = 1, pageSize = 50, search, dateFrom, dateTo } = params;
+  const offset = (page - 1) * pageSize;
+  const conditions: SQL[] = [];
+  if (search) {
+    conditions.push(
+      or(
+        like(paypalExpense.account, `%${search}%`),
+        like(paypalExpense.remarks, `%${search}%`)
+      )!
+    );
+  }
+  if (dateFrom) {
+    conditions.push(sql`${paypalExpense.expenseDate} >= ${dateFrom}`);
+  }
+  if (dateTo) {
+    conditions.push(sql`${paypalExpense.expenseDate} <= ${dateTo}`);
+  }
+  const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
+  const [data, countResult] = await Promise.all([
+    db.select().from(paypalExpense).where(whereClause).orderBy(desc(paypalExpense.id)).limit(pageSize).offset(offset),
+    db.select({ count: sql<number>`count(*)` }).from(paypalExpense).where(whereClause),
+  ]);
+  return { data, total: countResult[0]?.count ?? 0 };
+}
+
+// ==================== PayPal Balance Summary ====================
+
+export async function getPaypalBalanceSummary() {
+  const db = await getDb();
+  if (!db) return [];
+  
+  // Get income by receiving account
+  const incomeResult = await db.execute(sql`
+    SELECT receivingAccount, COALESCE(SUM(actualReceived), 0) as totalIncome
+    FROM paypal_income
+    WHERE isReceived = '是'
+    GROUP BY receivingAccount
+  `);
+  
+  // Get expense by account (using account field as the paypal account)
+  const expenseResult = await db.execute(sql`
+    SELECT account as receivingAccount, COALESCE(SUM(amount), 0) as totalExpense
+    FROM paypal_expense
+    GROUP BY account
+  `);
+  
+  const incomeRows = (incomeResult as any)[0] || [];
+  const expenseRows = (expenseResult as any)[0] || [];
+  
+  // Merge into a map
+  const balanceMap = new Map<string, { income: number; expense: number }>();
+  
+  for (const row of incomeRows) {
+    const acct = row.receivingAccount || "未分配";
+    balanceMap.set(acct, { income: Number(row.totalIncome), expense: 0 });
+  }
+  for (const row of expenseRows) {
+    const acct = row.receivingAccount || "未分配";
+    const existing = balanceMap.get(acct) || { income: 0, expense: 0 };
+    existing.expense = Number(row.totalExpense);
+    balanceMap.set(acct, existing);
+  }
+  
+  return Array.from(balanceMap.entries()).map(([account, { income, expense }]) => ({
+    account,
+    income,
+    expense,
+    balance: income - expense,
+  }));
 }
