@@ -11,6 +11,7 @@ import {
   Plus, Trash2, Search, Upload, X, Loader2, Image as ImageIcon,
   Download, ArrowRightLeft, FileText, ChevronDown, ChevronRight
 } from "lucide-react";
+import AccountSelect from "@/components/AccountSelect";
 
 // ============================================================
 // Helper: format number
@@ -320,7 +321,7 @@ export default function QuotationsPage() {
     createMutation.mutate(form);
   };
 
-  // Export quotation as image (不包含客服名字、账号、客户WhatsApp、联系方式)
+  // Export quotation as image (English labels, no CNY column)
   const exportAsImage = async (quotation: any) => {
     setExportingId(quotation.id);
     try {
@@ -332,8 +333,8 @@ export default function QuotationsPage() {
       const imgSize = 60;
       const headerHeight = 80;
       const footerHeight = 80;
-      // Export columns: #, 订单图片, Size, 数量, 总金额($), 总金额(¥), 备注
-      const colWidths = [50, 120, 80, 60, 110, 110, 120];
+      // Export columns: #, Image, Size, Qty, Amount($), Remarks
+      const colWidths = [50, 120, 80, 60, 120, 150];
       const totalWidth = colWidths.reduce((s, w) => s + w, 0) + padding * 2;
       const totalHeight = headerHeight + 40 + items.length * rowHeight + footerHeight + padding * 2;
 
@@ -350,12 +351,13 @@ export default function QuotationsPage() {
       ctx.fillRect(0, 0, totalWidth, headerHeight);
       ctx.fillStyle = "#ffffff";
       ctx.font = "bold 22px sans-serif";
-      ctx.fillText("客户报价单", padding, 35);
+      ctx.fillText("Quotation", padding, 35);
       ctx.font = "14px sans-serif";
-      ctx.fillText(`客户: ${quotation.customerName}`, padding, 60);
-      const dateStr = new Date().toLocaleDateString("zh-CN");
+      ctx.fillText(`Customer: ${quotation.customerName}`, padding, 60);
+      const now = new Date();
+      const dateStr = `${now.getFullYear()}/${now.getMonth() + 1}/${now.getDate()}`;
       ctx.textAlign = "right";
-      ctx.fillText(`日期: ${dateStr}`, totalWidth - padding, 60);
+      ctx.fillText(`Date: ${dateStr}`, totalWidth - padding, 60);
       ctx.textAlign = "left";
 
       // Table header
@@ -364,7 +366,7 @@ export default function QuotationsPage() {
       ctx.fillRect(padding, tableY, totalWidth - padding * 2, 30);
       ctx.fillStyle = "#065f46";
       ctx.font = "bold 12px sans-serif";
-      const headers = ["#", "图片", "Size", "数量", "金额($)", "金额(¥)", "备注"];
+      const headers = ["#", "Image", "Size", "Qty", "Amount($)", "Remarks"];
       let x = padding;
       headers.forEach((h, i) => {
         ctx.fillText(h, x + 8, tableY + 20);
@@ -418,28 +420,24 @@ export default function QuotationsPage() {
         // Amount USD
         ctx.fillText(`$${fmtNum(item.amountUsd)}`, rx + 8, y + rowHeight / 2 + 4);
         rx += colWidths[4];
-        // Amount CNY
-        ctx.fillText(`¥${fmtNum(item.amountCny)}`, rx + 8, y + rowHeight / 2 + 4);
-        rx += colWidths[5];
         // Remarks
         ctx.fillText(item.remarks || "-", rx + 8, y + rowHeight / 2 + 4);
       });
 
-      // Footer - totals
+      // Footer - totals (USD only)
       const footerY = tableY + 30 + items.length * rowHeight + 10;
       ctx.fillStyle = "#059669";
       ctx.fillRect(padding, footerY, totalWidth - padding * 2, 50);
       ctx.fillStyle = "#ffffff";
       ctx.font = "bold 16px sans-serif";
-      ctx.fillText("合计", padding + 16, footerY + 32);
+      ctx.fillText("Total", padding + 16, footerY + 32);
       ctx.textAlign = "right";
-      ctx.fillText(`$${fmtNum(quotation.totalAmountUsd)}`, totalWidth - padding - 130, footerY + 32);
-      ctx.fillText(`¥${fmtNum(quotation.totalAmountCny)}`, totalWidth - padding - 16, footerY + 32);
+      ctx.fillText(`$${fmtNum(quotation.totalAmountUsd)}`, totalWidth - padding - 16, footerY + 32);
       ctx.textAlign = "left";
 
       // Download
       const link = document.createElement("a");
-      link.download = `报价单-${quotation.customerName}-${dateStr}.png`;
+      link.download = `Quotation-${quotation.customerName}-${dateStr.replace(/\//g, "-")}.png`;
       link.href = canvas.toDataURL("image/png");
       link.click();
       toast.success("报价图片已导出");
@@ -536,6 +534,7 @@ export default function QuotationsPage() {
                 <th className="py-2 px-2 text-center w-[100px]">总金额($)</th>
                 <th className="py-2 px-2 text-center w-[100px]">总金额(¥)</th>
                 <th className="py-2 px-2 text-center w-[100px]">备注</th>
+                <th className="py-2 px-2 text-center w-[30px]"></th>
                 <th className="py-2 px-2 text-center min-w-[60px]">状态</th>
                 <th className="py-2 px-2 text-center min-w-[200px]">操作</th>
               </tr>
@@ -586,16 +585,16 @@ export default function QuotationsPage() {
                           className="text-xs"
                         />
                       </td>
-                      {/* 账号 - merged */}
+                      {/* 账号 - merged (dropdown) */}
                       <td
                         className="py-1 px-2 text-center align-middle border-r border-gray-100"
                         rowSpan={visibleItemCount}
                       >
-                        <EditableCell
+                        <AccountSelect
                           value={q.account || ""}
-                          onSave={(v) => saveQuotationField(q.id, "account", v)}
+                          onValueChange={(v) => saveQuotationField(q.id, "account", v)}
                           placeholder="账号"
-                          className="text-xs"
+                          compact
                         />
                       </td>
                       {/* Customer name - merged */}
@@ -672,6 +671,22 @@ export default function QuotationsPage() {
                       <td className="py-1 px-2 text-center">
                         {item && (
                           <EditableCell value={item.remarks || ""} onSave={(v) => saveItemField(item.id, q.id, "remarks", v)} placeholder="备注" />
+                        )}
+                      </td>
+                      {/* Delete item button for parent first item */}
+                      <td className="py-1 px-1 text-center">
+                        {item && row.itemCount > 1 && (
+                          <button
+                            onClick={() => {
+                              if (confirm("确定要删除此商品行吗？")) {
+                                deleteItemMutation.mutate({ id: item.id, quotationId: q.id });
+                              }
+                            }}
+                            className="text-red-400 hover:text-red-600 p-0.5 rounded hover:bg-red-50 transition-colors"
+                            title="删除此商品"
+                          >
+                            <Trash2 className="h-3 w-3" />
+                          </button>
                         )}
                       </td>
                       {/* Status - merged */}
@@ -781,6 +796,22 @@ export default function QuotationsPage() {
                         <EditableCell value={item.remarks || ""} onSave={(v) => saveItemField(item.id, q.id, "remarks", v)} placeholder="备注" />
                       )}
                     </td>
+                    {/* Delete item button for child rows */}
+                    <td className="py-1 px-1 text-center">
+                      {item && (
+                        <button
+                          onClick={() => {
+                            if (confirm("确定要删除此商品行吗？")) {
+                              deleteItemMutation.mutate({ id: item.id, quotationId: q.id });
+                            }
+                          }}
+                          className="text-red-400 hover:text-red-600 p-0.5 rounded hover:bg-red-50 transition-colors"
+                          title="删除此商品"
+                        >
+                          <Trash2 className="h-3 w-3" />
+                        </button>
+                      )}
+                    </td>
                   </tr>
                 );
               })}
@@ -847,10 +878,10 @@ export default function QuotationsPage() {
             </div>
             <div className="space-y-2">
               <Label>账号</Label>
-              <Input
-                placeholder="账号"
+              <AccountSelect
                 value={form.account}
-                onChange={(e) => setForm({ ...form, account: e.target.value })}
+                onValueChange={(v) => setForm({ ...form, account: v })}
+                placeholder="选择账号"
               />
             </div>
             <div className="space-y-2">
