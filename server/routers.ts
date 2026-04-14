@@ -24,6 +24,10 @@ import {
   listDailyReportNotes, createDailyReportNote, updateDailyReportNote, deleteDailyReportNote, getDailyReportNoteById,
   listAccounts, createAccount, updateAccount, deleteAccount, reorderAccounts,
   findOrderItemByDomesticTrackingNo, markLogisticsSubscribed,
+  getDashboardSummary, getStaffRevenueRanking, getMonthlyNewOldCustomerRate,
+  getAccountRevenue, getMonthlyRevenue, getStaffMonthlyRevenue,
+  getCustomerTypeDistribution, getCustomerTierDistribution,
+  getOrderCategoryDistribution, getCountryDistribution,
 } from "./db";
 import type { SQL } from "drizzle-orm";
 import { sdk } from "./_core/sdk";
@@ -161,6 +165,7 @@ export const appRouter = router({
       birthDate: z.string().optional(),
       customerEmail: z.string().optional(),
       customerTier: z.string().optional(),
+      wpEntryDate: z.string().optional(),
     })).mutation(async ({ input, ctx }) => {
       const id = await createCustomer({ ...input, createdById: ctx.user.id } as any);
       await logAction(ctx, "create", "customer", id, input.whatsapp, JSON.stringify(input));
@@ -186,6 +191,7 @@ export const appRouter = router({
       birthDate: z.string().optional(),
       customerEmail: z.string().optional(),
       customerTier: z.string().optional(),
+      wpEntryDate: z.string().optional(),
     })).mutation(async ({ input, ctx }) => {
       const { id, ...data } = input;
       await updateCustomer(id, data as any);
@@ -271,6 +277,7 @@ export const appRouter = router({
       orderCategory: z.string().optional(),
       customerBirthDate: z.string().optional(),
       customerEmail: z.string().optional(),
+      wpEntryDate: z.string().optional(),
     })).mutation(async ({ input, ctx }) => {
       const { orderDate, ...rest } = input;
       const staffName = ctx.user.name || "未知客服";
@@ -329,6 +336,7 @@ export const appRouter = router({
       orderCategory: z.string().optional(),
       customerBirthDate: z.string().optional(),
       customerEmail: z.string().optional(),
+      wpEntryDate: z.string().optional(),
     })).mutation(async ({ input, ctx }) => {
       // 客服只能编辑自己的订单
       if (ctx.user.role !== 'admin') {
@@ -762,6 +770,29 @@ export const appRouter = router({
     })).query(({ input, ctx }) => {
       const isAdmin = ctx.user.role === "admin";
       return getDailyOrderTrend(input.days, isAdmin ? undefined : ctx.user.id);
+    }),
+
+    // ===== Dashboard V2 =====
+    dashboardV2: protectedProcedure.input(z.object({
+      dateFrom: z.string().optional(),
+      dateTo: z.string().optional(),
+    }).optional()).query(async ({ input, ctx }) => {
+      const isAdmin = ctx.user.role === "admin";
+      const staffId = isAdmin ? undefined : ctx.user.id;
+      const filters = { dateFrom: input?.dateFrom, dateTo: input?.dateTo, staffId };
+      const [summary, staffRanking, monthlyNewOld, accountRevenue, monthlyRevenue, staffMonthlyRevenue, customerTypeDist, customerTierDist, orderCategoryDist, countryDist] = await Promise.all([
+        getDashboardSummary(filters),
+        getStaffRevenueRanking(filters),
+        getMonthlyNewOldCustomerRate(filters),
+        getAccountRevenue(filters),
+        getMonthlyRevenue(filters),
+        getStaffMonthlyRevenue(filters),
+        getCustomerTypeDistribution(filters),
+        getCustomerTierDistribution(filters),
+        getOrderCategoryDistribution(filters),
+        getCountryDistribution(filters),
+      ]);
+      return { summary, staffRanking, monthlyNewOld, accountRevenue, monthlyRevenue, staffMonthlyRevenue, customerTypeDist, customerTierDist, orderCategoryDist, countryDist };
     }),
   }),
 

@@ -84,6 +84,7 @@ const columns = [
   { key: "customerTier", label: "客户分层", width: "w-[90px]", editable: true, type: "tier" },
   { key: "orderCategory", label: "订购类目", width: "w-[120px]", editable: true, type: "text" },
   { key: "birthDate", label: "出生日期", width: "w-[110px]", editable: true, type: "date" },
+  { key: "wpEntryDate", label: "进入WP日期", width: "w-[110px]", editable: true, type: "date" },
 ];
 
 // 订单状态颜色映射

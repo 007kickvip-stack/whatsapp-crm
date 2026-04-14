@@ -1838,3 +1838,336 @@ export async function reorderAccounts(items: { id: number; sortOrder: number }[]
   }
   return { success: true };
 }
+
+
+// ==================== Dashboard V2 统计函数 ====================
+
+interface DashboardFilters {
+  dateFrom?: string;
+  dateTo?: string;
+  staffId?: number;
+}
+
+function buildDateCondition(dateFrom?: string, dateTo?: string) {
+  const conditions: SQL[] = [];
+  if (dateFrom) conditions.push(sql`${orders.orderDate} >= ${dateFrom}`);
+  if (dateTo) conditions.push(sql`${orders.orderDate} <= ${dateTo}`);
+  return conditions;
+}
+
+/**
+ * 仪表盘汇总数据（支持日期筛选）
+ */
+export async function getDashboardSummary(filters: DashboardFilters) {
+  const db = await getDb();
+  if (!db) return {
+    totalRevenueCny: 0, estimatedProfit: 0, totalReturnVisit: 0, totalPraise: 0,
+    totalNewCustomers: 0, newCustomerOrders: 0, totalOldCustomers: 0, oldCustomerOrders: 0,
+  };
+
+  const conditions: SQL[] = [];
+  if (filters.dateFrom) conditions.push(sql`o.orderDate >= ${filters.dateFrom}`);
+  if (filters.dateTo) conditions.push(sql`o.orderDate <= ${filters.dateTo}`);
+  if (filters.staffId) conditions.push(sql`o.staffId = ${filters.staffId}`);
+  const whereStr = conditions.length > 0 ? sql.join([sql`WHERE `, sql.join(conditions, sql` AND `)], sql``) : sql``;
+
+  // 总营业额 & 预估总利润（从order_items汇总）
+  const revenueResult = await db.execute(sql`
+    SELECT 
+      COALESCE(SUM(oi.amountCny), 0) as totalRevenueCny,
+      COALESCE(SUM(oi.productProfit), 0) as estimatedProfit
+    FROM order_items oi
+    JOIN orders o ON oi.orderId = o.id
+    ${whereStr}
+  `);
+  const rev = (revenueResult as any)[0]?.[0] || { totalRevenueCny: 0, estimatedProfit: 0 };
+
+  // 从每日数据表汇总回访人数和好评人数
+  const dailyConditions: SQL[] = [];
+  if (filters.dateFrom) dailyConditions.push(sql`dd.reportDate >= ${filters.dateFrom}`);
+  if (filters.dateTo) dailyConditions.push(sql`dd.reportDate <= ${filters.dateTo}`);
+  if (filters.staffId) dailyConditions.push(sql`dd.staffId = ${filters.staffId}`);
+  const dailyWhereStr = dailyConditions.length > 0 ? sql.join([sql`WHERE `, sql.join(dailyConditions, sql` AND `)], sql``) : sql``;
+
+  const dailyResult = await db.execute(sql`
+    SELECT 
+      COALESCE(SUM(dd.returnVisitCount), 0) as totalReturnVisit,
+      COALESCE(SUM(dd.telegramPraiseCount), 0) as totalPraise,
+      COALESCE(SUM(dd.newCustomerCount), 0) as totalNewCustomers,
+      COALESCE(SUM(dd.newOrderCount), 0) as newCustomerOrders,
+      COALESCE(SUM(dd.oldOrderCount), 0) as oldCustomerOrders
+    FROM daily_data dd
+    ${dailyWhereStr}
+  `);
+  const daily = (dailyResult as any)[0]?.[0] || { totalReturnVisit: 0, totalPraise: 0, totalNewCustomers: 0, newCustomerOrders: 0, oldCustomerOrders: 0 };
+
+  // 老客总数：在customers表中有多次订单的客户数
+  const oldCustConditions: SQL[] = [];
+  if (filters.staffId) oldCustConditions.push(sql`o.staffId = ${filters.staffId}`);
+  if (filters.dateFrom) oldCustConditions.push(sql`o.orderDate >= ${filters.dateFrom}`);
+  if (filters.dateTo) oldCustConditions.push(sql`o.orderDate <= ${filters.dateTo}`);
+  const oldCustWhere = oldCustConditions.length > 0 ? sql.join([sql`WHERE `, sql.join(oldCustConditions, sql` AND `)], sql``) : sql``;
+
+  const oldCustResult = await db.execute(sql`
+    SELECT COUNT(*) as cnt FROM (
+      SELECT customerWhatsapp FROM orders o ${oldCustWhere}
+      GROUP BY customerWhatsapp HAVING COUNT(*) > 1
+    ) t
+  `);
+  const totalOldCustomers = Number((oldCustResult as any)[0]?.[0]?.cnt || 0);
+
+  return {
+    totalRevenueCny: Number(rev.totalRevenueCny),
+    estimatedProfit: Number(rev.estimatedProfit),
+    totalReturnVisit: Number(daily.totalReturnVisit),
+    totalPraise: Number(daily.totalPraise),
+    totalNewCustomers: Number(daily.totalNewCustomers),
+    newCustomerOrders: Number(daily.newCustomerOrders),
+    totalOldCustomers,
+    oldCustomerOrders: Number(daily.oldCustomerOrders),
+  };
+}
+
+/**
+ * 客服总营业额排行榜
+ */
+export async function getStaffRevenueRanking(filters: DashboardFilters) {
+  const db = await getDb();
+  if (!db) return [];
+  const conditions: SQL[] = [];
+  if (filters.dateFrom) conditions.push(sql`orderDate >= ${filters.dateFrom}`);
+  if (filters.dateTo) conditions.push(sql`orderDate <= ${filters.dateTo}`);
+  if (filters.staffId) conditions.push(sql`staffId = ${filters.staffId}`);
+  const whereStr = conditions.length > 0 ? sql.join([sql`WHERE `, sql.join(conditions, sql` AND `)], sql``) : sql``;
+
+  const result = await db.execute(sql`
+    SELECT staffName, staffId,
+      COUNT(*) as orderCount,
+      COALESCE(SUM(totalAmountCny), 0) as totalRevenueCny,
+      COALESCE(SUM(totalProfit), 0) as totalProfit
+    FROM orders ${whereStr}
+    GROUP BY staffId, staffName
+    ORDER BY totalRevenueCny DESC
+  `);
+  return ((result as any)[0] || []).map((r: any) => ({
+    staffName: r.staffName,
+    staffId: r.staffId,
+    orderCount: Number(r.orderCount),
+    totalRevenueCny: Number(r.totalRevenueCny),
+    totalProfit: Number(r.totalProfit),
+  }));
+}
+
+/**
+ * 每月新老客成交率
+ */
+export async function getMonthlyNewOldCustomerRate(filters: DashboardFilters) {
+  const db = await getDb();
+  if (!db) return [];
+  const conditions: SQL[] = [];
+  if (filters.dateFrom) conditions.push(sql`reportDate >= ${filters.dateFrom}`);
+  if (filters.dateTo) conditions.push(sql`reportDate <= ${filters.dateTo}`);
+  if (filters.staffId) conditions.push(sql`staffId = ${filters.staffId}`);
+  const whereStr = conditions.length > 0 ? sql.join([sql`WHERE `, sql.join(conditions, sql` AND `)], sql``) : sql``;
+
+  const result = await db.execute(sql`
+    SELECT 
+      DATE_FORMAT(reportDate, '%Y-%m') as month,
+      COALESCE(SUM(newOrderCount), 0) as newOrders,
+      COALESCE(SUM(oldOrderCount), 0) as oldOrders,
+      COALESCE(SUM(newOrderCount) + SUM(oldOrderCount), 0) as totalOrders
+    FROM daily_data ${whereStr}
+    GROUP BY DATE_FORMAT(reportDate, '%Y-%m')
+    ORDER BY month
+  `);
+  return ((result as any)[0] || []).map((r: any) => ({
+    month: r.month,
+    newOrders: Number(r.newOrders),
+    oldOrders: Number(r.oldOrders),
+    totalOrders: Number(r.totalOrders),
+    newRate: Number(r.totalOrders) > 0 ? Number(r.newOrders) / Number(r.totalOrders) : 0,
+    oldRate: Number(r.totalOrders) > 0 ? Number(r.oldOrders) / Number(r.totalOrders) : 0,
+  }));
+}
+
+/**
+ * 各账号营业额、利润
+ */
+export async function getAccountRevenue(filters: DashboardFilters) {
+  const db = await getDb();
+  if (!db) return [];
+  const conditions: SQL[] = [];
+  if (filters.dateFrom) conditions.push(sql`orderDate >= ${filters.dateFrom}`);
+  if (filters.dateTo) conditions.push(sql`orderDate <= ${filters.dateTo}`);
+  if (filters.staffId) conditions.push(sql`staffId = ${filters.staffId}`);
+  const whereStr = conditions.length > 0 ? sql.join([sql`WHERE `, sql.join(conditions, sql` AND `)], sql``) : sql``;
+
+  const result = await db.execute(sql`
+    SELECT account,
+      COUNT(*) as orderCount,
+      COALESCE(SUM(totalAmountCny), 0) as totalRevenueCny,
+      COALESCE(SUM(totalProfit), 0) as totalProfit
+    FROM orders ${whereStr}
+    GROUP BY account
+    ORDER BY totalRevenueCny DESC
+  `);
+  return ((result as any)[0] || []).map((r: any) => ({
+    account: r.account || "未知",
+    orderCount: Number(r.orderCount),
+    totalRevenueCny: Number(r.totalRevenueCny),
+    totalProfit: Number(r.totalProfit),
+  }));
+}
+
+/**
+ * 每月预估总营业额、利润
+ */
+export async function getMonthlyRevenue(filters: DashboardFilters) {
+  const db = await getDb();
+  if (!db) return [];
+  const conditions: SQL[] = [];
+  if (filters.dateFrom) conditions.push(sql`orderDate >= ${filters.dateFrom}`);
+  if (filters.dateTo) conditions.push(sql`orderDate <= ${filters.dateTo}`);
+  if (filters.staffId) conditions.push(sql`staffId = ${filters.staffId}`);
+  const whereStr = conditions.length > 0 ? sql.join([sql`WHERE `, sql.join(conditions, sql` AND `)], sql``) : sql``;
+
+  const result = await db.execute(sql`
+    SELECT 
+      DATE_FORMAT(orderDate, '%Y-%m') as month,
+      COALESCE(SUM(totalAmountCny), 0) as totalRevenueCny,
+      COALESCE(SUM(totalProfit), 0) as totalProfit,
+      COUNT(*) as orderCount
+    FROM orders ${whereStr}
+    GROUP BY DATE_FORMAT(orderDate, '%Y-%m')
+    ORDER BY month
+  `);
+  return ((result as any)[0] || []).map((r: any) => ({
+    month: r.month,
+    totalRevenueCny: Number(r.totalRevenueCny),
+    totalProfit: Number(r.totalProfit),
+    orderCount: Number(r.orderCount),
+  }));
+}
+
+/**
+ * 个人预估营业额、利润（按客服分组的月度数据）
+ */
+export async function getStaffMonthlyRevenue(filters: DashboardFilters) {
+  const db = await getDb();
+  if (!db) return [];
+  const conditions: SQL[] = [];
+  if (filters.dateFrom) conditions.push(sql`orderDate >= ${filters.dateFrom}`);
+  if (filters.dateTo) conditions.push(sql`orderDate <= ${filters.dateTo}`);
+  if (filters.staffId) conditions.push(sql`staffId = ${filters.staffId}`);
+  const whereStr = conditions.length > 0 ? sql.join([sql`WHERE `, sql.join(conditions, sql` AND `)], sql``) : sql``;
+
+  const result = await db.execute(sql`
+    SELECT 
+      staffName, staffId,
+      DATE_FORMAT(orderDate, '%Y-%m') as month,
+      COALESCE(SUM(totalAmountCny), 0) as totalRevenueCny,
+      COALESCE(SUM(totalProfit), 0) as totalProfit,
+      COUNT(*) as orderCount
+    FROM orders ${whereStr}
+    GROUP BY staffId, staffName, DATE_FORMAT(orderDate, '%Y-%m')
+    ORDER BY staffName, month
+  `);
+  return ((result as any)[0] || []).map((r: any) => ({
+    staffName: r.staffName,
+    staffId: r.staffId,
+    month: r.month,
+    totalRevenueCny: Number(r.totalRevenueCny),
+    totalProfit: Number(r.totalProfit),
+    orderCount: Number(r.orderCount),
+  }));
+}
+
+/**
+ * 客户属性分布饼状图
+ */
+export async function getCustomerTypeDistribution(filters: DashboardFilters) {
+  const db = await getDb();
+  if (!db) return [];
+  const conditions: SQL[] = [];
+  if (filters.staffId) conditions.push(sql`createdById = ${filters.staffId}`);
+  const whereStr = conditions.length > 0 ? sql.join([sql`WHERE `, sql.join(conditions, sql` AND `)], sql``) : sql``;
+
+  const result = await db.execute(sql`
+    SELECT customerType as name, COUNT(*) as value
+    FROM customers ${whereStr}
+    GROUP BY customerType
+    ORDER BY value DESC
+  `);
+  return ((result as any)[0] || []).map((r: any) => ({
+    name: r.name || "未设置",
+    value: Number(r.value),
+  }));
+}
+
+/**
+ * 客户分层分布饼状图
+ */
+export async function getCustomerTierDistribution(filters: DashboardFilters) {
+  const db = await getDb();
+  if (!db) return [];
+  const conditions: SQL[] = [];
+  if (filters.staffId) conditions.push(sql`createdById = ${filters.staffId}`);
+  const whereStr = conditions.length > 0 ? sql.join([sql`WHERE `, sql.join(conditions, sql` AND `)], sql``) : sql``;
+
+  const result = await db.execute(sql`
+    SELECT customerTier as name, COUNT(*) as value
+    FROM customers ${whereStr}
+    GROUP BY customerTier
+    ORDER BY value DESC
+  `);
+  return ((result as any)[0] || []).map((r: any) => ({
+    name: r.name || "未设置",
+    value: Number(r.value),
+  }));
+}
+
+/**
+ * 订购类目分布饼状图
+ */
+export async function getOrderCategoryDistribution(filters: DashboardFilters) {
+  const db = await getDb();
+  if (!db) return [];
+  const conditions: SQL[] = [];
+  if (filters.dateFrom) conditions.push(sql`orderDate >= ${filters.dateFrom}`);
+  if (filters.dateTo) conditions.push(sql`orderDate <= ${filters.dateTo}`);
+  if (filters.staffId) conditions.push(sql`staffId = ${filters.staffId}`);
+  const whereStr = conditions.length > 0 ? sql.join([sql`WHERE `, sql.join(conditions, sql` AND `)], sql``) : sql``;
+
+  const result = await db.execute(sql`
+    SELECT orderCategory as name, COUNT(*) as value
+    FROM orders ${whereStr}
+    GROUP BY orderCategory
+    ORDER BY value DESC
+  `);
+  return ((result as any)[0] || []).map((r: any) => ({
+    name: r.name || "未设置",
+    value: Number(r.value),
+  }));
+}
+
+/**
+ * 国家分布饼状图
+ */
+export async function getCountryDistribution(filters: DashboardFilters) {
+  const db = await getDb();
+  if (!db) return [];
+  const conditions: SQL[] = [];
+  if (filters.staffId) conditions.push(sql`createdById = ${filters.staffId}`);
+  const whereStr = conditions.length > 0 ? sql.join([sql`WHERE `, sql.join(conditions, sql` AND `)], sql``) : sql``;
+
+  const result = await db.execute(sql`
+    SELECT country as name, COUNT(*) as value
+    FROM customers ${whereStr}
+    GROUP BY country
+    ORDER BY value DESC
+  `);
+  return ((result as any)[0] || []).map((r: any) => ({
+    name: r.name || "未设置",
+    value: Number(r.value),
+  }));
+}

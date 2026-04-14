@@ -50,6 +50,7 @@ export const customers = mysqlTable("customers", {
   birthDate: date("birthDate"), // 出生日期
   customerEmail: varchar("customerEmail", { length: 320 }), // 客户邮箱
   customerTier: varchar("customerTier", { length: 32 }), // 客户分层
+  wpEntryDate: date("wpEntryDate"), // 进入WP日期
   createdById: int("createdById"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
@@ -81,6 +82,7 @@ export const orders = mysqlTable("orders", {
   orderCategory: varchar("orderCategory", { length: 255 }),
   customerBirthDate: date("customerBirthDate"),
   customerEmail: varchar("customerEmail", { length: 320 }),
+  wpEntryDate: date("wpEntryDate"), // 进入WP日期
   remarks: text("remarks"),
   // 汇总金额（所有子项合计）
   totalAmountUsd: decimal("totalAmountUsd", { precision: 12, scale: 2 }).default("0"),

@@ -794,6 +794,7 @@ export default function OrdersPage() {
     { key: "orderCategory", label: "订购类目", width: "100px" },
     { key: "customerBirthDate", label: "出生日期", width: "100px" },
     { key: "customerEmail", label: "客户邮箱", width: "140px" },
+    { key: "wpEntryDate", label: "进入WP日期", width: "110px" },
   ];
 
   // Build flat rows
@@ -846,6 +847,7 @@ export default function OrdersPage() {
     orderCategory: string | null;
     customerBirthDate: string | null;
     customerEmail: string | null;
+    wpEntryDate: string | null;
   };
 
   // Auto-create initial item for orders that have no items
@@ -921,6 +923,7 @@ export default function OrdersPage() {
           orderCategory: (order as any).orderCategory || null,
           customerBirthDate: (order as any).customerBirthDate ? new Date((order as any).customerBirthDate).toISOString().split('T')[0] : null,
           customerEmail: (order as any).customerEmail || null,
+          wpEntryDate: (order as any).wpEntryDate ? new Date((order as any).wpEntryDate).toISOString().split('T')[0] : null,
         });
       } else {
         // When collapsed, only show the first item row
@@ -975,6 +978,7 @@ export default function OrdersPage() {
             orderCategory: idx === 0 ? ((order as any).orderCategory || null) : null,
             customerBirthDate: idx === 0 ? ((order as any).customerBirthDate ? new Date((order as any).customerBirthDate).toISOString().split('T')[0] : null) : null,
             customerEmail: idx === 0 ? ((order as any).customerEmail || null) : null,
+            wpEntryDate: idx === 0 ? ((order as any).wpEntryDate ? new Date((order as any).wpEntryDate).toISOString().split('T')[0] : null) : null,
             itemId: item.id,
           });
         });
@@ -1533,6 +1537,14 @@ export default function OrdersPage() {
                 type="text"
                 onSave={(v) => saveOrderField(row.orderId, "customerEmail", v)}
                 placeholder="客户邮箱"
+              />
+            </td>
+            <td className="py-1 px-1 text-center text-[11px] align-middle" rowSpan={row.visibleItemCount || 1}>
+              <EditableCell
+                value={row.wpEntryDate || ""}
+                type="date"
+                onSave={(v) => saveOrderField(row.orderId, "wpEntryDate", v)}
+                placeholder="进入WP日期"
               />
             </td>
           </>
