@@ -1,6 +1,6 @@
 import { eq, like, and, sql, desc, or, SQL, inArray, isNotNull } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
-import { InsertUser, users, customers, orders, orderItems, InsertCustomer, InsertOrder, InsertOrderItem, auditLogs, InsertAuditLog, exchangeRates, InsertExchangeRate, profitAlertSettings, InsertProfitAlertSetting, staffMonthlyTargets, InsertStaffMonthlyTarget, dailyData, InsertDailyData, accounts, InsertAccount, dailyReportNotes, InsertDailyReportNote } from "../drizzle/schema";
+import { InsertUser, users, customers, orders, orderItems, InsertCustomer, InsertOrder, InsertOrderItem, auditLogs, InsertAuditLog, exchangeRates, InsertExchangeRate, profitAlertSettings, InsertProfitAlertSetting, staffMonthlyTargets, InsertStaffMonthlyTarget, dailyData, InsertDailyData, accounts, InsertAccount, dailyReportNotes, InsertDailyReportNote, quotations, quotationItems, InsertQuotation, InsertQuotationItem } from "../drizzle/schema";
 import { ENV } from './_core/env';
 import { nanoid } from 'nanoid';
 import { createHash, randomBytes } from 'crypto';
@@ -2179,4 +2179,121 @@ export async function getCountryDistribution(filters: DashboardFilters) {
     name: r.name || "未设置",
     value: Number(r.value),
   }));
+}
+
+
+// ==================== Quotation Helpers ====================
+
+export async function createQuotation(data: InsertQuotation) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const result = await db.insert(quotations).values(data);
+  return result[0].insertId;
+}
+
+export async function updateQuotation(id: number, data: Partial<InsertQuotation>) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.update(quotations).set(data).where(eq(quotations.id, id));
+}
+
+export async function deleteQuotation(id: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.delete(quotationItems).where(eq(quotationItems.quotationId, id));
+  await db.delete(quotations).where(eq(quotations.id, id));
+}
+
+export async function getQuotationById(id: number) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db.select().from(quotations).where(eq(quotations.id, id)).limit(1);
+  return result.length > 0 ? result[0] : undefined;
+}
+
+export async function getQuotationWithItems(id: number) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const q = await db.select().from(quotations).where(eq(quotations.id, id)).limit(1);
+  if (q.length === 0) return undefined;
+  const items = await db.select().from(quotationItems).where(eq(quotationItems.quotationId, id)).orderBy(quotationItems.id);
+  return { ...q[0], items };
+}
+
+export async function listQuotations(params: {
+  page?: number;
+  pageSize?: number;
+  search?: string;
+  staffId?: number;
+}) {
+  const db = await getDb();
+  if (!db) return { data: [], total: 0 };
+  const { page = 1, pageSize = 50, search, staffId } = params;
+  const offset = (page - 1) * pageSize;
+  const conditions: SQL[] = [];
+  if (search) {
+    conditions.push(like(quotations.customerName, `%${search}%`));
+  }
+  if (staffId) {
+    conditions.push(eq(quotations.staffId, staffId));
+  }
+  const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
+  const [data, countResult] = await Promise.all([
+    db.select().from(quotations).where(whereClause).orderBy(desc(quotations.createdAt)).limit(pageSize).offset(offset),
+    db.select({ count: sql<number>`count(*)` }).from(quotations).where(whereClause),
+  ]);
+  // Attach items to each quotation
+  const quotationIds = data.map(q => q.id);
+  let allItems: any[] = [];
+  if (quotationIds.length > 0) {
+    allItems = await db.select().from(quotationItems).where(inArray(quotationItems.quotationId, quotationIds)).orderBy(quotationItems.id);
+  }
+  const dataWithItems = data.map(q => ({
+    ...q,
+    items: allItems.filter(item => item.quotationId === q.id),
+  }));
+  return { data: dataWithItems, total: countResult[0]?.count ?? 0 };
+}
+
+export async function recalculateQuotationTotals(quotationId: number) {
+  const db = await getDb();
+  if (!db) return;
+  const items = await db.select().from(quotationItems).where(eq(quotationItems.quotationId, quotationId));
+  let totalUsd = 0;
+  let totalCny = 0;
+  for (const item of items) {
+    totalUsd += parseFloat(String(item.amountUsd || "0"));
+    totalCny += parseFloat(String(item.amountCny || "0"));
+  }
+  await db.update(quotations).set({
+    totalAmountUsd: totalUsd.toFixed(2),
+    totalAmountCny: totalCny.toFixed(2),
+  }).where(eq(quotations.id, quotationId));
+}
+
+// ==================== Quotation Item Helpers ====================
+
+export async function createQuotationItem(data: InsertQuotationItem) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const result = await db.insert(quotationItems).values(data);
+  return result[0].insertId;
+}
+
+export async function updateQuotationItem(id: number, data: Partial<InsertQuotationItem>) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.update(quotationItems).set(data).where(eq(quotationItems.id, id));
+}
+
+export async function deleteQuotationItem(id: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.delete(quotationItems).where(eq(quotationItems.id, id));
+}
+
+export async function getQuotationItemsByQuotationId(quotationId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(quotationItems).where(eq(quotationItems.quotationId, quotationId)).orderBy(quotationItems.id);
 }

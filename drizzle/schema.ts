@@ -279,3 +279,43 @@ export const dailyReportNotes = mysqlTable("daily_report_notes", {
 
 export type DailyReportNote = typeof dailyReportNotes.$inferSelect;
 export type InsertDailyReportNote = typeof dailyReportNotes.$inferInsert;
+
+/**
+ * 报价表 - 主表，每个报价单对应一个客户
+ */
+export const quotations = mysqlTable("quotations", {
+  id: int("id").autoincrement().primaryKey(),
+  customerName: varchar("customerName", { length: 128 }).notNull(),
+  contactInfo: text("contactInfo"),
+  totalAmountUsd: decimal("totalAmountUsd", { precision: 12, scale: 2 }).default("0"),
+  totalAmountCny: decimal("totalAmountCny", { precision: 12, scale: 2 }).default("0"),
+  status: varchar("status", { length: 32 }).default("待确认"), // 待确认, 已确认, 已同步
+  remarks: text("remarks"),
+  staffId: int("staffId"),
+  staffName: varchar("staffName", { length: 64 }),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type Quotation = typeof quotations.$inferSelect;
+export type InsertQuotation = typeof quotations.$inferInsert;
+
+/**
+ * 报价子项表 - 每个商品行
+ */
+export const quotationItems = mysqlTable("quotation_items", {
+  id: int("id").autoincrement().primaryKey(),
+  quotationId: int("quotationId").notNull(),
+  orderImageUrl: text("orderImageUrl"),
+  productName: varchar("productName", { length: 255 }),
+  size: varchar("size", { length: 64 }),
+  quantity: int("quantity").default(1),
+  amountUsd: decimal("amountUsd", { precision: 12, scale: 2 }).default("0"),
+  amountCny: decimal("amountCny", { precision: 12, scale: 2 }).default("0"),
+  remarks: text("remarks"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type QuotationItem = typeof quotationItems.$inferSelect;
+export type InsertQuotationItem = typeof quotationItems.$inferInsert;

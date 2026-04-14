@@ -28,6 +28,9 @@ import {
   getAccountRevenue, getMonthlyRevenue, getStaffMonthlyRevenue,
   getCustomerTypeDistribution, getCustomerTierDistribution,
   getOrderCategoryDistribution, getCountryDistribution,
+  createQuotation, updateQuotation, deleteQuotation, getQuotationById, getQuotationWithItems, listQuotations, recalculateQuotationTotals,
+  createQuotationItem, updateQuotationItem, deleteQuotationItem, getQuotationItemsByQuotationId,
+  getCurrentExchangeRate as getExchangeRateForQuotation,
 } from "./db";
 import type { SQL } from "drizzle-orm";
 import { sdk } from "./_core/sdk";
@@ -1267,6 +1270,154 @@ export const appRouter = router({
       const result = await reorderAccounts(input.items);
       await logAction(ctx, "update", "account", undefined, "批量排序", JSON.stringify(input.items));
       return result;
+    }),
+  }),
+
+  // ==================== Quotation Routes ====================
+  quotations: router({
+    list: protectedProcedure.input(z.object({
+      page: z.number().default(1),
+      pageSize: z.number().default(50),
+      search: z.string().optional(),
+    })).query(({ input, ctx }) => {
+      const isAdmin = ctx.user.role === "admin";
+      return listQuotations({
+        ...input,
+        staffId: isAdmin ? undefined : ctx.user.id,
+      });
+    }),
+
+    getById: protectedProcedure.input(z.object({ id: z.number() })).query(async ({ input }) => {
+      return getQuotationWithItems(input.id);
+    }),
+
+    create: protectedProcedure.input(z.object({
+      customerName: z.string().min(1),
+      contactInfo: z.string().optional(),
+      remarks: z.string().optional(),
+    })).mutation(async ({ input, ctx }) => {
+      const staffName = ctx.user.name || "未知客服";
+      const id = await createQuotation({
+        customerName: input.customerName,
+        contactInfo: input.contactInfo || null,
+        remarks: input.remarks || null,
+        staffId: ctx.user.id,
+        staffName,
+      });
+      // Auto-create one empty item
+      await createQuotationItem({ quotationId: id });
+      await logAction(ctx, "create", "quotation", id, input.customerName);
+      return { id };
+    }),
+
+    update: protectedProcedure.input(z.object({
+      id: z.number(),
+      customerName: z.string().optional(),
+      contactInfo: z.string().optional(),
+      status: z.string().optional(),
+      remarks: z.string().optional(),
+    })).mutation(async ({ input, ctx }) => {
+      const { id, ...data } = input;
+      await updateQuotation(id, data as any);
+      await logAction(ctx, "update", "quotation", id, undefined, JSON.stringify(data));
+      return { success: true };
+    }),
+
+    delete: protectedProcedure.input(z.object({ id: z.number() })).mutation(async ({ input, ctx }) => {
+      await deleteQuotation(input.id);
+      await logAction(ctx, "delete", "quotation", input.id);
+      return { success: true };
+    }),
+
+    // 一键同步到订单管理
+    syncToOrder: protectedProcedure.input(z.object({
+      quotationId: z.number(),
+    })).mutation(async ({ input, ctx }) => {
+      const quotation = await getQuotationWithItems(input.quotationId);
+      if (!quotation) throw new TRPCError({ code: "NOT_FOUND", message: "报价表不存在" });
+      const staffName = ctx.user.name || "未知客服";
+      // Create order
+      const orderId = await createOrder({
+        orderDate: new Date(),
+        staffName,
+        staffId: ctx.user.id,
+        customerWhatsapp: quotation.contactInfo || quotation.customerName,
+        customerName: quotation.customerName,
+        orderNumber: `Q${quotation.id}-${Date.now().toString(36)}`,
+        orderStatus: "已报货，待发货",
+        paymentStatus: "未付款",
+        remarks: quotation.remarks,
+      } as any);
+      // Create order items from quotation items
+      const items = quotation.items || [];
+      for (const item of items) {
+        await createOrderItem({
+          orderId,
+          orderImageUrl: item.orderImageUrl,
+          size: item.size,
+          quantity: item.quantity,
+          amountUsd: String(item.amountUsd || "0"),
+          amountCny: String(item.amountCny || "0"),
+          contactInfo: quotation.contactInfo,
+          remarks: item.remarks,
+        } as any);
+      }
+      // Recalculate order totals
+      await recalculateOrderTotals(orderId);
+      // Mark quotation as synced
+      await updateQuotation(input.quotationId, { status: "已同步" } as any);
+      await logAction(ctx, "create", "order", orderId, `从报价表#${input.quotationId}同步`, JSON.stringify({ quotationId: input.quotationId }));
+      return { orderId };
+    }),
+  }),
+
+  quotationItems: router({
+    create: protectedProcedure.input(z.object({
+      quotationId: z.number(),
+      orderImageUrl: z.string().optional(),
+      productName: z.string().optional(),
+      size: z.string().optional(),
+      quantity: z.number().optional(),
+      amountUsd: z.string().optional(),
+      amountCny: z.string().optional(),
+      remarks: z.string().optional(),
+    })).mutation(async ({ input }) => {
+      const id = await createQuotationItem(input);
+      await recalculateQuotationTotals(input.quotationId);
+      return { id };
+    }),
+
+    update: protectedProcedure.input(z.object({
+      id: z.number(),
+      quotationId: z.number(),
+      orderImageUrl: z.string().optional(),
+      productName: z.string().optional(),
+      size: z.string().optional(),
+      quantity: z.number().optional(),
+      amountUsd: z.string().optional(),
+      amountCny: z.string().optional(),
+      remarks: z.string().optional(),
+    })).mutation(async ({ input }) => {
+      const { id, quotationId, ...data } = input;
+      // Auto-calculate amountCny from amountUsd if amountUsd changed
+      if (data.amountUsd !== undefined) {
+        const rateObj = await getExchangeRateForQuotation();
+        const rate = parseFloat(String(rateObj.rate));
+        const usd = parseFloat(data.amountUsd || "0");
+        data.amountCny = (usd * rate).toFixed(2);
+      }
+      await updateQuotationItem(id, data as any);
+      await recalculateQuotationTotals(quotationId);
+      return { success: true };
+    }),
+
+    delete: protectedProcedure.input(z.object({
+      id: z.number(),
+      quotationId: z.number(),
+    })).mutation(async ({ input }) => {
+      await deleteQuotationItem(input.id);
+      await recalculateQuotationTotals(input.quotationId);
+      return { success: true };
     }),
   }),
 });

@@ -39,6 +39,7 @@ import {
   Target,
   CalendarDays,
   Palette,
+  FileText,
 } from "lucide-react";
 import { CSSProperties, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation } from "wouter";
@@ -62,6 +63,7 @@ const mainMenuItems: MenuItem[] = [
   { icon: LayoutDashboard, label: "仪表盘", path: "/" },
   { icon: Users, label: "客户管理", path: "/customers" },
   { icon: ShoppingCart, label: "订单管理", path: "/orders" },
+  { icon: FileText, label: "客户报价表", path: "/quotations" },
 ];
 
 // 客服和管理员都可见的数据分析菜单
