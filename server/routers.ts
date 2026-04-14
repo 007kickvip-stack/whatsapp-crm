@@ -1389,6 +1389,7 @@ export const appRouter = router({
       quantity: z.number().optional(),
       amountUsd: z.string().optional(),
       amountCny: z.string().optional(),
+      sellingPrice: z.string().optional(),
       remarks: z.string().optional(),
     })).mutation(async ({ input }) => {
       const id = await createQuotationItem(input);
@@ -1405,6 +1406,7 @@ export const appRouter = router({
       quantity: z.number().optional(),
       amountUsd: z.string().optional(),
       amountCny: z.string().optional(),
+      sellingPrice: z.string().optional(),
       remarks: z.string().optional(),
     })).mutation(async ({ input }) => {
       const { id, quotationId, ...data } = input;

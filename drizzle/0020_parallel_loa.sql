@@ -1,0 +1,1 @@
+ALTER TABLE `quotation_items` ADD `sellingPrice` decimal(12,2) DEFAULT '0';

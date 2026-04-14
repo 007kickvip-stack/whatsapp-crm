@@ -314,6 +314,7 @@ export const quotationItems = mysqlTable("quotation_items", {
   quantity: int("quantity").default(1),
   amountUsd: decimal("amountUsd", { precision: 12, scale: 2 }).default("0"),
   amountCny: decimal("amountCny", { precision: 12, scale: 2 }).default("0"),
+  sellingPrice: decimal("sellingPrice", { precision: 12, scale: 2 }).default("0"),
   remarks: text("remarks"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),

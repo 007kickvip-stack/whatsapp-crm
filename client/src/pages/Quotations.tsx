@@ -333,8 +333,8 @@ export default function QuotationsPage() {
       const imgSize = 60;
       const headerHeight = 80;
       const footerHeight = 80;
-      // Export columns: #, Image, Size, Qty, Amount($), Remarks
-      const colWidths = [50, 120, 80, 60, 120, 150];
+      // Export columns: #, Image, Size, Qty, Amount($), Shipping($), Remarks
+      const colWidths = [50, 120, 80, 60, 120, 120, 150];
       const totalWidth = colWidths.reduce((s, w) => s + w, 0) + padding * 2;
       const totalHeight = headerHeight + 40 + items.length * rowHeight + footerHeight + padding * 2;
 
@@ -366,7 +366,7 @@ export default function QuotationsPage() {
       ctx.fillRect(padding, tableY, totalWidth - padding * 2, 30);
       ctx.fillStyle = "#065f46";
       ctx.font = "bold 12px sans-serif";
-      const headers = ["#", "Image", "Size", "Qty", "Amount($)", "Remarks"];
+      const headers = ["#", "Image", "Size", "Qty", "Amount($)", "Shipping($)", "Remarks"];
       let x = padding;
       headers.forEach((h, i) => {
         ctx.fillText(h, x + 8, tableY + 20);
@@ -420,11 +420,28 @@ export default function QuotationsPage() {
         // Amount USD
         ctx.fillText(`$${fmtNum(item.amountUsd)}`, rx + 8, y + rowHeight / 2 + 4);
         rx += colWidths[4];
+        // Shipping USD
+        const itemAmountCny = parseFloat(item.amountCny || "0");
+        const itemSellingPrice = parseFloat(item.sellingPrice || "0");
+        const itemShippingCny = itemAmountCny - itemSellingPrice;
+        const itemAmountUsd = parseFloat(item.amountUsd || "0");
+        const itemRate = itemAmountCny > 0 ? itemAmountUsd / itemAmountCny : 0;
+        const itemShippingUsd = itemShippingCny * itemRate;
+        ctx.fillText(`$${fmtNum(itemShippingUsd)}`, rx + 8, y + rowHeight / 2 + 4);
+        rx += colWidths[5];
         // Remarks
         ctx.fillText(item.remarks || "-", rx + 8, y + rowHeight / 2 + 4);
       });
 
-      // Footer - totals (USD only)
+      // Calculate total shipping
+      const totalSellingPriceExport = items.reduce((s: number, it: any) => s + parseFloat(it.sellingPrice || "0"), 0);
+      const totalAmountCnyExport = parseFloat(String(quotation.totalAmountCny || "0"));
+      const totalAmountUsdExport = parseFloat(String(quotation.totalAmountUsd || "0"));
+      const totalShippingCnyExport = totalAmountCnyExport - totalSellingPriceExport;
+      const rateExport = totalAmountCnyExport > 0 ? totalAmountUsdExport / totalAmountCnyExport : 0;
+      const totalShippingUsdExport = totalShippingCnyExport * rateExport;
+
+      // Footer - totals (USD only + shipping)
       const footerY = tableY + 30 + items.length * rowHeight + 10;
       ctx.fillStyle = "#059669";
       ctx.fillRect(padding, footerY, totalWidth - padding * 2, 50);
@@ -432,7 +449,7 @@ export default function QuotationsPage() {
       ctx.font = "bold 16px sans-serif";
       ctx.fillText("Total", padding + 16, footerY + 32);
       ctx.textAlign = "right";
-      ctx.fillText(`$${fmtNum(quotation.totalAmountUsd)}`, totalWidth - padding - 16, footerY + 32);
+      ctx.fillText(`$${fmtNum(quotation.totalAmountUsd)}  |  Shipping: $${fmtNum(totalShippingUsdExport)}`, totalWidth - padding - 16, footerY + 32);
       ctx.textAlign = "left";
 
       // Download
@@ -535,6 +552,8 @@ export default function QuotationsPage() {
                 <th className="py-2 px-2 text-center w-[60px]">数量</th>
                 <th className="py-2 px-2 text-center w-[100px]">总金额($)</th>
                 <th className="py-2 px-2 text-center w-[100px]">总金额(¥)</th>
+                <th className="py-2 px-2 text-center w-[100px]">售价(¥)</th>
+                <th className="py-2 px-2 text-center w-[100px]">收取运费($)</th>
                 <th className="py-2 px-2 text-center w-[100px]">备注</th>
                 <th className="py-2 px-2 text-center w-[30px]"></th>
                 <th className="py-2 px-2 text-center min-w-[60px]">状态</th>
@@ -551,6 +570,15 @@ export default function QuotationsPage() {
                 const visibleItemCount = isCollapsed ? 1 : row.itemCount;
 
                 if (isTotal) {
+                  // Calculate total selling price and total shipping for this quotation
+                  const qItems = q.items || [];
+                  const totalSellingPrice = qItems.reduce((s: number, it: any) => s + parseFloat(it.sellingPrice || "0"), 0);
+                  const totalShippingCny = parseFloat(String(q.totalAmountCny || "0")) - totalSellingPrice;
+                  // Convert shipping to USD using rate: totalAmountUsd / totalAmountCny
+                  const totalAmountCnyVal = parseFloat(String(q.totalAmountCny || "0"));
+                  const totalAmountUsdVal = parseFloat(String(q.totalAmountUsd || "0"));
+                  const rateForShipping = totalAmountCnyVal > 0 ? totalAmountUsdVal / totalAmountCnyVal : 0;
+                  const totalShippingUsd = totalShippingCny * rateForShipping;
                   return (
                     <tr key={`total-${q.id}`} className="border-t-2 border-emerald-200 bg-emerald-50/30">
                       <td colSpan={10} className="py-1.5 px-2 text-right font-semibold text-gray-600 text-xs">
@@ -558,6 +586,8 @@ export default function QuotationsPage() {
                       </td>
                       <td className="py-1.5 px-2 text-center font-bold text-emerald-700 text-xs">${fmtNum(q.totalAmountUsd)}</td>
                       <td className="py-1.5 px-2 text-center font-bold text-orange-600 text-xs">¥{fmtNum(q.totalAmountCny)}</td>
+                      <td className="py-1.5 px-2 text-center font-bold text-purple-600 text-xs">¥{fmtNum(totalSellingPrice)}</td>
+                      <td className="py-1.5 px-2 text-center font-bold text-blue-600 text-xs">${fmtNum(totalShippingUsd)}</td>
                       <td colSpan={4}></td>
                     </tr>
                   );
@@ -683,6 +713,24 @@ export default function QuotationsPage() {
                       <td className="py-1 px-2 text-center text-gray-500">
                         {item ? `¥${fmtNum(item.amountCny)}` : ""}
                       </td>
+                      {/* Selling Price (¥) - per item */}
+                      <td className="py-1 px-2 text-center">
+                        {item && (
+                          <EditableCell value={fmtNum(item.sellingPrice)} onSave={(v) => saveItemField(item.id, q.id, "sellingPrice", v)} placeholder="0.00" type="number" />
+                        )}
+                      </td>
+                      {/* Shipping Charged ($) - auto calculated: (amountCny - sellingPrice) converted to USD */}
+                      <td className="py-1 px-2 text-center text-blue-600 text-xs">
+                        {item ? (() => {
+                          const amountCny = parseFloat(item.amountCny || "0");
+                          const sellingPrice = parseFloat(item.sellingPrice || "0");
+                          const shippingCny = amountCny - sellingPrice;
+                          const amountUsd = parseFloat(item.amountUsd || "0");
+                          const rate = amountCny > 0 ? amountUsd / amountCny : 0;
+                          const shippingUsd = shippingCny * rate;
+                          return `$${fmtNum(shippingUsd)}`;
+                        })() : ""}
+                      </td>
                       {/* Remarks - per item */}
                       <td className="py-1 px-2 text-center">
                         {item && (
@@ -805,6 +853,24 @@ export default function QuotationsPage() {
                     {/* Amount CNY */}
                     <td className="py-1 px-2 text-center text-gray-500">
                       {item ? `¥${fmtNum(item.amountCny)}` : ""}
+                    </td>
+                    {/* Selling Price (¥) - per item */}
+                    <td className="py-1 px-2 text-center">
+                      {item && (
+                        <EditableCell value={fmtNum(item.sellingPrice)} onSave={(v) => saveItemField(item.id, q.id, "sellingPrice", v)} placeholder="0.00" type="number" />
+                      )}
+                    </td>
+                    {/* Shipping Charged ($) - auto calculated */}
+                    <td className="py-1 px-2 text-center text-blue-600 text-xs">
+                      {item ? (() => {
+                        const amountCny = parseFloat(item.amountCny || "0");
+                        const sellingPrice = parseFloat(item.sellingPrice || "0");
+                        const shippingCny = amountCny - sellingPrice;
+                        const amountUsd = parseFloat(item.amountUsd || "0");
+                        const rate = amountCny > 0 ? amountUsd / amountCny : 0;
+                        const shippingUsd = shippingCny * rate;
+                        return `$${fmtNum(shippingUsd)}`;
+                      })() : ""}
                     </td>
                     {/* Remarks */}
                     <td className="py-1 px-2 text-center">
