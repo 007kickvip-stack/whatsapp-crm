@@ -217,19 +217,18 @@ export default function ExcelImportDialog({ open, onOpenChange, onSuccess }: Exc
   // Download template
   const handleDownloadTemplate = useCallback(async () => {
     try {
-      const XLSX = await import("xlsx");
-      const headers = [
-        "订单编号", "原订单号", "客户WhatsApp", "客户属性", "Size", "国内单号", "国际跟踪单号",
-        "发出日期", "件数", "货源", "订单状态",
-        "总金额$", "售价", "产品成本", "收取运费", "实际运费",
-        "备注", "付款状态",
-      ];
-      const ws = XLSX.utils.aoa_to_sheet([headers]);
-      const wb = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(wb, ws, "订单导入模板");
-      ws["!cols"] = headers.map(() => ({ wch: 15 }));
-      XLSX.writeFile(wb, "订单导入模板.xlsx");
-      toast.success("模板已下载");
+      const res = await fetch("/api/excel-template");
+      if (!res.ok) throw new Error("下载失败");
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "订单导入模板.xlsx";
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      toast.success("模板已下载，请查看『填写说明』工作表了解各列格式");
     } catch {
       toast.error("下载模板失败");
     }
