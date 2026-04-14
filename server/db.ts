@@ -418,6 +418,47 @@ export async function getCustomerOrderHistory(customerId: number, startDate?: st
   }));
 }
 
+/**
+ * 获取客户的详细订单列表（用于客户详情页展示）
+ */
+export async function getCustomerOrderList(customerId: number, startDate?: string, endDate?: string) {
+  const db = await getDb();
+  if (!db) return [];
+  
+  const customer = await db.select().from(customers).where(eq(customers.id, customerId)).limit(1);
+  if (customer.length === 0) return [];
+  
+  const conditions: SQL[] = [];
+  if (customer[0].customerName) {
+    conditions.push(
+      or(
+        eq(orders.customerName, customer[0].customerName),
+        eq(orders.customerWhatsapp, customer[0].whatsapp)
+      )!
+    );
+  } else {
+    conditions.push(eq(orders.customerWhatsapp, customer[0].whatsapp));
+  }
+  if (startDate) conditions.push(sql`${orders.orderDate} >= ${startDate}`);
+  if (endDate) conditions.push(sql`${orders.orderDate} <= ${endDate}`);
+  
+  const result = await db.select({
+    id: orders.id,
+    orderDate: orders.orderDate,
+    orderNumber: orders.orderNumber,
+    orderStatus: orders.orderStatus,
+    paymentStatus: orders.paymentStatus,
+    totalAmountUsd: orders.totalAmountUsd,
+    totalAmountCny: orders.totalAmountCny,
+    customerType: orders.customerType,
+    remarks: orders.remarks,
+  }).from(orders)
+    .where(and(...conditions))
+    .orderBy(desc(orders.orderDate));
+  
+  return result;
+}
+
 // ==================== Order Helpers ====================
 
 export async function createOrder(data: InsertOrder) {

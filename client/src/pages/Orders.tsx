@@ -73,6 +73,7 @@ type OrderForm = {
   account: string;
   customerWhatsapp: string;
   customerType: string;
+  customerName: string;
   orderNumber: string;
   orderStatus: string;
   paymentStatus: string;
@@ -84,6 +85,7 @@ const emptyOrderForm: OrderForm = {
   account: "",
   customerWhatsapp: "",
   customerType: "新零售",
+  customerName: "",
   orderNumber: "",
   orderStatus: "已报货，待发货",
   paymentStatus: "未付款",
@@ -673,6 +675,7 @@ export default function OrdersPage() {
       account: order.account || "",
       customerWhatsapp: order.customerWhatsapp || "",
       customerType: order.customerType || "新零售",
+      customerName: order.customerName || "",
       orderNumber: order.orderNumber || "",
       orderStatus: order.orderStatus || "待处理",
       paymentStatus: order.paymentStatus || "未付款",
@@ -1127,9 +1130,9 @@ export default function OrdersPage() {
           </>
         )}
 
-        {/* 5. 客户属性 - order level select */}
-        <td className="py-1 px-1 border-r border-gray-100 whitespace-nowrap text-center text-[11px]">
-          {row.isFirstRow ? (
+        {/* 5. 客户属性 - order level, rowSpan合并 */}
+        {row.isFirstRow && (
+          <td className="py-1 px-1 border-r border-gray-100 whitespace-nowrap text-center text-[11px] align-middle" rowSpan={row.visibleItemCount || 1}>
             <EditableCell
               value={row.customerType || "新零售"}
               type="select"
@@ -1137,8 +1140,8 @@ export default function OrdersPage() {
               onSave={(v) => saveOrderField(row.orderId, "customerType", v)}
               selectColorFn={customerTypeColor}
             />
-          ) : null}
-        </td>
+          </td>
+        )}
 
         {/* 6. 订单编号 - item level editable */}
         <td className="py-1 px-1 border-r border-gray-100 whitespace-nowrap text-center text-[11px]">
@@ -1486,88 +1489,66 @@ export default function OrdersPage() {
           ) : null}
         </td>
 
-        {/* 32. 客户名字 */}
-        <td className="py-1 px-1 text-center text-[11px]">
-          {row.isFirstRow ? (
-            <EditableCell
-              value={row.customerName || ""}
-              type="text"
-              onSave={(v) => saveOrderField(row.orderId, "customerName", v)}
-              placeholder="客户名字"
-            />
-          ) : null}
-        </td>
-
-        {/* 33. 国家 */}
-        <td className="py-1 px-1 text-center text-[11px]">
-          {row.isFirstRow ? (
-            <EditableCell
-              value={row.customerCountry || ""}
-              type="text"
-              onSave={(v) => saveOrderField(row.orderId, "customerCountry", v)}
-              placeholder="国家"
-            />
-          ) : null}
-        </td>
-
-        {/* 34. 客户分层 */}
-        <td className="py-1 px-1 text-center text-[11px]">
-          {row.isFirstRow ? (
-            <EditableCell
-              value={row.customerTier || ""}
-              type="select"
-              selectOptions={["高价值", "中价值", "低价值", "新客户", "流失客户"]}
-              onSave={(v) => saveOrderField(row.orderId, "customerTier", v)}
-            />
-          ) : null}
-        </td>
-
-        {/* 35. 顾客等级 */}
-        <td className="py-1 px-1 text-center text-[11px]">
-          {row.isFirstRow ? (
-            <EditableCell
-              value={row.customerLevel || ""}
-              type="select"
-              selectOptions={["A", "B", "C", "D", "VIP", "普通"]}
-              onSave={(v) => saveOrderField(row.orderId, "customerLevel", v)}
-            />
-          ) : null}
-        </td>
-
-        {/* 36. 订购类目 */}
-        <td className="py-1 px-1 text-center text-[11px]">
-          {row.isFirstRow ? (
-            <EditableCell
-              value={row.orderCategory || ""}
-              type="text"
-              onSave={(v) => saveOrderField(row.orderId, "orderCategory", v)}
-              placeholder="订购类目"
-            />
-          ) : null}
-        </td>
-
-        {/* 37. 出生日期 */}
-        <td className="py-1 px-1 text-center text-[11px]">
-          {row.isFirstRow ? (
-            <EditableCell
-              value={row.customerBirthDate || ""}
-              type="date"
-              onSave={(v) => saveOrderField(row.orderId, "customerBirthDate", v)}
-            />
-          ) : null}
-        </td>
-
-        {/* 38. 客户邮箱 */}
-        <td className="py-1 px-1 text-center text-[11px]">
-          {row.isFirstRow ? (
-            <EditableCell
-              value={row.customerEmail || ""}
-              type="text"
-              onSave={(v) => saveOrderField(row.orderId, "customerEmail", v)}
-              placeholder="客户邮箱"
-            />
-          ) : null}
-        </td>
+        {/* 32-38: 客户名字、国家、客户分层、顾客等级、订购类目、出生日期、客户邮箱 - rowSpan合并 */}
+        {row.isFirstRow && (
+          <>
+            <td className="py-1 px-1 text-center text-[11px] align-middle" rowSpan={row.visibleItemCount || 1}>
+              <EditableCell
+                value={row.customerName || ""}
+                type="text"
+                onSave={(v) => saveOrderField(row.orderId, "customerName", v)}
+                placeholder="客户名字"
+              />
+            </td>
+            <td className="py-1 px-1 text-center text-[11px] align-middle" rowSpan={row.visibleItemCount || 1}>
+              <EditableCell
+                value={row.customerCountry || ""}
+                type="text"
+                onSave={(v) => saveOrderField(row.orderId, "customerCountry", v)}
+                placeholder="国家"
+              />
+            </td>
+            <td className="py-1 px-1 text-center text-[11px] align-middle" rowSpan={row.visibleItemCount || 1}>
+              <EditableCell
+                value={row.customerTier || ""}
+                type="select"
+                selectOptions={["高价值", "中价值", "低价值", "新客户", "流失客户"]}
+                onSave={(v) => saveOrderField(row.orderId, "customerTier", v)}
+              />
+            </td>
+            <td className="py-1 px-1 text-center text-[11px] align-middle" rowSpan={row.visibleItemCount || 1}>
+              <EditableCell
+                value={row.customerLevel || ""}
+                type="select"
+                selectOptions={["A", "B", "C", "D", "VIP", "普通"]}
+                onSave={(v) => saveOrderField(row.orderId, "customerLevel", v)}
+              />
+            </td>
+            <td className="py-1 px-1 text-center text-[11px] align-middle" rowSpan={row.visibleItemCount || 1}>
+              <EditableCell
+                value={row.orderCategory || ""}
+                type="text"
+                onSave={(v) => saveOrderField(row.orderId, "orderCategory", v)}
+                placeholder="订购类目"
+              />
+            </td>
+            <td className="py-1 px-1 text-center text-[11px] align-middle" rowSpan={row.visibleItemCount || 1}>
+              <EditableCell
+                value={row.customerBirthDate || ""}
+                type="date"
+                onSave={(v) => saveOrderField(row.orderId, "customerBirthDate", v)}
+              />
+            </td>
+            <td className="py-1 px-1 text-center text-[11px] align-middle" rowSpan={row.visibleItemCount || 1}>
+              <EditableCell
+                value={row.customerEmail || ""}
+                type="text"
+                onSave={(v) => saveOrderField(row.orderId, "customerEmail", v)}
+                placeholder="客户邮箱"
+              />
+            </td>
+          </>
+        )}
       </tr>
     );
   };
@@ -1894,7 +1875,7 @@ export default function OrdersPage() {
                 />
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-3 gap-4">
               <div className="space-y-2">
                 <Label>客户 WhatsApp *</Label>
                 <Input
@@ -1916,6 +1897,14 @@ export default function OrdersPage() {
                     <SelectItem value="定金-零售复购">定金-零售复购</SelectItem>
                   </SelectContent>
                 </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>客户名字</Label>
+                <Input
+                  placeholder="客户名字"
+                  value={form.customerName}
+                  onChange={(e) => setForm({ ...form, customerName: e.target.value })}
+                />
               </div>
             </div>
             <div className="space-y-2">

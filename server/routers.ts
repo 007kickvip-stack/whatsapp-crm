@@ -7,7 +7,7 @@ import { z } from "zod";
 import {
   listUsers, updateUserRole, deleteUser, getUserById, createUser,
   getUserByUsername, verifyPassword, updateUserPassword, updateUserUsername, updateUserHireDate,
-  createCustomer, updateCustomer, deleteCustomer, getCustomerById, getCustomerByWhatsapp, listCustomers, syncCustomerStats, syncCustomerFromOrder, getCustomerOrderHistory,
+  createCustomer, updateCustomer, deleteCustomer, getCustomerById, getCustomerByWhatsapp, listCustomers, syncCustomerStats, syncCustomerFromOrder, getCustomerOrderHistory, getCustomerOrderList,
   createOrder, updateOrder, deleteOrder, getOrderById, getOrderWithItems, listOrders,
   createOrderItem, updateOrderItem, deleteOrderItem, getOrderItemById, getOrderItemsByOrderId, recalculateOrderTotals,
   getOrderStats, getOrderStatusDistribution, getPaymentStatusDistribution,
@@ -214,6 +214,12 @@ export const appRouter = router({
       startDate: z.string().optional(),
       endDate: z.string().optional(),
     })).query(({ input }) => getCustomerOrderHistory(input.customerId, input.startDate, input.endDate)),
+
+    orderList: protectedProcedure.input(z.object({
+      customerId: z.number(),
+      startDate: z.string().optional(),
+      endDate: z.string().optional(),
+    })).query(({ input }) => getCustomerOrderList(input.customerId, input.startDate, input.endDate)),
   }),
 
   // ==================== Order Management ====================

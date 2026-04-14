@@ -89,9 +89,28 @@ const columns = [
   { key: "birthDate", label: "出生日期", width: "w-[110px]", editable: true, type: "date" },
 ];
 
-// 客户折线图组件
-function CustomerChart({ customerId }: { customerId: number }) {
+// 订单状态颜色映射
+const orderStatusColors: Record<string, string> = {
+  "已报货，待发货": "bg-blue-100 text-blue-800 border-blue-200",
+  "待定": "bg-gray-100 text-gray-800 border-gray-200",
+  "缺货": "bg-red-100 text-red-800 border-red-200",
+  "已发货": "bg-green-100 text-green-800 border-green-200",
+  "已发送qc视频，待确认": "bg-yellow-100 text-yellow-800 border-yellow-200",
+  "已发送qc视频，已确认": "bg-emerald-100 text-emerald-800 border-emerald-200",
+  "单号已发给顾客": "bg-purple-100 text-purple-800 border-purple-200",
+};
+
+const paymentStatusColors: Record<string, string> = {
+  "未付款": "bg-red-100 text-red-800 border-red-200",
+  "已付款": "bg-green-100 text-green-800 border-green-200",
+  "已付定金": "bg-yellow-100 text-yellow-800 border-yellow-200",
+  "尾款已付": "bg-emerald-100 text-emerald-800 border-emerald-200",
+};
+
+// 客户详情组件（折线图 + 历史订单列表）
+function CustomerDetail({ customerId }: { customerId: number }) {
   const [dateRange, setDateRange] = useState<"all" | "30d" | "90d" | "180d" | "1y">("all");
+  const [activeTab, setActiveTab] = useState<"chart" | "orders">("orders");
   
   const dateParams = useMemo(() => {
     if (dateRange === "all") return {};
@@ -104,26 +123,49 @@ function CustomerChart({ customerId }: { customerId: number }) {
     };
   }, [dateRange]);
 
-  const { data, isLoading } = trpc.customers.orderHistory.useQuery({
+  const { data: chartData, isLoading: chartLoading } = trpc.customers.orderHistory.useQuery({
     customerId,
     ...dateParams,
   });
 
-  if (isLoading) return <div className="py-4 text-center text-xs text-muted-foreground">加载中...</div>;
-  if (!data || data.length === 0) return <div className="py-4 text-center text-xs text-muted-foreground">暂无订单数据</div>;
+  const { data: orderList, isLoading: ordersLoading } = trpc.customers.orderList.useQuery({
+    customerId,
+    ...dateParams,
+  });
 
-  const chartData = data.map((d: any) => ({
-    date: d.date ? new Date(d.date).toLocaleDateString("zh-CN", { month: "short", day: "numeric" }) : "未知",
-    rawDate: d.date,
-    orderCount: d.orderCount,
-    totalUsd: Number(d.totalUsd),
-    totalCny: Number(d.totalCny),
-  }));
+  const processedChartData = useMemo(() => {
+    if (!chartData || chartData.length === 0) return [];
+    return chartData.map((d: any) => ({
+      date: d.date ? new Date(d.date).toLocaleDateString("zh-CN", { month: "short", day: "numeric" }) : "未知",
+      rawDate: d.date,
+      orderCount: d.orderCount,
+      totalUsd: Number(d.totalUsd),
+      totalCny: Number(d.totalCny),
+    }));
+  }, [chartData]);
 
   return (
     <div className="px-4 py-3 bg-muted/30">
-      <div className="flex items-center justify-between mb-2">
-        <span className="text-xs font-medium text-muted-foreground">下单趋势</span>
+      {/* 头部：标签页 + 时间筛选 */}
+      <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center gap-1">
+          <Button
+            variant={activeTab === "orders" ? "default" : "ghost"}
+            size="sm"
+            className="h-6 px-3 text-[11px]"
+            onClick={() => setActiveTab("orders")}
+          >
+            历史订单
+          </Button>
+          <Button
+            variant={activeTab === "chart" ? "default" : "ghost"}
+            size="sm"
+            className="h-6 px-3 text-[11px]"
+            onClick={() => setActiveTab("chart")}
+          >
+            消费趋势
+          </Button>
+        </div>
         <div className="flex items-center gap-1">
           {(["all", "30d", "90d", "180d", "1y"] as const).map((r) => (
             <Button
@@ -138,37 +180,127 @@ function CustomerChart({ customerId }: { customerId: number }) {
           ))}
         </div>
       </div>
-      <div className="h-[160px]">
-        <ResponsiveContainer width="100%" height="100%">
-          <LineChart data={chartData} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}>
-            <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
-            <XAxis dataKey="date" tick={{ fontSize: 10 }} />
-            <YAxis yAxisId="left" tick={{ fontSize: 10 }} />
-            <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 10 }} />
-            <RechartsTooltip
-              contentStyle={{ fontSize: 11, borderRadius: 8 }}
-              formatter={(value: number, name: string) => {
-                if (name === "orderCount") return [value, "订单数"];
-                if (name === "totalUsd") return [`$${value.toFixed(2)}`, "消费($)"];
-                if (name === "totalCny") return [`¥${value.toFixed(2)}`, "消费(¥)"];
-                return [value, name];
-              }}
-            />
-            <Legend
-              formatter={(value: string) => {
-                if (value === "orderCount") return "订单数";
-                if (value === "totalUsd") return "消费($)";
-                if (value === "totalCny") return "消费(¥)";
-                return value;
-              }}
-              wrapperStyle={{ fontSize: 10 }}
-            />
-            <Line yAxisId="left" type="monotone" dataKey="orderCount" stroke="#3b82f6" strokeWidth={2} dot={{ r: 3 }} />
-            <Line yAxisId="right" type="monotone" dataKey="totalUsd" stroke="#10b981" strokeWidth={1.5} dot={{ r: 2 }} strokeDasharray="4 2" />
-            <Line yAxisId="right" type="monotone" dataKey="totalCny" stroke="#f59e0b" strokeWidth={1.5} dot={{ r: 2 }} strokeDasharray="4 2" />
-          </LineChart>
-        </ResponsiveContainer>
-      </div>
+
+      {/* 历史订单列表 */}
+      {activeTab === "orders" && (
+        <div className="max-h-[300px] overflow-y-auto">
+          {ordersLoading ? (
+            <div className="py-4 text-center text-xs text-muted-foreground">加载中...</div>
+          ) : !orderList || orderList.length === 0 ? (
+            <div className="py-4 text-center text-xs text-muted-foreground">暂无订单数据</div>
+          ) : (
+            <table className="w-full text-[11px]">
+              <thead>
+                <tr className="bg-gray-50 border-b">
+                  <th className="py-1.5 px-2 text-left font-medium text-gray-600">订单日期</th>
+                  <th className="py-1.5 px-2 text-left font-medium text-gray-600">订单编号</th>
+                  <th className="py-1.5 px-2 text-center font-medium text-gray-600">客户属性</th>
+                  <th className="py-1.5 px-2 text-center font-medium text-gray-600">订单状态</th>
+                  <th className="py-1.5 px-2 text-center font-medium text-gray-600">付款状态</th>
+                  <th className="py-1.5 px-2 text-right font-medium text-gray-600">金额($)</th>
+                  <th className="py-1.5 px-2 text-right font-medium text-gray-600">金额(¥)</th>
+                  <th className="py-1.5 px-2 text-left font-medium text-gray-600">备注</th>
+                </tr>
+              </thead>
+              <tbody>
+                {orderList.map((order: any) => (
+                  <tr key={order.id} className="border-b border-gray-50 hover:bg-gray-50/50">
+                    <td className="py-1.5 px-2 text-gray-700">
+                      {order.orderDate ? new Date(order.orderDate).toLocaleDateString("zh-CN") : "-"}
+                    </td>
+                    <td className="py-1.5 px-2 font-medium text-primary">{order.orderNumber || "-"}</td>
+                    <td className="py-1.5 px-2 text-center">
+                      {order.customerType ? (
+                        <span className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-medium border ${customerTypeColors[order.customerType] || "bg-gray-100 text-gray-700 border-gray-200"}`}>
+                          {order.customerType}
+                        </span>
+                      ) : "-"}
+                    </td>
+                    <td className="py-1.5 px-2 text-center">
+                      {order.orderStatus ? (
+                        <span className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-medium border ${orderStatusColors[order.orderStatus] || "bg-gray-100 text-gray-700 border-gray-200"}`}>
+                          {order.orderStatus}
+                        </span>
+                      ) : "-"}
+                    </td>
+                    <td className="py-1.5 px-2 text-center">
+                      {order.paymentStatus ? (
+                        <span className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-medium border ${paymentStatusColors[order.paymentStatus] || "bg-gray-100 text-gray-700 border-gray-200"}`}>
+                          {order.paymentStatus}
+                        </span>
+                      ) : "-"}
+                    </td>
+                    <td className="py-1.5 px-2 text-right text-gray-700">
+                      {order.totalAmountUsd ? `$${Number(order.totalAmountUsd).toFixed(2)}` : "-"}
+                    </td>
+                    <td className="py-1.5 px-2 text-right text-gray-700">
+                      {order.totalAmountCny ? `¥${Number(order.totalAmountCny).toFixed(2)}` : "-"}
+                    </td>
+                    <td className="py-1.5 px-2 text-gray-500 max-w-[150px] truncate">{order.remarks || "-"}</td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot>
+                <tr className="bg-gray-50 font-medium">
+                  <td className="py-1.5 px-2">合计</td>
+                  <td className="py-1.5 px-2">{orderList.length} 笔订单</td>
+                  <td colSpan={3}></td>
+                  <td className="py-1.5 px-2 text-right text-emerald-700">
+                    ${orderList.reduce((sum: number, o: any) => sum + Number(o.totalAmountUsd || 0), 0).toFixed(2)}
+                  </td>
+                  <td className="py-1.5 px-2 text-right text-emerald-700">
+                    ¥{orderList.reduce((sum: number, o: any) => sum + Number(o.totalAmountCny || 0), 0).toFixed(2)}
+                  </td>
+                  <td></td>
+                </tr>
+              </tfoot>
+            </table>
+          )}
+        </div>
+      )}
+
+      {/* 消费趋势折线图 */}
+      {activeTab === "chart" && (
+        <div>
+          {chartLoading ? (
+            <div className="py-4 text-center text-xs text-muted-foreground">加载中...</div>
+          ) : processedChartData.length === 0 ? (
+            <div className="py-4 text-center text-xs text-muted-foreground">暂无订单数据</div>
+          ) : (
+            <div className="h-[160px]">
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={processedChartData} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}>
+                  <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
+                  <XAxis dataKey="date" tick={{ fontSize: 10 }} />
+                  <YAxis yAxisId="left" tick={{ fontSize: 10 }} />
+                  <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 10 }} />
+                  <RechartsTooltip
+                    contentStyle={{ fontSize: 11, borderRadius: 8 }}
+                    formatter={(value: number, name: string) => {
+                      if (name === "orderCount") return [value, "订单数"];
+                      if (name === "totalUsd") return [`$${value.toFixed(2)}`, "消费($)"];
+                      if (name === "totalCny") return [`¥${value.toFixed(2)}`, "消费(¥)"];
+                      return [value, name];
+                    }}
+                  />
+                  <Legend
+                    formatter={(value: string) => {
+                      if (value === "orderCount") return "订单数";
+                      if (value === "totalUsd") return "消费($)";
+                      if (value === "totalCny") return "消费(¥)";
+                      return value;
+                    }}
+                    wrapperStyle={{ fontSize: 10 }}
+                  />
+                  <Line yAxisId="left" type="monotone" dataKey="orderCount" stroke="#3b82f6" strokeWidth={2} dot={{ r: 3 }} />
+                  <Line yAxisId="right" type="monotone" dataKey="totalUsd" stroke="#10b981" strokeWidth={1.5} dot={{ r: 2 }} strokeDasharray="4 2" />
+                  <Line yAxisId="right" type="monotone" dataKey="totalCny" stroke="#f59e0b" strokeWidth={1.5} dot={{ r: 2 }} strokeDasharray="4 2" />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -810,7 +942,7 @@ export default function CustomersPage() {
                           {expandedCustomers.has(customer.id) && (
                             <tr key={`chart-${customer.id}`}>
                               <td colSpan={columns.length + 1} className="p-0 border border-gray-100">
-                                <CustomerChart customerId={customer.id} />
+                                <CustomerDetail customerId={customer.id} />
                               </td>
                             </tr>
                           )}
