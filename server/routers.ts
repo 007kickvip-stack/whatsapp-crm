@@ -7,7 +7,7 @@ import { z } from "zod";
 import {
   listUsers, updateUserRole, deleteUser, getUserById, createUser,
   getUserByUsername, verifyPassword, updateUserPassword, updateUserUsername, updateUserHireDate,
-  createCustomer, updateCustomer, deleteCustomer, getCustomerById, getCustomerByWhatsapp, listCustomers,
+  createCustomer, updateCustomer, deleteCustomer, getCustomerById, getCustomerByWhatsapp, listCustomers, syncCustomerStats,
   createOrder, updateOrder, deleteOrder, getOrderById, getOrderWithItems, listOrders,
   createOrderItem, updateOrderItem, deleteOrderItem, getOrderItemById, getOrderItemsByOrderId, recalculateOrderTotals,
   getOrderStats, getOrderStatusDistribution, getPaymentStatusDistribution,
@@ -125,8 +125,12 @@ export const appRouter = router({
   customers: router({
     list: protectedProcedure.input(z.object({
       page: z.number().default(1),
-      pageSize: z.number().default(20),
+      pageSize: z.number().default(50),
       search: z.string().optional(),
+      staffName: z.string().optional(),
+      account: z.string().optional(),
+      customerType: z.string().optional(),
+      customerLevel: z.string().optional(),
     })).query(({ input, ctx }) => {
       const isAdmin = ctx.user.role === "admin";
       return listCustomers({
@@ -149,8 +153,16 @@ export const appRouter = router({
       city: z.string().optional(),
       cityCode: z.string().optional(),
       country: z.string().optional(),
+      staffName: z.string().optional(),
+      account: z.string().optional(),
+      contactInfo: z.string().optional(),
+      customerLevel: z.string().optional(),
+      orderCategory: z.string().optional(),
+      customerName: z.string().optional(),
+      birthDate: z.string().optional(),
+      customerEmail: z.string().optional(),
     })).mutation(async ({ input, ctx }) => {
-      const id = await createCustomer({ ...input, createdById: ctx.user.id });
+      const id = await createCustomer({ ...input, createdById: ctx.user.id } as any);
       await logAction(ctx, "create", "customer", id, input.whatsapp, JSON.stringify(input));
       return { id };
     }),
@@ -166,9 +178,17 @@ export const appRouter = router({
       city: z.string().optional(),
       cityCode: z.string().optional(),
       country: z.string().optional(),
+      staffName: z.string().optional(),
+      account: z.string().optional(),
+      contactInfo: z.string().optional(),
+      customerLevel: z.string().optional(),
+      orderCategory: z.string().optional(),
+      customerName: z.string().optional(),
+      birthDate: z.string().optional(),
+      customerEmail: z.string().optional(),
     })).mutation(async ({ input, ctx }) => {
       const { id, ...data } = input;
-      await updateCustomer(id, data);
+      await updateCustomer(id, data as any);
       await logAction(ctx, "update", "customer", id, undefined, JSON.stringify(data));
       return { success: true };
     }),
@@ -176,6 +196,13 @@ export const appRouter = router({
     delete: protectedProcedure.input(z.object({ id: z.number() })).mutation(async ({ input, ctx }) => {
       await deleteCustomer(input.id);
       await logAction(ctx, "delete", "customer", input.id);
+      return { success: true };
+    }),
+
+    syncStats: protectedProcedure.input(z.object({
+      customerId: z.number().optional(),
+    })).mutation(async ({ input }) => {
+      await syncCustomerStats(input.customerId);
       return { success: true };
     }),
   }),

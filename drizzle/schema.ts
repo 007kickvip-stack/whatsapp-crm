@@ -36,6 +36,19 @@ export const customers = mysqlTable("customers", {
   city: varchar("city", { length: 128 }),
   cityCode: varchar("cityCode", { length: 32 }),
   country: varchar("country", { length: 64 }),
+  // 新增字段
+  staffName: varchar("staffName", { length: 64 }),
+  account: varchar("account", { length: 64 }),
+  contactInfo: text("contactInfo"), // 联系方式（更详细的联系信息）
+  totalOrderCount: int("totalOrderCount").default(0), // 累计订单数
+  totalSpentUsd: decimal("totalSpentUsd", { precision: 12, scale: 2 }).default("0"), // 累计消费金额($)
+  totalSpentCny: decimal("totalSpentCny", { precision: 12, scale: 2 }).default("0"), // 累计消费金额(¥)
+  firstOrderDate: date("firstOrderDate"), // 首次下单日期
+  customerLevel: varchar("customerLevel", { length: 32 }), // 顾客等级
+  orderCategory: varchar("orderCategory", { length: 255 }), // 订购类目
+  customerName: varchar("customerName", { length: 128 }), // 客户名字
+  birthDate: date("birthDate"), // 出生日期
+  customerEmail: varchar("customerEmail", { length: 320 }), // 客户邮箱
   createdById: int("createdById"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),

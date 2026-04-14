@@ -204,10 +204,14 @@ export async function listCustomers(params: {
   pageSize?: number;
   search?: string;
   createdById?: number;
+  staffName?: string;
+  account?: string;
+  customerType?: string;
+  customerLevel?: string;
 }) {
   const db = await getDb();
   if (!db) return { data: [], total: 0 };
-  const { page = 1, pageSize = 20, search, createdById } = params;
+  const { page = 1, pageSize = 50, search, createdById, staffName, account, customerType, customerLevel } = params;
   const offset = (page - 1) * pageSize;
   const conditions: SQL[] = [];
   if (search) {
@@ -215,12 +219,26 @@ export async function listCustomers(params: {
       or(
         like(customers.whatsapp, `%${search}%`),
         like(customers.contactName, `%${search}%`),
-        like(customers.country, `%${search}%`)
+        like(customers.country, `%${search}%`),
+        like(customers.customerName, `%${search}%`),
+        like(customers.customerEmail, `%${search}%`)
       )!
     );
   }
   if (createdById) {
     conditions.push(eq(customers.createdById, createdById));
+  }
+  if (staffName) {
+    conditions.push(eq(customers.staffName, staffName));
+  }
+  if (account) {
+    conditions.push(eq(customers.account, account));
+  }
+  if (customerType) {
+    conditions.push(eq(customers.customerType, customerType));
+  }
+  if (customerLevel) {
+    conditions.push(eq(customers.customerLevel, customerLevel));
   }
   const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
   const [data, countResult] = await Promise.all([
@@ -228,6 +246,44 @@ export async function listCustomers(params: {
     db.select({ count: sql<number>`count(*)` }).from(customers).where(whereClause),
   ]);
   return { data, total: countResult[0]?.count ?? 0 };
+}
+
+/**
+ * 同步客户统计数据（累计订单数、累计消费金额、首次下单日期）
+ * 从订单表自动汇总到客户表
+ */
+export async function syncCustomerStats(customerId?: number) {
+  const db = await getDb();
+  if (!db) return;
+  
+  // 获取需要同步的客户列表
+  let customerList;
+  if (customerId) {
+    const c = await db.select().from(customers).where(eq(customers.id, customerId)).limit(1);
+    customerList = c;
+  } else {
+    customerList = await db.select().from(customers);
+  }
+  
+  for (const customer of customerList) {
+    // 查询该客户的订单统计
+    const statsResult = await db.select({
+      orderCount: sql<number>`COUNT(*)`,
+      totalUsd: sql<string>`COALESCE(SUM(totalAmountUsd), 0)`,
+      totalCny: sql<string>`COALESCE(SUM(totalAmountCny), 0)`,
+      firstDate: sql<string>`MIN(orderDate)`,
+    }).from(orders).where(eq(orders.customerWhatsapp, customer.whatsapp));
+    
+    const stats = statsResult[0];
+    if (stats) {
+      await db.update(customers).set({
+        totalOrderCount: stats.orderCount || 0,
+        totalSpentUsd: String(stats.totalUsd || "0"),
+        totalSpentCny: String(stats.totalCny || "0"),
+        firstOrderDate: stats.firstDate ? new Date(stats.firstDate) : null,
+      }).where(eq(customers.id, customer.id));
+    }
+  }
 }
 
 // ==================== Order Helpers ====================

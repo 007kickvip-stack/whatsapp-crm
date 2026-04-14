@@ -1,18 +1,10 @@
-import { useState } from "react";
+import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { trpc } from "@/lib/trpc";
 import { useAuth } from "@/_core/hooks/useAuth";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-} from "@/components/ui/dialog";
 import {
   Select,
   SelectContent,
@@ -31,77 +23,116 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import {
   Plus,
   Search,
-  Edit,
   Trash2,
-  Phone,
-  MapPin,
-  Globe,
-  Users,
   ChevronLeft,
   ChevronRight,
+  Users,
+  Filter,
+  ChevronDown,
+  ChevronUp,
+  RefreshCw,
+  X,
 } from "lucide-react";
 import { toast } from "sonner";
-import { Textarea } from "@/components/ui/textarea";
+import AccountSelect from "@/components/AccountSelect";
 
-type CustomerForm = {
-  whatsapp: string;
-  customerType: string;
-  contactName: string;
-  telephone: string;
-  address: string;
-  province: string;
-  city: string;
-  cityCode: string;
-  country: string;
+// 客户属性颜色映射
+const customerTypeColors: Record<string, string> = {
+  "新零售": "bg-yellow-200 text-yellow-900 border-yellow-300",
+  "零售复购": "bg-yellow-400 text-yellow-900 border-yellow-500",
+  "定金-新零售": "bg-pink-400 text-white border-pink-500",
+  "定金-零售复购": "bg-red-600 text-white border-red-700",
 };
 
-const emptyForm: CustomerForm = {
-  whatsapp: "",
-  customerType: "新零售",
-  contactName: "",
-  telephone: "",
-  address: "",
-  province: "",
-  city: "",
-  cityCode: "",
-  country: "",
-};
+// 顾客等级选项
+const customerLevels = ["A", "B", "C", "D", "VIP", "普通"];
+
+// 表格列定义
+const columns = [
+  { key: "index", label: "序号", width: "w-[50px]", editable: false },
+  { key: "staffName", label: "客服名字", width: "w-[90px]", editable: true, type: "text" },
+  { key: "account", label: "账号", width: "w-[120px]", editable: true, type: "account" },
+  { key: "whatsapp", label: "客户WhatsApp", width: "w-[140px]", editable: true, type: "text" },
+  { key: "contactInfo", label: "联系方式", width: "w-[120px]", editable: true, type: "text" },
+  { key: "customerType", label: "客户属性", width: "w-[110px]", editable: true, type: "customerType" },
+  { key: "address", label: "收货地址", width: "w-[180px]", editable: true, type: "text" },
+  { key: "totalOrderCount", label: "累计订单数", width: "w-[90px]", editable: false, type: "number" },
+  { key: "totalSpentUsd", label: "累计消费($)", width: "w-[100px]", editable: false, type: "money" },
+  { key: "totalSpentCny", label: "累计消费(¥)", width: "w-[100px]", editable: false, type: "money" },
+  { key: "firstOrderDate", label: "首次下单日期", width: "w-[110px]", editable: false, type: "date" },
+  { key: "customerLevel", label: "顾客等级", width: "w-[80px]", editable: true, type: "level" },
+  { key: "orderCategory", label: "订购类目", width: "w-[120px]", editable: true, type: "text" },
+  { key: "customerName", label: "客户名字", width: "w-[100px]", editable: true, type: "text" },
+  { key: "birthDate", label: "出生日期", width: "w-[110px]", editable: true, type: "date" },
+  { key: "customerEmail", label: "客户邮箱", width: "w-[160px]", editable: true, type: "text" },
+];
 
 export default function CustomersPage() {
   const { user } = useAuth();
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
-  const [dialogOpen, setDialogOpen] = useState(false);
-  const [editingId, setEditingId] = useState<number | null>(null);
-  const [form, setForm] = useState<CustomerForm>(emptyForm);
   const [deleteId, setDeleteId] = useState<number | null>(null);
+  const [editingCell, setEditingCell] = useState<{ id: number; field: string } | null>(null);
+  const [editValue, setEditValue] = useState("");
+  const editInputRef = useRef<HTMLInputElement>(null);
+  const [showFilters, setShowFilters] = useState(false);
+  const [filterStaffName, setFilterStaffName] = useState("");
+  const [filterAccount, setFilterAccount] = useState("");
+  const [filterCustomerType, setFilterCustomerType] = useState("");
+  const [filterCustomerLevel, setFilterCustomerLevel] = useState("");
+  const [showNewRow, setShowNewRow] = useState(false);
+  const [newCustomer, setNewCustomer] = useState<Record<string, string>>({
+    whatsapp: "",
+    staffName: "",
+    account: "",
+    contactInfo: "",
+    customerType: "新零售",
+    address: "",
+    customerLevel: "",
+    orderCategory: "",
+    customerName: "",
+    birthDate: "",
+    customerEmail: "",
+  });
 
   const utils = trpc.useUtils();
-  const { data, isLoading } = trpc.customers.list.useQuery({
+
+  const queryInput = useMemo(() => ({
     page,
-    pageSize: 20,
+    pageSize: 50,
     search: search || undefined,
-  });
+    staffName: filterStaffName || undefined,
+    account: filterAccount || undefined,
+    customerType: filterCustomerType || undefined,
+    customerLevel: filterCustomerLevel || undefined,
+  }), [page, search, filterStaffName, filterAccount, filterCustomerType, filterCustomerLevel]);
+
+  const { data, isLoading } = trpc.customers.list.useQuery(queryInput);
 
   const createMutation = trpc.customers.create.useMutation({
     onSuccess: () => {
       toast.success("客户创建成功");
       utils.customers.list.invalidate();
-      setDialogOpen(false);
-      setForm(emptyForm);
+      setShowNewRow(false);
+      setNewCustomer({
+        whatsapp: "", staffName: "", account: "", contactInfo: "",
+        customerType: "新零售", address: "", customerLevel: "",
+        orderCategory: "", customerName: "", birthDate: "", customerEmail: "",
+      });
     },
     onError: (err) => toast.error(err.message),
   });
 
   const updateMutation = trpc.customers.update.useMutation({
     onSuccess: () => {
-      toast.success("客户更新成功");
       utils.customers.list.invalidate();
-      setDialogOpen(false);
-      setEditingId(null);
-      setForm(emptyForm);
     },
     onError: (err) => toast.error(err.message),
   });
@@ -115,180 +146,497 @@ export default function CustomersPage() {
     onError: (err) => toast.error(err.message),
   });
 
-  const handleSubmit = () => {
-    if (!form.whatsapp.trim()) {
-      toast.error("WhatsApp 号码不能为空");
+  const syncStatsMutation = trpc.customers.syncStats.useMutation({
+    onSuccess: () => {
+      toast.success("统计数据已同步");
+      utils.customers.list.invalidate();
+    },
+    onError: (err) => toast.error(err.message),
+  });
+
+  // 开始编辑单元格
+  const startEdit = useCallback((id: number, field: string, currentValue: string) => {
+    setEditingCell({ id, field });
+    setEditValue(currentValue || "");
+  }, []);
+
+  // 保存编辑
+  const saveEdit = useCallback(() => {
+    if (!editingCell) return;
+    const { id, field } = editingCell;
+    updateMutation.mutate({ id, [field]: editValue || undefined });
+    setEditingCell(null);
+    setEditValue("");
+  }, [editingCell, editValue, updateMutation]);
+
+  // 取消编辑
+  const cancelEdit = useCallback(() => {
+    setEditingCell(null);
+    setEditValue("");
+  }, []);
+
+  // 键盘事件处理
+  const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
+    if (e.key === "Enter") {
+      saveEdit();
+    } else if (e.key === "Escape") {
+      cancelEdit();
+    }
+  }, [saveEdit, cancelEdit]);
+
+  // 自动聚焦编辑输入框
+  useEffect(() => {
+    if (editingCell && editInputRef.current) {
+      editInputRef.current.focus();
+      editInputRef.current.select();
+    }
+  }, [editingCell]);
+
+  // 创建新客户
+  const handleCreateCustomer = () => {
+    if (!newCustomer.whatsapp.trim()) {
+      toast.error("客户WhatsApp不能为空");
       return;
     }
-    if (editingId) {
-      updateMutation.mutate({ id: editingId, ...form });
-    } else {
-      createMutation.mutate(form);
+    createMutation.mutate(newCustomer as any);
+  };
+
+  // 获取单元格显示值
+  const getCellValue = (customer: any, col: typeof columns[0], rowIndex: number) => {
+    if (col.key === "index") return String((page - 1) * 50 + rowIndex + 1);
+    const val = customer[col.key];
+    if (val === null || val === undefined) return "";
+    if (col.type === "money") return Number(val).toFixed(2);
+    if (col.type === "date" && val) {
+      try {
+        const d = new Date(val);
+        return d.toISOString().split("T")[0];
+      } catch { return String(val); }
     }
+    return String(val);
   };
 
-  const handleEdit = (customer: any) => {
-    setEditingId(customer.id);
-    setForm({
-      whatsapp: customer.whatsapp || "",
-      customerType: customer.customerType || "新零售",
-      contactName: customer.contactName || "",
-      telephone: customer.telephone || "",
-      address: customer.address || "",
-      province: customer.province || "",
-      city: customer.city || "",
-      cityCode: customer.cityCode || "",
-      country: customer.country || "",
-    });
-    setDialogOpen(true);
+  const totalPages = Math.ceil((data?.total ?? 0) / 50);
+  const hasActiveFilters = filterStaffName || filterAccount || filterCustomerType || filterCustomerLevel;
+
+  // 渲染可编辑单元格
+  const renderCell = (customer: any, col: typeof columns[0], rowIndex: number) => {
+    const cellValue = getCellValue(customer, col, rowIndex);
+    const isEditing = editingCell?.id === customer.id && editingCell?.field === col.key;
+
+    // 序号列
+    if (col.key === "index") {
+      return <span className="text-muted-foreground text-xs">{cellValue}</span>;
+    }
+
+    // 不可编辑列
+    if (!col.editable) {
+      if (col.type === "money") {
+        return <span className="font-mono text-xs">{cellValue !== "0.00" ? cellValue : "-"}</span>;
+      }
+      if (col.type === "number") {
+        return <span className="font-mono text-xs">{Number(cellValue) > 0 ? cellValue : "-"}</span>;
+      }
+      if (col.type === "date") {
+        return <span className="text-xs">{cellValue || "-"}</span>;
+      }
+      return <span className="text-xs">{cellValue || "-"}</span>;
+    }
+
+    // 编辑中
+    if (isEditing) {
+      // 客户属性下拉
+      if (col.type === "customerType") {
+        return (
+          <Select value={editValue} onValueChange={(v) => {
+            updateMutation.mutate({ id: customer.id, [col.key]: v });
+            setEditingCell(null);
+          }}>
+            <SelectTrigger className="h-7 text-xs border-primary">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="新零售">新零售</SelectItem>
+              <SelectItem value="零售复购">零售复购</SelectItem>
+              <SelectItem value="定金-新零售">定金-新零售</SelectItem>
+              <SelectItem value="定金-零售复购">定金-零售复购</SelectItem>
+            </SelectContent>
+          </Select>
+        );
+      }
+      // 顾客等级下拉
+      if (col.type === "level") {
+        return (
+          <Select value={editValue} onValueChange={(v) => {
+            updateMutation.mutate({ id: customer.id, [col.key]: v });
+            setEditingCell(null);
+          }}>
+            <SelectTrigger className="h-7 text-xs border-primary">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {customerLevels.map(l => (
+                <SelectItem key={l} value={l}>{l}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        );
+      }
+      // 账号下拉
+      if (col.type === "account") {
+        return (
+          <AccountSelect
+            value={editValue}
+            onValueChange={(v: string) => {
+              updateMutation.mutate({ id: customer.id, [col.key]: v });
+              setEditingCell(null);
+            }}
+            compact
+          />
+        );
+      }
+      // 日期输入
+      if (col.type === "date") {
+        return (
+          <input
+            type="date"
+            ref={editInputRef as any}
+            value={editValue}
+            onChange={(e) => setEditValue(e.target.value)}
+            onBlur={saveEdit}
+            onKeyDown={handleKeyDown}
+            className="w-full h-7 text-xs border border-primary rounded px-1 bg-background"
+          />
+        );
+      }
+      // 文本输入
+      return (
+        <input
+          ref={editInputRef}
+          value={editValue}
+          onChange={(e) => setEditValue(e.target.value)}
+          onBlur={saveEdit}
+          onKeyDown={handleKeyDown}
+          className="w-full h-7 text-xs border border-primary rounded px-1 bg-background"
+        />
+      );
+    }
+
+    // 显示模式
+    if (col.type === "customerType") {
+      const colorClass = customerTypeColors[cellValue] || "bg-gray-100 text-gray-700 border-gray-200";
+      return (
+        <span
+          className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-medium border cursor-pointer ${colorClass}`}
+          onClick={() => startEdit(customer.id, col.key, cellValue)}
+        >
+          {cellValue || "新零售"}
+        </span>
+      );
+    }
+
+    return (
+      <span
+        className="text-xs cursor-pointer hover:bg-muted/50 block w-full min-h-[20px] px-0.5 rounded"
+        onClick={() => startEdit(customer.id, col.key, cellValue)}
+      >
+        {cellValue || <span className="text-muted-foreground/40">-</span>}
+      </span>
+    );
   };
 
-  const totalPages = Math.ceil((data?.total ?? 0) / 20);
+  // 渲染新建行的单元格
+  const renderNewCell = (col: typeof columns[0]) => {
+    if (col.key === "index") return <span className="text-muted-foreground text-xs">新</span>;
+    if (!col.editable) return <span className="text-muted-foreground/40 text-xs">自动</span>;
+
+    if (col.type === "customerType") {
+      return (
+        <Select value={newCustomer.customerType || "新零售"} onValueChange={(v) => setNewCustomer(prev => ({ ...prev, customerType: v }))}>
+          <SelectTrigger className="h-7 text-xs">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="新零售">新零售</SelectItem>
+            <SelectItem value="零售复购">零售复购</SelectItem>
+            <SelectItem value="定金-新零售">定金-新零售</SelectItem>
+            <SelectItem value="定金-零售复购">定金-零售复购</SelectItem>
+          </SelectContent>
+        </Select>
+      );
+    }
+    if (col.type === "level") {
+      return (
+        <Select value={newCustomer.customerLevel || ""} onValueChange={(v) => setNewCustomer(prev => ({ ...prev, customerLevel: v }))}>
+          <SelectTrigger className="h-7 text-xs">
+            <SelectValue placeholder="-" />
+          </SelectTrigger>
+          <SelectContent>
+            {customerLevels.map(l => (
+              <SelectItem key={l} value={l}>{l}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      );
+    }
+    if (col.type === "account") {
+      return (
+        <AccountSelect
+          value={newCustomer.account || ""}
+          onValueChange={(v: string) => setNewCustomer(prev => ({ ...prev, account: v }))}
+          compact
+        />
+      );
+    }
+    if (col.type === "date") {
+      return (
+        <input
+          type="date"
+          value={newCustomer[col.key] || ""}
+          onChange={(e) => setNewCustomer(prev => ({ ...prev, [col.key]: e.target.value }))}
+          className="w-full h-7 text-xs border rounded px-1 bg-background"
+        />
+      );
+    }
+    return (
+      <input
+        value={newCustomer[col.key] || ""}
+        onChange={(e) => setNewCustomer(prev => ({ ...prev, [col.key]: e.target.value }))}
+        placeholder={col.key === "whatsapp" ? "必填" : ""}
+        className={`w-full h-7 text-xs border rounded px-1 bg-background ${col.key === "whatsapp" ? "border-orange-300" : ""}`}
+      />
+    );
+  };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
+      {/* 顶部标题栏 */}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">客户管理</h1>
-          <p className="text-muted-foreground mt-1">
-            管理您的 WhatsApp 客户信息
+          <p className="text-muted-foreground mt-0.5 text-sm">
+            管理客户信息，共 {data?.total ?? 0} 条记录
           </p>
         </div>
-        <Button
-          onClick={() => {
-            setEditingId(null);
-            setForm(emptyForm);
-            setDialogOpen(true);
-          }}
-          className="gap-2"
-        >
-          <Plus className="h-4 w-4" />
-          新增客户
-        </Button>
+        <div className="flex items-center gap-2">
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => syncStatsMutation.mutate({})}
+                disabled={syncStatsMutation.isPending}
+                className="gap-1.5"
+              >
+                <RefreshCw className={`h-3.5 w-3.5 ${syncStatsMutation.isPending ? "animate-spin" : ""}`} />
+                同步统计
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>从订单表自动同步累计订单数、消费金额、首次下单日期</TooltipContent>
+          </Tooltip>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setShowFilters(!showFilters)}
+            className="gap-1.5"
+          >
+            <Filter className="h-3.5 w-3.5" />
+            筛选
+            {hasActiveFilters && <Badge variant="secondary" className="ml-1 h-4 px-1 text-[10px]">!</Badge>}
+            {showFilters ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+          </Button>
+          <Button
+            size="sm"
+            onClick={() => setShowNewRow(true)}
+            className="gap-1.5"
+          >
+            <Plus className="h-3.5 w-3.5" />
+            新增客户
+          </Button>
+        </div>
       </div>
 
-      {/* Search */}
-      <Card className="border-0 shadow-sm">
-        <CardContent className="pt-4 pb-4">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder="搜索客户（WhatsApp、姓名、国家）..."
-              value={search}
-              onChange={(e) => {
-                setSearch(e.target.value);
-                setPage(1);
-              }}
-              className="pl-10"
-            />
-          </div>
-        </CardContent>
-      </Card>
+      {/* 筛选栏 */}
+      {showFilters && (
+        <Card className="border-0 shadow-sm">
+          <CardContent className="pt-3 pb-3">
+            <div className="grid grid-cols-5 gap-3">
+              <div>
+                <label className="text-xs text-muted-foreground mb-1 block">搜索</label>
+                <div className="relative">
+                  <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+                  <Input
+                    placeholder="WhatsApp/姓名/邮箱..."
+                    value={search}
+                    onChange={(e) => { setSearch(e.target.value); setPage(1); }}
+                    className="pl-8 h-8 text-xs"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="text-xs text-muted-foreground mb-1 block">客服名字</label>
+                <Input
+                  placeholder="全部"
+                  value={filterStaffName}
+                  onChange={(e) => { setFilterStaffName(e.target.value); setPage(1); }}
+                  className="h-8 text-xs"
+                />
+              </div>
+              <div>
+                <label className="text-xs text-muted-foreground mb-1 block">账号</label>
+                <Input
+                  placeholder="全部"
+                  value={filterAccount}
+                  onChange={(e) => { setFilterAccount(e.target.value); setPage(1); }}
+                  className="h-8 text-xs"
+                />
+              </div>
+              <div>
+                <label className="text-xs text-muted-foreground mb-1 block">客户属性</label>
+                <Select value={filterCustomerType} onValueChange={(v) => { setFilterCustomerType(v === "all" ? "" : v); setPage(1); }}>
+                  <SelectTrigger className="h-8 text-xs">
+                    <SelectValue placeholder="全部" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">全部</SelectItem>
+                    <SelectItem value="新零售">新零售</SelectItem>
+                    <SelectItem value="零售复购">零售复购</SelectItem>
+                    <SelectItem value="定金-新零售">定金-新零售</SelectItem>
+                    <SelectItem value="定金-零售复购">定金-零售复购</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <label className="text-xs text-muted-foreground mb-1 block">顾客等级</label>
+                <Select value={filterCustomerLevel} onValueChange={(v) => { setFilterCustomerLevel(v === "all" ? "" : v); setPage(1); }}>
+                  <SelectTrigger className="h-8 text-xs">
+                    <SelectValue placeholder="全部" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">全部</SelectItem>
+                    {customerLevels.map(l => (
+                      <SelectItem key={l} value={l}>{l}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            {hasActiveFilters && (
+              <div className="mt-2 flex items-center gap-2">
+                <span className="text-xs text-muted-foreground">已筛选</span>
+                <Button variant="ghost" size="sm" className="h-6 text-xs gap-1" onClick={() => {
+                  setSearch(""); setFilterStaffName(""); setFilterAccount("");
+                  setFilterCustomerType(""); setFilterCustomerLevel(""); setPage(1);
+                }}>
+                  <X className="h-3 w-3" /> 清除全部
+                </Button>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
-      {/* Customer List */}
+      {/* 表格 */}
       <Card className="border-0 shadow-sm">
         <CardContent className="p-0">
           {isLoading ? (
-            <div className="p-12 text-center text-muted-foreground">
-              加载中...
-            </div>
-          ) : data?.data && data.data.length > 0 ? (
+            <div className="p-12 text-center text-muted-foreground">加载中...</div>
+          ) : (
             <>
               <div className="overflow-x-auto">
-                <table className="w-full text-sm">
+                <table className="w-full text-sm border-collapse">
                   <thead>
-                    <tr className="border-b bg-muted/30">
-                      <th className="text-left py-3 px-4 font-medium text-muted-foreground">
-                        WhatsApp
-                      </th>
-                      <th className="text-left py-3 px-4 font-medium text-muted-foreground">
-                        姓名
-                      </th>
-                      <th className="text-left py-3 px-4 font-medium text-muted-foreground">
-                        客户属性
-                      </th>
-                      <th className="text-left py-3 px-4 font-medium text-muted-foreground">
-                        国家
-                      </th>
-                      <th className="text-left py-3 px-4 font-medium text-muted-foreground">
-                        城市
-                      </th>
-                      <th className="text-left py-3 px-4 font-medium text-muted-foreground">
-                        创建时间
-                      </th>
-                      <th className="text-right py-3 px-4 font-medium text-muted-foreground">
+                    <tr className="bg-[#D9F3FD]">
+                      {columns.map((col) => (
+                        <th
+                          key={col.key}
+                          className={`${col.width} text-center py-2 px-2 font-bold text-xs text-black border border-gray-200 whitespace-nowrap`}
+                        >
+                          {col.label}
+                        </th>
+                      ))}
+                      <th className="w-[50px] text-center py-2 px-2 font-bold text-xs text-black border border-gray-200">
                         操作
                       </th>
                     </tr>
                   </thead>
                   <tbody>
-                    {data.data.map((customer) => (
-                      <tr
-                        key={customer.id}
-                        className="border-b last:border-0 hover:bg-muted/20 transition-colors"
-                      >
-                        <td className="py-3 px-4">
-                          <div className="flex items-center gap-2">
-                            <Phone className="h-3.5 w-3.5 text-primary" />
-                            <span className="font-medium">
-                              {customer.whatsapp}
-                            </span>
-                          </div>
-                        </td>
-                        <td className="py-3 px-4">
-                          {customer.contactName || "-"}
-                        </td>
-                        <td className="py-3 px-4">
-                          <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium border ${
-                            customer.customerType === "新零售" ? "bg-yellow-200 text-yellow-900 border-yellow-300" :
-                            customer.customerType === "零售复购" ? "bg-yellow-400 text-yellow-900 border-yellow-500" :
-                            customer.customerType === "定金-新零售" ? "bg-pink-400 text-white border-pink-500" :
-                            customer.customerType === "定金-零售复购" ? "bg-red-600 text-white border-red-700" :
-                            "bg-gray-100 text-gray-700 border-gray-200"
-                          }`}>
-                            {customer.customerType || "新零售"}
-                          </span>
-                        </td>
-                        <td className="py-3 px-4">
-                          <div className="flex items-center gap-1.5">
-                            <Globe className="h-3.5 w-3.5 text-muted-foreground" />
-                            {customer.country || "-"}
-                          </div>
-                        </td>
-                        <td className="py-3 px-4">{customer.city || "-"}</td>
-                        <td className="py-3 px-4 text-muted-foreground">
-                          {new Date(customer.createdAt).toLocaleDateString()}
-                        </td>
-                        <td className="py-3 px-4 text-right">
-                          <div className="flex items-center justify-end gap-1">
+                    {/* 新建行 */}
+                    {showNewRow && (
+                      <tr className="bg-green-50 border-b border-gray-200">
+                        {columns.map((col) => (
+                          <td key={col.key} className={`${col.width} py-1 px-1.5 text-center border border-gray-200`}>
+                            {renderNewCell(col)}
+                          </td>
+                        ))}
+                        <td className="py-1 px-1 text-center border border-gray-200">
+                          <div className="flex items-center justify-center gap-0.5">
                             <Button
                               variant="ghost"
                               size="icon"
-                              className="h-8 w-8"
-                              onClick={() => handleEdit(customer)}
+                              className="h-6 w-6 text-green-600 hover:text-green-700"
+                              onClick={handleCreateCustomer}
+                              disabled={createMutation.isPending}
                             >
-                              <Edit className="h-3.5 w-3.5" />
+                              <Plus className="h-3.5 w-3.5" />
                             </Button>
                             <Button
                               variant="ghost"
                               size="icon"
-                              className="h-8 w-8 text-destructive hover:text-destructive"
-                              onClick={() => setDeleteId(customer.id)}
+                              className="h-6 w-6 text-muted-foreground"
+                              onClick={() => setShowNewRow(false)}
                             >
-                              <Trash2 className="h-3.5 w-3.5" />
+                              <X className="h-3.5 w-3.5" />
                             </Button>
                           </div>
                         </td>
                       </tr>
-                    ))}
+                    )}
+                    {/* 数据行 */}
+                    {data?.data && data.data.length > 0 ? (
+                      data.data.map((customer, idx) => (
+                        <tr
+                          key={customer.id}
+                          className="border-b border-gray-200 hover:bg-muted/20 transition-colors"
+                        >
+                          {columns.map((col) => (
+                            <td
+                              key={col.key}
+                              className={`${col.width} py-1 px-1.5 text-center border border-gray-100 align-middle`}
+                            >
+                              {renderCell(customer, col, idx)}
+                            </td>
+                          ))}
+                          <td className="py-1 px-1 text-center border border-gray-100">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-6 w-6 text-destructive hover:text-destructive"
+                              onClick={() => setDeleteId(customer.id)}
+                            >
+                              <Trash2 className="h-3 w-3" />
+                            </Button>
+                          </td>
+                        </tr>
+                      ))
+                    ) : (
+                      <tr>
+                        <td colSpan={columns.length + 1} className="py-12 text-center text-muted-foreground">
+                          <Users className="h-10 w-10 mx-auto mb-3 opacity-40" />
+                          <p>暂无客户数据</p>
+                          <p className="text-xs mt-1">点击"新增客户"开始添加</p>
+                        </td>
+                      </tr>
+                    )}
                   </tbody>
                 </table>
               </div>
-              {/* Pagination */}
+
+              {/* 分页 */}
               {totalPages > 1 && (
                 <div className="flex items-center justify-between px-4 py-3 border-t">
                   <p className="text-sm text-muted-foreground">
-                    共 {data.total} 条记录
+                    共 {data?.total ?? 0} 条记录，第 {page}/{totalPages} 页
                   </p>
                   <div className="flex items-center gap-2">
                     <Button
@@ -299,9 +647,7 @@ export default function CustomersPage() {
                     >
                       <ChevronLeft className="h-4 w-4" />
                     </Button>
-                    <span className="text-sm">
-                      {page} / {totalPages}
-                    </span>
+                    <span className="text-sm">{page} / {totalPages}</span>
                     <Button
                       variant="outline"
                       size="sm"
@@ -314,155 +660,12 @@ export default function CustomersPage() {
                 </div>
               )}
             </>
-          ) : (
-            <div className="p-12 text-center text-muted-foreground">
-              <Users className="h-10 w-10 mx-auto mb-3 opacity-40" />
-              <p>暂无客户数据</p>
-              <p className="text-xs mt-1">点击"新增客户"开始添加</p>
-            </div>
           )}
         </CardContent>
       </Card>
 
-      {/* Create/Edit Dialog */}
-      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>
-              {editingId ? "编辑客户" : "新增客户"}
-            </DialogTitle>
-          </DialogHeader>
-          <div className="grid gap-4 py-4">
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label>WhatsApp 号码 *</Label>
-                <Input
-                  placeholder="+44 7312 035806"
-                  value={form.whatsapp}
-                  onChange={(e) =>
-                    setForm({ ...form, whatsapp: e.target.value })
-                  }
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>客户属性</Label>
-                <Select
-                  value={form.customerType}
-                  onValueChange={(v) =>
-                    setForm({ ...form, customerType: v })
-                  }
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="新零售">新零售</SelectItem>
-                    <SelectItem value="零售复购">零售复购</SelectItem>
-                    <SelectItem value="定金-新零售">定金-新零售</SelectItem>
-                    <SelectItem value="定金-零售复购">定金-零售复购</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label>联系人姓名</Label>
-                <Input
-                  placeholder="姓名"
-                  value={form.contactName}
-                  onChange={(e) =>
-                    setForm({ ...form, contactName: e.target.value })
-                  }
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>电话</Label>
-                <Input
-                  placeholder="电话号码"
-                  value={form.telephone}
-                  onChange={(e) =>
-                    setForm({ ...form, telephone: e.target.value })
-                  }
-                />
-              </div>
-            </div>
-            <div className="space-y-2">
-              <Label>地址</Label>
-              <Textarea
-                placeholder="详细地址"
-                value={form.address}
-                onChange={(e) =>
-                  setForm({ ...form, address: e.target.value })
-                }
-                rows={2}
-              />
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label>省/州</Label>
-                <Input
-                  placeholder="省/州"
-                  value={form.province}
-                  onChange={(e) =>
-                    setForm({ ...form, province: e.target.value })
-                  }
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>城市</Label>
-                <Input
-                  placeholder="城市"
-                  value={form.city}
-                  onChange={(e) =>
-                    setForm({ ...form, city: e.target.value })
-                  }
-                />
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label>邮编</Label>
-                <Input
-                  placeholder="邮编"
-                  value={form.cityCode}
-                  onChange={(e) =>
-                    setForm({ ...form, cityCode: e.target.value })
-                  }
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>国家</Label>
-                <Input
-                  placeholder="国家"
-                  value={form.country}
-                  onChange={(e) =>
-                    setForm({ ...form, country: e.target.value })
-                  }
-                />
-              </div>
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setDialogOpen(false)}>
-              取消
-            </Button>
-            <Button
-              onClick={handleSubmit}
-              disabled={createMutation.isPending || updateMutation.isPending}
-            >
-              {createMutation.isPending || updateMutation.isPending
-                ? "保存中..."
-                : "保存"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Delete Confirmation */}
-      <AlertDialog
-        open={deleteId !== null}
-        onOpenChange={() => setDeleteId(null)}
-      >
+      {/* 删除确认 */}
+      <AlertDialog open={deleteId !== null} onOpenChange={() => setDeleteId(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>确认删除</AlertDialogTitle>
