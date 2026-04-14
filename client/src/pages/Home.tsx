@@ -274,19 +274,59 @@ export default function Home() {
             <CardTitle className="text-sm">客服总营业额排行榜</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="h-[280px]">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={staffRanking} layout="vertical">
-                  <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                  <XAxis type="number" tick={{ fontSize: 11 }} tickFormatter={(v) => `¥${fmt(v)}`} />
-                  <YAxis type="category" dataKey="staffName" tick={{ fontSize: 11 }} width={70} tickFormatter={(v) => v || "未知"} />
-                  <Tooltip formatter={(v: number, name: string) => [fmtMoney(v), name === "totalRevenueCny" ? "营业额" : "利润"]} />
-                  <Legend formatter={(v) => v === "totalRevenueCny" ? "营业额" : "利润"} />
-                  <Bar dataKey="totalRevenueCny" fill="#10b981" radius={[0, 4, 4, 0]} />
-                  <Bar dataKey="totalProfit" fill="#f59e0b" radius={[0, 4, 4, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
+            {/* 前3名奖牌展示 */}
+            {staffRanking.length > 0 && (
+              <div className="flex items-end justify-center gap-4 mb-6 pt-2">
+                {/* 第2名 - 银牌 */}
+                {staffRanking.length > 1 && (
+                  <div className="flex flex-col items-center" style={{ marginBottom: 0 }}>
+                    <div className="relative">
+                      <div className="w-16 h-16 rounded-full bg-gradient-to-b from-gray-200 to-gray-400 flex items-center justify-center shadow-md">
+                        <span className="text-white font-bold text-xl">2</span>
+                      </div>
+                    </div>
+                    <p className="text-sm font-medium mt-2 text-gray-700">{staffRanking[1].staffName || "未知"}</p>
+                    <p className="text-lg font-bold text-gray-800">¥{staffRanking[1].totalRevenueCny.toLocaleString()}</p>
+                  </div>
+                )}
+                {/* 第1名 - 金牌 */}
+                <div className="flex flex-col items-center -mt-4">
+                  <div className="relative">
+                    <div className="w-20 h-20 rounded-full bg-gradient-to-b from-yellow-300 to-yellow-500 flex items-center justify-center shadow-lg ring-4 ring-yellow-200">
+                      <span className="text-white font-bold text-2xl">1</span>
+                    </div>
+                  </div>
+                  <p className="text-sm font-semibold mt-2 text-gray-800">{staffRanking[0].staffName || "未知"}</p>
+                  <p className="text-xl font-bold text-yellow-600">¥{staffRanking[0].totalRevenueCny.toLocaleString()}</p>
+                </div>
+                {/* 第3名 - 铜牌 */}
+                {staffRanking.length > 2 && (
+                  <div className="flex flex-col items-center" style={{ marginBottom: 0 }}>
+                    <div className="relative">
+                      <div className="w-16 h-16 rounded-full bg-gradient-to-b from-orange-300 to-orange-500 flex items-center justify-center shadow-md">
+                        <span className="text-white font-bold text-xl">3</span>
+                      </div>
+                    </div>
+                    <p className="text-sm font-medium mt-2 text-gray-700">{staffRanking[2].staffName || "未知"}</p>
+                    <p className="text-lg font-bold text-orange-600">¥{staffRanking[2].totalRevenueCny.toLocaleString()}</p>
+                  </div>
+                )}
+              </div>
+            )}
+            {/* 第4名及以后 - 列表形式 */}
+            {staffRanking.length > 3 && (
+              <div className="border-t pt-3">
+                {staffRanking.slice(3).map((s: any, i: number) => (
+                  <div key={s.staffName} className="flex items-center justify-between py-2.5 px-3 hover:bg-gray-50 rounded-md">
+                    <div className="flex items-center gap-3">
+                      <span className="text-sm font-medium text-muted-foreground w-5">{i + 4}</span>
+                      <span className="text-sm font-medium">{s.staffName || "未知"}</span>
+                    </div>
+                    <span className="text-sm font-semibold">¥{s.totalRevenueCny.toLocaleString()}</span>
+                  </div>
+                ))}
+              </div>
+            )}
           </CardContent>
         </Card>
       )}
