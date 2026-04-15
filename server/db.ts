@@ -2489,7 +2489,7 @@ export async function syncOrderToPaypalIncome(orderId: number, userId: number) {
   if (existingRows.length > 0) return;
   
   const orderResult = await db.execute(sql`
-    SELECT o.id, o.orderDate, o.account, o.customerWhatsapp, o.customerName,
+    SELECT o.id, o.orderDate, o.orderNumber, o.account, o.customerWhatsapp, o.customerName,
            o.paymentAmount, o.staffName, o.receivingAccount,
            (SELECT oi.paymentScreenshotUrl FROM order_items oi WHERE oi.orderId = o.id AND oi.paymentScreenshotUrl IS NOT NULL LIMIT 1) as paymentScreenshotUrl
     FROM orders o
@@ -2513,6 +2513,7 @@ export async function syncOrderToPaypalIncome(orderId: number, userId: number) {
     receivingAccount: row.receivingAccount || null,
     staffName: row.staffName || null,
     paymentType: null,
+    orderNumber: row.orderNumber || null,
     remarks: `自动同步自订单#${row.id}`,
     orderId: orderId,
     paymentId: null,
@@ -2526,7 +2527,7 @@ export async function updatePaypalIncomeFromOrder(orderId: number) {
   if (!db) return;
   
   const orderResult = await db.execute(sql`
-    SELECT o.id, o.orderDate, o.account, o.customerWhatsapp, o.customerName,
+    SELECT o.id, o.orderDate, o.orderNumber, o.account, o.customerWhatsapp, o.customerName,
            o.staffName
     FROM orders o
     WHERE o.id = ${orderId}
@@ -2541,7 +2542,8 @@ export async function updatePaypalIncomeFromOrder(orderId: number) {
       account = ${row.account || null},
       customerWhatsapp = ${row.customerWhatsapp || null},
       customerName = ${row.customerName || null},
-      staffName = ${row.staffName || null}
+      staffName = ${row.staffName || null},
+      orderNumber = ${row.orderNumber || null}
     WHERE orderId = ${orderId}
   `);
 }
@@ -2569,7 +2571,7 @@ export async function syncPaymentToPaypalIncome(paymentId: number, orderId: numb
   const result = await db.execute(sql`
     SELECT op.id as paymentId, op.paymentType, op.amount, op.screenshotUrl,
            op.paymentDate, op.receivingAccount,
-           o.orderDate, o.account, o.customerWhatsapp, o.customerName, o.staffName
+           o.orderDate, o.orderNumber, o.account, o.customerWhatsapp, o.customerName, o.staffName
     FROM order_payments op
     JOIN orders o ON o.id = op.orderId
     WHERE op.id = ${paymentId}
@@ -2592,6 +2594,7 @@ export async function syncPaymentToPaypalIncome(paymentId: number, orderId: numb
     receivingAccount: row.receivingAccount || null,
     staffName: row.staffName || null,
     paymentType: row.paymentType || null,
+    orderNumber: row.orderNumber || null,
     remarks: `自动同步自订单#${orderId} (${row.paymentType})`,
     orderId: orderId,
     paymentId: paymentId,
@@ -2606,7 +2609,7 @@ export async function updatePaypalIncomeFromPayment(paymentId: number) {
   
   const result = await db.execute(sql`
     SELECT op.amount, op.screenshotUrl, op.paymentDate, op.receivingAccount, op.paymentType,
-           o.id as orderId
+           o.id as orderId, o.orderNumber
     FROM order_payments op
     JOIN orders o ON o.id = op.orderId
     WHERE op.id = ${paymentId}
@@ -2621,7 +2624,8 @@ export async function updatePaypalIncomeFromPayment(paymentId: number) {
       paymentScreenshotUrl = ${row.screenshotUrl || null},
       incomeDate = ${row.paymentDate || null},
       receivingAccount = ${row.receivingAccount || null},
-      paymentType = ${row.paymentType || null}
+      paymentType = ${row.paymentType || null},
+      orderNumber = ${row.orderNumber || null}
     WHERE paymentId = ${paymentId}
   `);
 }
@@ -2666,7 +2670,7 @@ export async function syncOrdersToPaypalIncome(userId: number) {
   const paymentsToSync = await db.execute(sql`
     SELECT op.id as paymentId, op.orderId, op.paymentType, op.amount, 
            op.screenshotUrl, op.paymentDate, op.receivingAccount, op.remarks,
-           o.orderDate, o.account, o.customerWhatsapp, o.customerName, o.staffName
+           o.orderDate, o.orderNumber, o.account, o.customerWhatsapp, o.customerName, o.staffName
     FROM order_payments op
     JOIN orders o ON o.id = op.orderId
     WHERE op.amount > 0
@@ -2692,6 +2696,7 @@ export async function syncOrdersToPaypalIncome(userId: number) {
       receivingAccount: row.receivingAccount || null,
       staffName: row.staffName || null,
       paymentType: row.paymentType || null,
+      orderNumber: row.orderNumber || null,
       remarks: `自动同步自订单#${row.orderId} (${row.paymentType})`,
       orderId: row.orderId,
       paymentId: row.paymentId,
@@ -2702,7 +2707,7 @@ export async function syncOrdersToPaypalIncome(userId: number) {
 
   // 2. 兼容旧数据：同步没有order_payments但有paymentAmount的订单（按orderId去重，且该订单没有任何order_payments记录）
   const legacyOrders = await db.execute(sql`
-    SELECT o.id, o.orderDate, o.account, o.customerWhatsapp, o.customerName,
+    SELECT o.id, o.orderDate, o.orderNumber, o.account, o.customerWhatsapp, o.customerName,
            o.paymentAmount, o.staffName, o.receivingAccount,
            (SELECT oi.paymentScreenshotUrl FROM order_items oi WHERE oi.orderId = o.id AND oi.paymentScreenshotUrl IS NOT NULL LIMIT 1) as paymentScreenshotUrl
     FROM orders o
@@ -2732,6 +2737,7 @@ export async function syncOrdersToPaypalIncome(userId: number) {
       receivingAccount: row.receivingAccount || null,
       staffName: row.staffName || null,
       paymentType: null,
+      orderNumber: row.orderNumber || null,
       remarks: `自动同步自订单#${row.id}`,
       orderId: row.id,
       paymentId: null,
@@ -2741,6 +2747,69 @@ export async function syncOrdersToPaypalIncome(userId: number) {
   }
   
   return { created };
+}
+
+// 修复同步：更新已有PayPal收入记录中缺失的截图、日期和订单编号
+export async function repairPaypalIncomeSync() {
+  const db = await getDb();
+  if (!db) return { updated: 0 };
+  let updated = 0;
+
+  // 1. 修复有paymentId的记录（从order_payments同步）
+  const paymentLinked = await db.execute(sql`
+    SELECT pi.id, op.screenshotUrl, op.paymentDate, op.paymentType, op.receivingAccount,
+           o.orderNumber, o.orderDate
+    FROM paypal_income pi
+    JOIN order_payments op ON op.id = pi.paymentId
+    JOIN orders o ON o.id = pi.orderId
+    WHERE pi.paymentId IS NOT NULL
+      AND (
+        (pi.paymentScreenshotUrl IS NULL AND op.screenshotUrl IS NOT NULL AND op.screenshotUrl != '')
+        OR (pi.incomeDate IS NULL AND op.paymentDate IS NOT NULL)
+        OR (pi.orderNumber IS NULL AND o.orderNumber IS NOT NULL AND o.orderNumber != '')
+        OR (pi.paymentType IS NULL AND op.paymentType IS NOT NULL AND op.paymentType != '')
+      )
+  `);
+  const paymentRows = (paymentLinked as any)[0] || [];
+  for (const row of paymentRows) {
+    await db.execute(sql`
+      UPDATE paypal_income SET
+        paymentScreenshotUrl = COALESCE(paymentScreenshotUrl, ${row.screenshotUrl || null}),
+        incomeDate = COALESCE(incomeDate, ${row.paymentDate || row.orderDate || null}),
+        orderNumber = COALESCE(orderNumber, ${row.orderNumber || null}),
+        paymentType = COALESCE(paymentType, ${row.paymentType || null}),
+        receivingAccount = COALESCE(receivingAccount, ${row.receivingAccount || null})
+      WHERE id = ${row.id}
+    `);
+    updated++;
+  }
+
+  // 2. 修复有orderId但没有paymentId的旧记录（从订单同步）
+  const orderLinked = await db.execute(sql`
+    SELECT pi.id, o.orderNumber, o.orderDate,
+           (SELECT oi.paymentScreenshotUrl FROM order_items oi WHERE oi.orderId = o.id AND oi.paymentScreenshotUrl IS NOT NULL LIMIT 1) as screenshotUrl
+    FROM paypal_income pi
+    JOIN orders o ON o.id = pi.orderId
+    WHERE pi.paymentId IS NULL
+      AND (
+        (pi.orderNumber IS NULL AND o.orderNumber IS NOT NULL AND o.orderNumber != '')
+        OR (pi.paymentScreenshotUrl IS NULL AND EXISTS (
+          SELECT 1 FROM order_items oi WHERE oi.orderId = o.id AND oi.paymentScreenshotUrl IS NOT NULL
+        ))
+      )
+  `);
+  const orderRows = (orderLinked as any)[0] || [];
+  for (const row of orderRows) {
+    await db.execute(sql`
+      UPDATE paypal_income SET
+        paymentScreenshotUrl = COALESCE(paymentScreenshotUrl, ${row.screenshotUrl || null}),
+        orderNumber = COALESCE(orderNumber, ${row.orderNumber || null})
+      WHERE id = ${row.id}
+    `);
+    updated++;
+  }
+
+  return { updated };
 }
 
 // ==================== Reshipment Helpers ====================

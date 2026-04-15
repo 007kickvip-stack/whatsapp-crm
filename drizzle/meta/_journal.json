@@ -211,6 +211,13 @@
       "when": 1776250509162,
       "tag": "0029_perpetual_johnny_storm",
       "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "5",
+      "when": 1776251644516,
+      "tag": "0030_solid_killraven",
+      "breakpoints": true
     }
   ]
 }

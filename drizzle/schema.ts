@@ -343,6 +343,7 @@ export const paypalIncome = mysqlTable("paypal_income", {
   remarks: text("remarks"),
   orderId: int("orderId"), // 关联订单ID，用于避免重复同步
   paymentType: varchar("paymentType", { length: 32 }), // 支付类型：定金/尾款/全款/补款
+  orderNumber: varchar("orderNumber", { length: 128 }), // 订单编号，同步自订单表
   paymentId: int("paymentId"), // 关联支付记录ID，用于多笔支付同步去重
   createdById: int("createdById"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),

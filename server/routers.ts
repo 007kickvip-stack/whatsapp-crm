@@ -36,7 +36,7 @@ import {
   getPaypalBalanceSummary, syncOrdersToPaypalIncome,
   syncOrderToPaypalIncome, updatePaypalIncomeFromOrder, deletePaypalIncomeByOrderId,
   syncPaymentToPaypalIncome, updatePaypalIncomeFromPayment, deletePaypalIncomeByPaymentId,
-  updateOrderPaymentStatusFromPaypal, getPaypalIncomeOrderId,
+  updateOrderPaymentStatusFromPaypal, getPaypalIncomeOrderId, repairPaypalIncomeSync,
   createReshipment, updateReshipment, deleteReshipment, getReshipmentById, listReshipments, getReshipmentsByOriginalOrderId,
   createOrderPayment, updateOrderPayment, deleteOrderPayment, getOrderPaymentsByOrderId, getOrderPaymentById,
 } from "./db";
@@ -1479,6 +1479,7 @@ export const appRouter = router({
       customerName: z.string().optional(),
       staffName: z.string().optional(),
       paymentType: z.string().optional(),
+      orderNumber: z.string().optional(),
       remarks: z.string().optional(),
     })).mutation(async ({ input, ctx }) => {
       const id = await createPaypalIncome({
@@ -1503,6 +1504,7 @@ export const appRouter = router({
       customerName: z.string().optional(),
       staffName: z.string().optional(),
       paymentType: z.string().optional(),
+      orderNumber: z.string().optional(),
       remarks: z.string().optional(),
     })).mutation(async ({ input, ctx }) => {
       const { id, ...data } = input;
@@ -1598,6 +1600,14 @@ export const appRouter = router({
       const result = await syncOrdersToPaypalIncome(ctx.user.id);
       if (result.created > 0) {
         await logAction(ctx, "sync", "paypalIncome", 0, undefined, `同步${result.created}条订单数据`);
+      }
+      return result;
+    }),
+    // 修复同步：更新已有记录中缺失的截图、日期和订单编号
+    repairSync: protectedProcedure.mutation(async ({ ctx }) => {
+      const result = await repairPaypalIncomeSync();
+      if (result.updated > 0) {
+        await logAction(ctx, "repair", "paypalIncome", 0, undefined, `修复${result.updated}条记录的缺失数据`);
       }
       return result;
     }),
@@ -1838,6 +1848,8 @@ export const appRouter = router({
       const key = `payment-screenshots/${input.paymentId}-${nanoid(8)}.${ext}`;
       const { url } = await storagePut(key, buffer, `image/${ext === "png" ? "png" : "jpeg"}`);
       await updateOrderPayment(input.paymentId, { screenshotUrl: url });
+      // 上传截图后同步到PayPal收入记录
+      await updatePaypalIncomeFromPayment(input.paymentId);
       return { url };
     }),
   }),
