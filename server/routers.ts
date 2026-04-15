@@ -39,6 +39,9 @@ import {
   getPaypalIncomeOrderId, repairPaypalIncomeSync, syncActualReceivedToOrder,
   createReshipment, updateReshipment, deleteReshipment, getReshipmentById, listReshipments, getReshipmentsByOriginalOrderId,
   createOrderPayment, updateOrderPayment, deleteOrderPayment, getOrderPaymentsByOrderId, getOrderPaymentById,
+  updateUserBaseSalary,
+  listCommissionRules, getActiveCommissionRules, createCommissionRule, updateCommissionRule, deleteCommissionRule, getCommissionRuleById,
+  getSalaryReport,
 } from "./db";
 import type { SQL } from "drizzle-orm";
 import { sdk } from "./_core/sdk";
@@ -102,6 +105,7 @@ export const appRouter = router({
       password: z.string().min(4).optional(),
       role: z.enum(["user", "admin"]).default("user"),
       hireDate: z.string().optional(),
+      baseSalary: z.string().optional(),
     })).mutation(async ({ input }) => {
       if (input.username) {
         const existing = await getUserByUsername(input.username);
@@ -118,6 +122,14 @@ export const appRouter = router({
       hireDate: z.string().nullable(),
     })).mutation(async ({ input }) => {
       await updateUserHireDate(input.userId, input.hireDate);
+      return { success: true };
+    }),
+
+    updateBaseSalary: adminProcedure.input(z.object({
+      userId: z.number(),
+      baseSalary: z.string(),
+    })).mutation(async ({ input }) => {
+      await updateUserBaseSalary(input.userId, input.baseSalary);
       return { success: true };
     }),
 
@@ -1019,6 +1031,66 @@ export const appRouter = router({
     // 客服列表仅管理员可见
     staffList: adminProcedure.query(async () => {
       return await getStaffList();
+    }),
+  }),
+
+  // ==================== 提成制度管理 ====================
+  commissionRules: router({
+    list: adminProcedure.query(async () => {
+      return await listCommissionRules();
+    }),
+
+    activeList: protectedProcedure.query(async () => {
+      return await getActiveCommissionRules();
+    }),
+
+    create: adminProcedure.input(z.object({
+      name: z.string().min(1),
+      minAmount: z.string(),
+      maxAmount: z.string().nullable().optional(),
+      commissionRate: z.string(),
+      sortOrder: z.number().optional(),
+    })).mutation(async ({ input, ctx }) => {
+      const result = await createCommissionRule({
+        ...input,
+        createdById: ctx.user.id,
+        createdByName: ctx.user.name || "\u672a\u77e5",
+      });
+      return result;
+    }),
+
+    update: adminProcedure.input(z.object({
+      id: z.number(),
+      name: z.string().min(1).optional(),
+      minAmount: z.string().optional(),
+      maxAmount: z.string().nullable().optional(),
+      commissionRate: z.string().optional(),
+      sortOrder: z.number().optional(),
+      isActive: z.number().optional(),
+    })).mutation(async ({ input }) => {
+      const { id, ...data } = input;
+      await updateCommissionRule(id, data);
+      return { success: true };
+    }),
+
+    delete: adminProcedure.input(z.object({
+      id: z.number(),
+    })).mutation(async ({ input }) => {
+      await deleteCommissionRule(input.id);
+      return { success: true };
+    }),
+  }),
+
+  // ==================== 工资报表 ====================
+  salaryReport: router({
+    // 获取指定月份的工资报表
+    get: protectedProcedure.input(z.object({
+      yearMonth: z.string().regex(/^\d{4}-\d{2}$/),
+    })).query(async ({ input, ctx }) => {
+      const report = await getSalaryReport(input.yearMonth);
+      if (ctx.user.role === "admin") return report;
+      // 客服只能看自己的
+      return report.filter(r => r.staffId === ctx.user.id);
     }),
   }),
 

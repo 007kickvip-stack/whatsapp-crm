@@ -1,6 +1,6 @@
 import { eq, like, and, sql, desc, or, SQL, inArray, isNotNull } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
-import { InsertUser, users, customers, orders, orderItems, InsertCustomer, InsertOrder, InsertOrderItem, auditLogs, InsertAuditLog, exchangeRates, InsertExchangeRate, profitAlertSettings, InsertProfitAlertSetting, staffMonthlyTargets, InsertStaffMonthlyTarget, dailyData, InsertDailyData, accounts, InsertAccount, dailyReportNotes, InsertDailyReportNote, quotations, quotationItems, InsertQuotation, InsertQuotationItem, paypalIncome, paypalExpense, InsertPaypalIncome, InsertPaypalExpense, reshipments, InsertReshipment, orderPayments, InsertOrderPayment } from "../drizzle/schema";
+import { InsertUser, users, customers, orders, orderItems, InsertCustomer, InsertOrder, InsertOrderItem, auditLogs, InsertAuditLog, exchangeRates, InsertExchangeRate, profitAlertSettings, InsertProfitAlertSetting, staffMonthlyTargets, InsertStaffMonthlyTarget, dailyData, InsertDailyData, accounts, InsertAccount, dailyReportNotes, InsertDailyReportNote, quotations, quotationItems, InsertQuotation, InsertQuotationItem, paypalIncome, paypalExpense, InsertPaypalIncome, InsertPaypalExpense, reshipments, InsertReshipment, orderPayments, InsertOrderPayment, commissionRules, InsertCommissionRule } from "../drizzle/schema";
 import { ENV } from './_core/env';
 import { nanoid } from 'nanoid';
 import { createHash, randomBytes } from 'crypto';
@@ -119,7 +119,7 @@ export function verifyPassword(password: string, storedHash: string): boolean {
   return computed === hash;
 }
 
-export async function createUser(data: { name: string; email?: string; role?: "user" | "admin"; username?: string; password?: string; hireDate?: string }) {
+export async function createUser(data: { name: string; email?: string; role?: "user" | "admin"; username?: string; password?: string; hireDate?: string; baseSalary?: string }) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
   const openId = `manual-${nanoid()}`;
@@ -132,6 +132,7 @@ export async function createUser(data: { name: string; email?: string; role?: "u
     password: hashedPassword,
     role: data.role || "user",
     hireDate: data.hireDate ? new Date(data.hireDate + "T00:00:00") : null,
+    baseSalary: data.baseSalary || "0",
     loginMethod: "password",
     lastSignedIn: new Date(),
   });
@@ -162,6 +163,12 @@ export async function updateUserUsername(userId: number, username: string) {
   const db = await getDb();
   if (!db) return;
   await db.update(users).set({ username }).where(eq(users.id, userId));
+}
+
+export async function updateUserBaseSalary(userId: number, baseSalary: string) {
+  const db = await getDb();
+  if (!db) return;
+  await db.update(users).set({ baseSalary }).where(eq(users.id, userId));
 }
 
 // ==================== Customer Helpers ====================
@@ -3021,4 +3028,175 @@ export async function getPaypalIncomeOrderId(paypalIncomeId: number): Promise<nu
   const result = await db.execute(sql`SELECT orderId FROM paypal_income WHERE id = ${paypalIncomeId} AND orderId IS NOT NULL LIMIT 1`);
   const rows = (result as any)[0] || [];
   return rows.length > 0 ? rows[0].orderId : null;
+}
+
+
+// ==================== Commission Rules Helpers ====================
+
+export async function listCommissionRules() {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(commissionRules).orderBy(commissionRules.sortOrder, commissionRules.minAmount);
+}
+
+export async function getActiveCommissionRules() {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(commissionRules).where(eq(commissionRules.isActive, 1)).orderBy(commissionRules.sortOrder, commissionRules.minAmount);
+}
+
+export async function createCommissionRule(data: { name: string; minAmount: string; maxAmount?: string | null; commissionRate: string; sortOrder?: number; createdById?: number; createdByName?: string }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const result = await db.insert(commissionRules).values({
+    name: data.name,
+    minAmount: data.minAmount,
+    maxAmount: data.maxAmount || null,
+    commissionRate: data.commissionRate,
+    sortOrder: data.sortOrder || 0,
+    isActive: 1,
+    createdById: data.createdById,
+    createdByName: data.createdByName,
+  });
+  return { id: result[0].insertId };
+}
+
+export async function updateCommissionRule(id: number, data: { name?: string; minAmount?: string; maxAmount?: string | null; commissionRate?: string; sortOrder?: number; isActive?: number }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const updateData: Record<string, any> = {};
+  if (data.name !== undefined) updateData.name = data.name;
+  if (data.minAmount !== undefined) updateData.minAmount = data.minAmount;
+  if (data.maxAmount !== undefined) updateData.maxAmount = data.maxAmount;
+  if (data.commissionRate !== undefined) updateData.commissionRate = data.commissionRate;
+  if (data.sortOrder !== undefined) updateData.sortOrder = data.sortOrder;
+  if (data.isActive !== undefined) updateData.isActive = data.isActive;
+  await db.update(commissionRules).set(updateData).where(eq(commissionRules.id, id));
+}
+
+export async function deleteCommissionRule(id: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.delete(commissionRules).where(eq(commissionRules.id, id));
+}
+
+export async function getCommissionRuleById(id: number) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db.select().from(commissionRules).where(eq(commissionRules.id, id)).limit(1);
+  return result.length > 0 ? result[0] : undefined;
+}
+
+// ==================== Salary Report Helpers ====================
+
+/**
+ * 计算指定月份每个客服的工资报表
+ * 工资 = 底薪 + 提成
+ * 提成 = 根据阶梯提成规则计算（基于营业额）
+ */
+export async function getSalaryReport(yearMonth: string) {
+  const db = await getDb();
+  if (!db) return [];
+
+  // 获取月份的起止日期
+  const startDate = `${yearMonth}-01`;
+  const endDate = yearMonth.split('-')[1] === '12'
+    ? `${parseInt(yearMonth.split('-')[0]) + 1}-01-01`
+    : `${yearMonth.split('-')[0]}-${String(parseInt(yearMonth.split('-')[1]) + 1).padStart(2, '0')}-01`;
+
+  // 1. 获取所有客服（role=user）及其底薪
+  const staffList = await db.select({
+    id: users.id,
+    name: users.name,
+    baseSalary: users.baseSalary,
+    hireDate: users.hireDate,
+  }).from(users).where(eq(users.role, "user"));
+
+  // 2. 获取活跃的提成规则
+  const rules = await db.select().from(commissionRules).where(eq(commissionRules.isActive, 1)).orderBy(commissionRules.sortOrder, commissionRules.minAmount);
+
+  // 3. 获取每个客服在该月的营业额（从订单表汇总 totalAmountCny）
+  const revenueResult = await db.execute(sql`
+    SELECT staffId, staffName,
+      COALESCE(SUM(totalAmountCny), 0) as totalRevenue,
+      COUNT(*) as orderCount
+    FROM orders
+    WHERE orderDate >= ${startDate} AND orderDate < ${endDate}
+      AND staffId IS NOT NULL
+    GROUP BY staffId, staffName
+  `);
+  const revenueRows = (revenueResult as any)[0] || [];
+  const revenueMap = new Map<number, { totalRevenue: number; orderCount: number; staffName: string }>();
+  for (const row of revenueRows) {
+    revenueMap.set(row.staffId, {
+      totalRevenue: parseFloat(row.totalRevenue) || 0,
+      orderCount: parseInt(row.orderCount) || 0,
+      staffName: row.staffName || '',
+    });
+  }
+
+  // 4. 获取每个客服在该月的利润（从订单子项汇总 productProfit + shippingProfit）
+  const profitResult = await db.execute(sql`
+    SELECT o.staffId,
+      COALESCE(SUM(oi.productProfit), 0) as totalProductProfit,
+      COALESCE(SUM(oi.shippingProfit), 0) as totalShippingProfit
+    FROM order_items oi
+    JOIN orders o ON oi.orderId = o.id
+    WHERE o.orderDate >= ${startDate} AND o.orderDate < ${endDate}
+      AND o.staffId IS NOT NULL
+    GROUP BY o.staffId
+  `);
+  const profitRows = (profitResult as any)[0] || [];
+  const profitMap = new Map<number, { productProfit: number; shippingProfit: number }>();
+  for (const row of profitRows) {
+    profitMap.set(row.staffId, {
+      productProfit: parseFloat(row.totalProductProfit) || 0,
+      shippingProfit: parseFloat(row.totalShippingProfit) || 0,
+    });
+  }
+
+  // 5. 计算每个客服的提成和工资
+  const report = staffList.map(staff => {
+    const revenue = revenueMap.get(staff.id);
+    const profit = profitMap.get(staff.id);
+    const totalRevenue = revenue?.totalRevenue || 0;
+    const orderCount = revenue?.orderCount || 0;
+    const productProfit = profit?.productProfit || 0;
+    const shippingProfit = profit?.shippingProfit || 0;
+    const totalProfit = productProfit + shippingProfit;
+    const baseSalary = parseFloat(staff.baseSalary as string) || 0;
+
+    // 计算阶梯提成
+    let commission = 0;
+    for (const rule of rules) {
+      const min = parseFloat(rule.minAmount as string) || 0;
+      const max = rule.maxAmount ? parseFloat(rule.maxAmount as string) : Infinity;
+      const rate = parseFloat(rule.commissionRate as string) || 0;
+
+      if (totalRevenue > min) {
+        const applicableAmount = Math.min(totalRevenue, max) - min;
+        if (applicableAmount > 0) {
+          commission += applicableAmount * rate;
+        }
+      }
+    }
+
+    const totalSalary = baseSalary + commission;
+
+    return {
+      staffId: staff.id,
+      staffName: revenue?.staffName || staff.name || '未知',
+      baseSalary,
+      totalRevenue,
+      orderCount,
+      productProfit,
+      shippingProfit,
+      totalProfit,
+      commission: Math.round(commission * 100) / 100,
+      totalSalary: Math.round(totalSalary * 100) / 100,
+      hireDate: staff.hireDate,
+    };
+  });
+
+  return report;
 }

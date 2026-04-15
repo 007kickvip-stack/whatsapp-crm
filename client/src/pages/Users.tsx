@@ -44,6 +44,8 @@ import {
   Eye,
   EyeOff,
   CalendarDays,
+  DollarSign,
+  Pencil,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useLocation } from "wouter";
@@ -55,6 +57,9 @@ export default function UsersPage() {
   const [deleteId, setDeleteId] = useState<number | null>(null);
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [showPasswordDialog, setShowPasswordDialog] = useState(false);
+  const [showSalaryDialog, setShowSalaryDialog] = useState(false);
+  const [salaryTarget, setSalaryTarget] = useState<{ id: number; name: string; baseSalary: string } | null>(null);
+  const [salaryForm, setSalaryForm] = useState("");
   const [passwordTarget, setPasswordTarget] = useState<{ id: number; name: string; username?: string | null } | null>(null);
   const [passwordForm, setPasswordForm] = useState({ username: "", password: "", confirmPassword: "" });
   const [showPassword, setShowPassword] = useState(false);
@@ -66,6 +71,7 @@ export default function UsersPage() {
     password: "",
     role: "user" as "user" | "admin",
     hireDate: "",
+    baseSalary: "",
   });
   const [showAddPassword, setShowAddPassword] = useState(false);
 
@@ -108,7 +114,7 @@ export default function UsersPage() {
       toast.success("账号创建成功，用户可使用用户名和密码登录");
       utils.users.list.invalidate();
       setShowAddDialog(false);
-      setAddForm({ name: "", email: "", username: "", password: "", role: "user", hireDate: "" });
+      setAddForm({ name: "", email: "", username: "", password: "", role: "user", hireDate: "", baseSalary: "" });
     },
     onError: (err) => toast.error(err.message),
   });
@@ -120,6 +126,17 @@ export default function UsersPage() {
       setShowPasswordDialog(false);
       setPasswordForm({ username: "", password: "", confirmPassword: "" });
       setPasswordTarget(null);
+    },
+    onError: (err) => toast.error(err.message),
+  });
+
+  const updateSalaryMutation = trpc.users.updateBaseSalary.useMutation({
+    onSuccess: () => {
+      toast.success("底薪更新成功");
+      utils.users.list.invalidate();
+      setShowSalaryDialog(false);
+      setSalaryTarget(null);
+      setSalaryForm("");
     },
     onError: (err) => toast.error(err.message),
   });
@@ -154,6 +171,7 @@ export default function UsersPage() {
       password: addForm.password,
       role: addForm.role,
       hireDate: addForm.hireDate || undefined,
+      baseSalary: addForm.baseSalary || undefined,
     });
   };
 
@@ -198,6 +216,25 @@ export default function UsersPage() {
     setShowPasswordDialog(true);
   };
 
+  const openSalaryDialog = (u: any) => {
+    setSalaryTarget({ id: u.id, name: u.name || "未知用户", baseSalary: u.baseSalary || "0" });
+    setSalaryForm(u.baseSalary ? String(parseFloat(u.baseSalary)) : "");
+    setShowSalaryDialog(true);
+  };
+
+  const handleSetSalary = () => {
+    if (!salaryTarget) return;
+    const val = salaryForm.trim();
+    if (val && isNaN(parseFloat(val))) {
+      toast.error("请输入有效的数字");
+      return;
+    }
+    updateSalaryMutation.mutate({
+      userId: salaryTarget.id,
+      baseSalary: val ? parseFloat(val).toFixed(2) : "0",
+    });
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -209,7 +246,7 @@ export default function UsersPage() {
         </div>
         <Button
           onClick={() => {
-            setAddForm({ name: "", email: "", username: "", password: "", role: "user", hireDate: "" });
+            setAddForm({ name: "", email: "", username: "", password: "", role: "user", hireDate: "", baseSalary: "" });
             setShowAddPassword(false);
             setShowAddDialog(true);
           }}
@@ -235,10 +272,9 @@ export default function UsersPage() {
                       <th className="text-left py-3 px-4 font-medium text-muted-foreground">用户名</th>
                       <th className="text-left py-3 px-4 font-medium text-muted-foreground">邮箱</th>
                       <th className="text-left py-3 px-4 font-medium text-muted-foreground">角色</th>
-                      <th className="text-left py-3 px-4 font-medium text-muted-foreground">登录方式</th>
+                      <th className="text-right py-3 px-4 font-medium text-muted-foreground">底薪(¥)</th>
                       <th className="text-left py-3 px-4 font-medium text-muted-foreground">入职时间</th>
                       <th className="text-left py-3 px-4 font-medium text-muted-foreground">最后登录</th>
-                      <th className="text-left py-3 px-4 font-medium text-muted-foreground">注册时间</th>
                       <th className="text-right py-3 px-4 font-medium text-muted-foreground">操作</th>
                     </tr>
                   </thead>
@@ -299,19 +335,24 @@ export default function UsersPage() {
                               </SelectContent>
                             </Select>
                           </td>
-                          <td className="py-3 px-4">
-                            <Badge variant="outline" className="text-xs">
-                              {u.loginMethod === "password" ? "密码登录" : u.loginMethod === "manual" ? "手动创建" : "OAuth"}
-                            </Badge>
+                          <td className="py-3 px-4 text-right">
+                            <button
+                              className="inline-flex items-center gap-1 text-sm hover:text-emerald-600 transition-colors cursor-pointer"
+                              onClick={() => openSalaryDialog(u)}
+                            >
+                              <span className="font-medium">
+                                {(u as any).baseSalary && parseFloat((u as any).baseSalary) > 0
+                                  ? `¥${parseFloat((u as any).baseSalary).toLocaleString()}`
+                                  : <span className="text-muted-foreground/50">未设置</span>}
+                              </span>
+                              <Pencil className="h-3 w-3 text-muted-foreground/50" />
+                            </button>
                           </td>
                           <td className="py-3 px-4 text-muted-foreground">
                             {(u as any).hireDate ? new Date((u as any).hireDate).toLocaleDateString() : <span className="text-muted-foreground/50">-</span>}
                           </td>
                           <td className="py-3 px-4 text-muted-foreground">
                             {new Date(u.lastSignedIn).toLocaleString()}
-                          </td>
-                          <td className="py-3 px-4 text-muted-foreground">
-                            {new Date(u.createdAt).toLocaleDateString()}
                           </td>
                           <td className="py-3 px-4">
                             <div className="flex items-center justify-end gap-1">
@@ -423,30 +464,42 @@ export default function UsersPage() {
                 </button>
               </div>
             </div>
-            <div className="space-y-2">
-              <Label>角色</Label>
-              <Select
-                value={addForm.role}
-                onValueChange={(v: "user" | "admin") => setAddForm((f) => ({ ...f, role: v }))}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="user">
-                    <div className="flex items-center gap-1.5">
-                      <UserCog className="h-3.5 w-3.5" />
-                      客服
-                    </div>
-                  </SelectItem>
-                  <SelectItem value="admin">
-                    <div className="flex items-center gap-1.5">
-                      <Shield className="h-3.5 w-3.5" />
-                      管理员
-                    </div>
-                  </SelectItem>
-                </SelectContent>
-              </Select>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>角色</Label>
+                <Select
+                  value={addForm.role}
+                  onValueChange={(v: "user" | "admin") => setAddForm((f) => ({ ...f, role: v }))}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="user">
+                      <div className="flex items-center gap-1.5">
+                        <UserCog className="h-3.5 w-3.5" />
+                        客服
+                      </div>
+                    </SelectItem>
+                    <SelectItem value="admin">
+                      <div className="flex items-center gap-1.5">
+                        <Shield className="h-3.5 w-3.5" />
+                        管理员
+                      </div>
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="add-baseSalary">底薪(¥)</Label>
+                <Input
+                  id="add-baseSalary"
+                  type="number"
+                  placeholder="如 3000"
+                  value={addForm.baseSalary}
+                  onChange={(e) => setAddForm((f) => ({ ...f, baseSalary: e.target.value }))}
+                />
+              </div>
             </div>
             <div className="space-y-2">
               <Label htmlFor="add-hireDate">入职时间</Label>
@@ -473,6 +526,46 @@ export default function UsersPage() {
             >
               {addUserMutation.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
               创建账号
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Set Salary Dialog */}
+      <Dialog open={showSalaryDialog} onOpenChange={setShowSalaryDialog}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <DollarSign className="h-5 w-5 text-emerald-600" />
+              设置底薪
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="rounded-lg bg-muted/50 p-3 text-sm">
+              <p>为 <strong>{salaryTarget?.name}</strong> 设置底薪</p>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="salary-amount">底薪金额(¥)</Label>
+              <Input
+                id="salary-amount"
+                type="number"
+                placeholder="请输入底薪金额"
+                value={salaryForm}
+                onChange={(e) => setSalaryForm(e.target.value)}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowSalaryDialog(false)}>
+              取消
+            </Button>
+            <Button
+              onClick={handleSetSalary}
+              disabled={updateSalaryMutation.isPending}
+              className="bg-emerald-600 hover:bg-emerald-700"
+            >
+              {updateSalaryMutation.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+              保存
             </Button>
           </DialogFooter>
         </DialogContent>

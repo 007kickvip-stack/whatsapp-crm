@@ -42,6 +42,7 @@ import {
   FileText,
   Wallet,
   RefreshCw,
+  Banknote,
 } from "lucide-react";
 import { CSSProperties, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation } from "wouter";
@@ -75,6 +76,7 @@ const dataMenuItems: MenuItem[] = [
   { icon: CalendarDays, label: "每日数据", path: "/daily-data" },
   { icon: BarChart3, label: "利润报表", path: "/profit-report" },
   { icon: Target, label: "目标管理", path: "/staff-targets" },
+  { icon: Banknote, label: "工资与提成", path: "/salary-report" },
 ];
 
 // 仅管理员可见的系统管理菜单

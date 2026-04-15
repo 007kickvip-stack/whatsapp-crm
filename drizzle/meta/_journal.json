@@ -225,6 +225,13 @@
       "when": 1776256295515,
       "tag": "0031_condemned_nekra",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "5",
+      "when": 1776258419757,
+      "tag": "0032_striped_power_pack",
+      "breakpoints": true
     }
   ]
 }

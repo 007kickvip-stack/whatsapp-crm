@@ -696,3 +696,12 @@
 - [x] 后端：createFromOrder和createFromItem中originalOrderNo设为null
 - [x] 补发逻辑确认：父项补发=整个订单所有子项同步，子项补发=仅该子项同步
 - [x] 测试验证（192条测试全部通过）
+
+## 客服底薪与工资提成功能
+- [x] users表添加baseSalary底薪字段
+- [x] 新建commission_rules提成制度表（阶梯提成规则）
+- [x] 后端API：底薪CRUD、提成制度CRUD、工资报表计算
+- [x] 前端：用户管理添加底薪输入字段
+- [x] 前端：新建客服工资与提成报表页面
+- [x] 前端：提成制度制定与修改功能
+- [x] 测试覆盖

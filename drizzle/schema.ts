@@ -14,6 +14,7 @@ export const users = mysqlTable("users", {
   loginMethod: varchar("loginMethod", { length: 64 }),
   role: mysqlEnum("role", ["user", "admin"]).default("user").notNull(),
   hireDate: date("hireDate"),
+  baseSalary: decimal("baseSalary", { precision: 12, scale: 2 }).default("0"), // 底薪
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
   lastSignedIn: timestamp("lastSignedIn").defaultNow().notNull(),
@@ -427,3 +428,24 @@ export const orderPayments = mysqlTable("order_payments", {
 
 export type OrderPayment = typeof orderPayments.$inferSelect;
 export type InsertOrderPayment = typeof orderPayments.$inferInsert;
+
+/**
+ * 提成制度表 - 阶梯提成规则
+ * 每条记录代表一个营业额区间的提成比例
+ */
+export const commissionRules = mysqlTable("commission_rules", {
+  id: int("id").autoincrement().primaryKey(),
+  name: varchar("name", { length: 128 }).notNull(), // 规则名称，如"默认提成方案"
+  minAmount: decimal("minAmount", { precision: 12, scale: 2 }).notNull().default("0"), // 营业额下限（含）
+  maxAmount: decimal("maxAmount", { precision: 12, scale: 2 }), // 营业额上限（不含），NULL表示无上限
+  commissionRate: decimal("commissionRate", { precision: 8, scale: 4 }).notNull().default("0"), // 提成比例，如 0.05 表示 5%
+  sortOrder: int("sortOrder").default(0), // 排序顺序
+  isActive: int("isActive").default(1).notNull(), // 1=启用, 0=禁用
+  createdById: int("createdById"),
+  createdByName: varchar("createdByName", { length: 128 }),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type CommissionRule = typeof commissionRules.$inferSelect;
+export type InsertCommissionRule = typeof commissionRules.$inferInsert;
