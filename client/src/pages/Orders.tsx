@@ -530,6 +530,46 @@ function ImageUploadCell({
 }
 
 // ============================================================
+// Receiving accounts display - aggregates from payment records
+// ============================================================
+function ReceivingAccountsDisplay({ orderId, fallbackAccount }: { orderId: number; fallbackAccount: string | null }) {
+  const { data: payments } = trpc.orderPayments.listByOrder.useQuery({ orderId });
+
+  // Aggregate unique receiving accounts from payment records
+  const accounts = useMemo(() => {
+    if (!payments || payments.length === 0) {
+      return fallbackAccount ? [fallbackAccount] : [];
+    }
+    const uniqueAccounts = new Set<string>();
+    for (const p of payments) {
+      if (p.receivingAccount) uniqueAccounts.add(p.receivingAccount);
+    }
+    if (uniqueAccounts.size === 0 && fallbackAccount) {
+      return [fallbackAccount];
+    }
+    return Array.from(uniqueAccounts);
+  }, [payments, fallbackAccount]);
+
+  if (accounts.length === 0) {
+    return <span className="text-gray-400">-</span>;
+  }
+
+  if (accounts.length === 1) {
+    return <span className="text-gray-700 truncate max-w-[100px] inline-block" title={accounts[0]}>{accounts[0]}</span>;
+  }
+
+  return (
+    <div className="flex flex-col items-center gap-0.5">
+      {accounts.map((acc, i) => (
+        <span key={i} className="text-gray-700 text-[10px] leading-tight truncate max-w-[100px] inline-block" title={acc}>
+          {acc}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+// ============================================================
 // Main component
 // ============================================================
 export default function OrdersPage() {
@@ -909,6 +949,7 @@ export default function OrdersPage() {
     paymentScreenshotUrl: string | null;
     paymentAmount: string | null;
     receivingAccount: string | null;
+    orderTotalAmountUsd: string | null;
     remarks: string | null;
     paymentStatus: string | null;
     customerName: string | null;
@@ -987,6 +1028,7 @@ export default function OrdersPage() {
           paymentScreenshotUrl: null,
           paymentAmount: order.paymentAmount || null,
           receivingAccount: (order as any).receivingAccount || null,
+          orderTotalAmountUsd: order.totalAmountUsd || null,
           remarks: order.remarks,
           paymentStatus: order.paymentStatus,
           customerName: (order as any).customerName || null,
@@ -1044,6 +1086,7 @@ export default function OrdersPage() {
             paymentScreenshotUrl: item.paymentScreenshotUrl,
             paymentAmount: item.paymentAmount || (order as any).paymentAmount || null,
             receivingAccount: idx === 0 ? ((order as any).receivingAccount || null) : null,
+            orderTotalAmountUsd: order.totalAmountUsd || null,
             remarks: item.remarks,
             paymentStatus: item.paymentStatus || (idx === 0 ? order.paymentStatus : null),
             customerName: idx === 0 ? ((order as any).customerName || null) : null,
@@ -1517,33 +1560,33 @@ export default function OrdersPage() {
           {fmtPct(row.profitRate)}
         </td>
 
-        {/* 29. 付款截图 - 点击打开支付记录面板 */}
-        <td className="py-1 px-1 border-r border-gray-100 text-center">
-          {row.isFirstRow ? (
+        {/* 29. 付款截图 - rowSpan合并居中 */}
+        {row.isFirstRow && (
+          <td className="py-1 px-1 border-r border-gray-100 text-center align-middle" rowSpan={row.visibleItemCount || 1}>
             <button
               className="w-full h-full flex items-center justify-center cursor-pointer hover:bg-gray-50 rounded transition-colors p-0.5"
               onClick={() => {
                 setPaymentPanelOrderId(row.orderId);
                 setPaymentPanelOrderNumber(row.orderNumber || "");
-                setPaymentPanelTotalUsd(row.amountUsd || "0");
+                setPaymentPanelTotalUsd(row.orderTotalAmountUsd || "0");
                 setPaymentPanelOpen(true);
               }}
               title="查看/管理支付记录"
             >
               <DollarSign className="h-4 w-4 text-green-600" />
             </button>
-          ) : null}
-        </td>
+          </td>
+        )}
 
-        {/* 29.5. 付款金额($) - 点击打开支付记录面板 */}
-        <td className="py-1 px-1 border-r border-gray-100 text-center text-[11px]">
-          {row.isFirstRow ? (
+        {/* 29.5. 付款金额($) - rowSpan合并居中 */}
+        {row.isFirstRow && (
+          <td className="py-1 px-1 border-r border-gray-100 text-center text-[11px] align-middle" rowSpan={row.visibleItemCount || 1}>
             <button
               className="w-full text-center cursor-pointer hover:bg-gray-50 rounded px-1 py-0.5 transition-colors"
               onClick={() => {
                 setPaymentPanelOrderId(row.orderId);
                 setPaymentPanelOrderNumber(row.orderNumber || "");
-                setPaymentPanelTotalUsd(row.amountUsd || "0");
+                setPaymentPanelTotalUsd(row.orderTotalAmountUsd || "0");
                 setPaymentPanelOpen(true);
               }}
               title="查看/管理支付记录"
@@ -1552,25 +1595,15 @@ export default function OrdersPage() {
                 ${parseFloat(row.paymentAmount || "0").toFixed(2)}
               </span>
             </button>
-          ) : null}
-        </td>
+          </td>
+        )}
 
-        {/* 29.6. 收款账户 - order level */}
-        <td className="py-1 px-1 border-r border-gray-100 text-center text-[11px]">
-          {row.isFirstRow ? (
-            <EditableCell
-              value={row.receivingAccount || ""}
-              type="select"
-              selectOptions={[
-                "廖欧妹", "苏翊豪", "王国军", "成皇", "谢显禄", "罗胜",
-                "闪明", "龚双意", "旺吞", "项小丽", "马各端", "罗丹",
-                "支付宝", "飞来汇", "USDT ERC", "SDT（TRC20）"
-              ]}
-              onSave={(v) => saveOrderField(row.orderId, "receivingAccount", v)}
-              placeholder="选择收款账户"
-            />
-          ) : null}
-        </td>
+        {/* 29.6. 收款账户 - rowSpan合并居中，从支付记录聚合多项显示 */}
+        {row.isFirstRow && (
+          <td className="py-1 px-1 border-r border-gray-100 text-center text-[11px] align-middle" rowSpan={row.visibleItemCount || 1}>
+            <ReceivingAccountsDisplay orderId={row.orderId} fallbackAccount={row.receivingAccount} />
+          </td>
+        )}
 
         {/* 30. 备注 */}
         <td className="py-1 px-1 border-r border-gray-100 text-center text-[11px] max-w-[120px]">
@@ -1591,17 +1624,9 @@ export default function OrdersPage() {
           ) : null}
         </td>
 
-        {/* 31. 付款状态 */}
-        <td className="py-1 px-1 text-center text-[11px]">
-          {hasItem ? (
-            <EditableCell
-              value={row.paymentStatus || "未付款"}
-              type="select"
-              selectOptions={PAYMENT_STATUSES}
-              selectColorFn={paymentColor}
-              onSave={(v) => saveItemField(row.itemId!, row.orderId, "paymentStatus", v)}
-            />
-          ) : row.isFirstRow ? (
+        {/* 31. 付款状态 - rowSpan合并居中 */}
+        {row.isFirstRow && (
+          <td className="py-1 px-1 text-center text-[11px] align-middle" rowSpan={row.visibleItemCount || 1}>
             <EditableCell
               value={row.paymentStatus || "未付款"}
               type="select"
@@ -1609,8 +1634,8 @@ export default function OrdersPage() {
               selectColorFn={paymentColor}
               onSave={(v) => saveOrderField(row.orderId, "paymentStatus", v)}
             />
-          ) : null}
-        </td>
+          </td>
+        )}
 
         {/* 客户名字、国家、客户分层、订购类目、出生日期、客户邮箱 - rowSpan合并 */}
         {row.isFirstRow && (

@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -29,7 +29,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Plus, Trash2, Edit, Upload, Image as ImageIcon, X, DollarSign, Loader2 } from "lucide-react";
+import { Plus, Trash2, Edit, Upload, X, DollarSign, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
 const PAYMENT_TYPES = ["定金", "尾款", "全款", "补款"];
@@ -77,7 +77,12 @@ export default function PaymentRecordsPanel({
   const [formScreenshot, setFormScreenshot] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
 
+  // Drag state for screenshot areas
+  const [dragOverRecord, setDragOverRecord] = useState<number | null>(null);
+  const [dragOverForm, setDragOverForm] = useState(false);
+
   const fileRef = useRef<HTMLInputElement>(null);
+  const dialogContentRef = useRef<HTMLDivElement>(null);
 
   const createMutation = trpc.orderPayments.create.useMutation({
     onSuccess: () => {
@@ -167,9 +172,14 @@ export default function PaymentRecordsPanel({
     }
   };
 
+  // Core file upload handler
   const handleFileUpload = useCallback(async (file: File, paymentId?: number) => {
     if (file.size > 5 * 1024 * 1024) {
       toast.error("文件大小不能超过 5MB");
+      return;
+    }
+    if (!file.type.startsWith("image/")) {
+      toast.error("只支持上传图片文件");
       return;
     }
     setUploading(true);
@@ -182,18 +192,14 @@ export default function PaymentRecordsPanel({
       const base64 = await base64Promise;
 
       if (paymentId) {
-        // Upload for existing payment
-        const result = await uploadScreenshotMutation.mutateAsync({
+        await uploadScreenshotMutation.mutateAsync({
           paymentId,
           base64,
           filename: file.name,
         });
         utils.orderPayments.listByOrder.invalidate({ orderId });
         toast.success("截图上传成功");
-        return result.url;
       } else {
-        // For new payment form, just store base64 temporarily
-        // We'll need to create the payment first, then upload
         setFormScreenshot(`data:${file.type};base64,${base64}`);
         toast.success("截图已选择，保存后将上传");
       }
@@ -203,6 +209,75 @@ export default function PaymentRecordsPanel({
       setUploading(false);
     }
   }, [orderId]);
+
+  // Paste handler for the main dialog
+  useEffect(() => {
+    if (!open) return;
+    const handlePaste = (e: ClipboardEvent) => {
+      const items = e.clipboardData?.items;
+      if (!items) return;
+      for (let i = 0; i < items.length; i++) {
+        if (items[i].type.startsWith("image/")) {
+          e.preventDefault();
+          const file = items[i].getAsFile();
+          if (file) {
+            // If add/edit dialog is open, paste to form
+            if (addOpen || editId !== null) {
+              handleFileUpload(file);
+            } else {
+              // If no dialog open, show toast hint
+              toast.info("请先打开添加/编辑支付记录后再粘贴截图");
+            }
+          }
+          break;
+        }
+      }
+    };
+    document.addEventListener("paste", handlePaste);
+    return () => document.removeEventListener("paste", handlePaste);
+  }, [open, addOpen, editId, handleFileUpload]);
+
+  // Drag & drop helpers for existing record screenshot area
+  const handleRecordDragOver = (e: React.DragEvent, paymentId: number) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragOverRecord(paymentId);
+  };
+  const handleRecordDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragOverRecord(null);
+  };
+  const handleRecordDrop = (e: React.DragEvent, paymentId: number) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragOverRecord(null);
+    const file = e.dataTransfer.files?.[0];
+    if (file && file.type.startsWith("image/")) {
+      handleFileUpload(file, paymentId);
+    }
+  };
+
+  // Drag & drop helpers for form screenshot area
+  const handleFormDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragOverForm(true);
+  };
+  const handleFormDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragOverForm(false);
+  };
+  const handleFormDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragOverForm(false);
+    const file = e.dataTransfer.files?.[0];
+    if (file && file.type.startsWith("image/")) {
+      handleFileUpload(file);
+    }
+  };
 
   const totalPaid = payments?.reduce((sum, p) => sum + parseFloat(p.amount || "0"), 0) ?? 0;
   const totalOrder = parseFloat(totalAmountUsd || "0");
@@ -221,7 +296,7 @@ export default function PaymentRecordsPanel({
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto" ref={dialogContentRef}>
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <DollarSign className="h-5 w-5 text-green-600" />
@@ -262,9 +337,18 @@ export default function PaymentRecordsPanel({
             ) : payments && payments.length > 0 ? (
               payments.map((payment) => (
                 <div key={payment.id} className="flex items-start gap-3 p-3 border rounded-lg hover:bg-gray-50 transition-colors">
-                  {/* Screenshot thumbnail */}
-                  <div className="flex-shrink-0 w-14 h-14 rounded border bg-gray-100 flex items-center justify-center overflow-hidden">
-                    {payment.screenshotUrl ? (
+                  {/* Screenshot thumbnail - supports drag & drop */}
+                  <div
+                    className={`flex-shrink-0 w-14 h-14 rounded border bg-gray-100 flex items-center justify-center overflow-hidden transition-all ${
+                      dragOverRecord === payment.id ? "ring-2 ring-green-500 border-green-500 bg-green-50" : ""
+                    }`}
+                    onDragOver={(e) => handleRecordDragOver(e, payment.id)}
+                    onDragLeave={handleRecordDragLeave}
+                    onDrop={(e) => handleRecordDrop(e, payment.id)}
+                  >
+                    {uploading && dragOverRecord === payment.id ? (
+                      <Loader2 className="h-4 w-4 animate-spin text-green-500" />
+                    ) : payment.screenshotUrl ? (
                       <img
                         src={payment.screenshotUrl}
                         alt="支付截图"
@@ -272,8 +356,9 @@ export default function PaymentRecordsPanel({
                         onClick={() => setPreviewImage(payment.screenshotUrl)}
                       />
                     ) : (
-                      <label className="cursor-pointer w-full h-full flex items-center justify-center hover:bg-gray-200 transition-colors">
+                      <label className="cursor-pointer w-full h-full flex flex-col items-center justify-center hover:bg-gray-200 transition-colors">
                         <Upload className="h-4 w-4 text-gray-400" />
+                        <span className="text-[8px] text-gray-400 mt-0.5">拖拽/点击</span>
                         <input
                           type="file"
                           accept="image/*"
@@ -410,10 +495,10 @@ export default function PaymentRecordsPanel({
               />
             </div>
 
-            {/* Screenshot preview for form */}
-            {formScreenshot && (
-              <div className="space-y-1.5">
-                <Label className="text-xs">已选截图</Label>
+            {/* Screenshot upload area - supports paste, drag, click */}
+            <div className="space-y-1.5">
+              <Label className="text-xs">支付截图</Label>
+              {formScreenshot ? (
                 <div className="relative w-20 h-20 border rounded overflow-hidden">
                   <img src={formScreenshot} alt="截图预览" className="w-full h-full object-cover" />
                   <button
@@ -423,8 +508,38 @@ export default function PaymentRecordsPanel({
                     <X className="h-3 w-3" />
                   </button>
                 </div>
-              </div>
-            )}
+              ) : (
+                <div
+                  className={`border-2 border-dashed rounded-lg p-4 text-center cursor-pointer transition-all ${
+                    dragOverForm ? "border-green-500 bg-green-50" : "border-gray-300 hover:border-gray-400 hover:bg-gray-50"
+                  }`}
+                  onDragOver={handleFormDragOver}
+                  onDragLeave={handleFormDragLeave}
+                  onDrop={handleFormDrop}
+                  onClick={() => fileRef.current?.click()}
+                >
+                  {uploading ? (
+                    <Loader2 className="h-6 w-6 animate-spin mx-auto text-green-500" />
+                  ) : (
+                    <>
+                      <Upload className="h-6 w-6 mx-auto text-gray-400 mb-1" />
+                      <p className="text-xs text-gray-500">点击上传、拖拽图片、或 Ctrl+V 粘贴</p>
+                    </>
+                  )}
+                  <input
+                    ref={fileRef}
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) handleFileUpload(file);
+                      if (fileRef.current) fileRef.current.value = "";
+                    }}
+                  />
+                </div>
+              )}
+            </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => { setAddOpen(false); setEditId(null); resetForm(); }}>
