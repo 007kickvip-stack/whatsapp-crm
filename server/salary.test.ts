@@ -335,6 +335,140 @@ describe("Salary History", () => {
   });
 });
 
+describe("Bonus Rules (High Profit Rewards)", () => {
+  const adminCaller = appRouter.createCaller(createAdminContext());
+  const staffCaller = appRouter.createCaller(createStaffContext());
+  let createdBonusId: number;
+
+  it("admin can create a bonus rule", async () => {
+    const result = await adminCaller.bonusRules.create({
+      name: "高利润奖励第一档",
+      profitThreshold: "500.00",
+      bonusAmount: "50.00",
+      sortOrder: 1,
+    });
+    expect(result).toBeDefined();
+    expect(result.id).toBeGreaterThan(0);
+    createdBonusId = result.id;
+  });
+
+  it("admin can create multiple bonus rules with different thresholds", async () => {
+    const result = await adminCaller.bonusRules.create({
+      name: "高利润奖励第二档",
+      profitThreshold: "1000.00",
+      bonusAmount: "120.00",
+      sortOrder: 2,
+    });
+    expect(result).toBeDefined();
+    expect(result.id).toBeGreaterThan(0);
+    // Clean up
+    await adminCaller.bonusRules.delete({ id: result.id });
+  });
+
+  it("admin can list all bonus rules", async () => {
+    const rules = await adminCaller.bonusRules.list();
+    expect(Array.isArray(rules)).toBe(true);
+    const found = rules.find((r: any) => r.id === createdBonusId);
+    expect(found).toBeDefined();
+    expect(found?.name).toBe("高利润奖励第一档");
+    expect(parseFloat(found?.profitThreshold)).toBe(500);
+    expect(parseFloat(found?.bonusAmount)).toBe(50);
+  });
+
+  it("staff can view active bonus rules", async () => {
+    const rules = await staffCaller.bonusRules.activeList();
+    expect(Array.isArray(rules)).toBe(true);
+    const found = rules.find((r: any) => r.id === createdBonusId);
+    expect(found).toBeDefined();
+  });
+
+  it("admin can update a bonus rule", async () => {
+    const result = await adminCaller.bonusRules.update({
+      id: createdBonusId,
+      name: "高利润奖励第一档-修改",
+      profitThreshold: "600.00",
+      bonusAmount: "60.00",
+    });
+    expect(result).toEqual({ success: true });
+
+    const rules = await adminCaller.bonusRules.list();
+    const updated = rules.find((r: any) => r.id === createdBonusId);
+    expect(updated?.name).toBe("高利润奖励第一档-修改");
+    expect(parseFloat(updated?.profitThreshold)).toBe(600);
+    expect(parseFloat(updated?.bonusAmount)).toBe(60);
+  });
+
+  it("admin can toggle bonus rule active status", async () => {
+    await adminCaller.bonusRules.update({
+      id: createdBonusId,
+      isActive: 0,
+    });
+
+    const activeRules = await staffCaller.bonusRules.activeList();
+    const found = activeRules.find((r: any) => r.id === createdBonusId);
+    expect(found).toBeUndefined();
+
+    // Re-enable
+    await adminCaller.bonusRules.update({
+      id: createdBonusId,
+      isActive: 1,
+    });
+  });
+
+  it("admin can delete a bonus rule", async () => {
+    const result = await adminCaller.bonusRules.delete({
+      id: createdBonusId,
+    });
+    expect(result).toEqual({ success: true });
+
+    const rules = await adminCaller.bonusRules.list();
+    const found = rules.find((r: any) => r.id === createdBonusId);
+    expect(found).toBeUndefined();
+  });
+
+  it("staff cannot create bonus rules (should throw FORBIDDEN)", async () => {
+    await expect(
+      staffCaller.bonusRules.create({
+        name: "非法奖励",
+        profitThreshold: "100.00",
+        bonusAmount: "10.00",
+      })
+    ).rejects.toThrow();
+  });
+});
+
+describe("Salary Report with High Profit Bonus", () => {
+  const adminCaller = appRouter.createCaller(createAdminContext());
+
+  it("salary report includes highProfitBonus and highProfitOrderCount fields", async () => {
+    const report = await adminCaller.salaryReport.get({
+      yearMonth: "2026-04",
+    });
+    expect(Array.isArray(report)).toBe(true);
+    if (report.length > 0) {
+      const entry = report[0];
+      expect(entry).toHaveProperty("highProfitBonus");
+      expect(entry).toHaveProperty("highProfitOrderCount");
+      expect(typeof entry.highProfitBonus).toBe("number");
+      expect(typeof entry.highProfitOrderCount).toBe("number");
+      expect(entry.highProfitBonus).toBeGreaterThanOrEqual(0);
+      expect(entry.highProfitOrderCount).toBeGreaterThanOrEqual(0);
+      // totalSalary should include highProfitBonus
+      expect(entry.totalSalary).toBe(entry.baseSalary + entry.commission + entry.highProfitBonus);
+    }
+  });
+
+  it("salary report totalSalary formula is correct", async () => {
+    const report = await adminCaller.salaryReport.get({
+      yearMonth: "2026-01",
+    });
+    expect(Array.isArray(report)).toBe(true);
+    for (const entry of report) {
+      expect(entry.totalSalary).toBe(entry.baseSalary + entry.commission + entry.highProfitBonus);
+    }
+  });
+});
+
 describe("User Base Salary", () => {
   const adminCaller = appRouter.createCaller(createAdminContext());
 

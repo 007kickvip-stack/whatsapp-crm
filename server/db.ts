@@ -1,6 +1,6 @@
 import { eq, like, and, sql, desc, or, SQL, inArray, isNotNull } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
-import { InsertUser, users, customers, orders, orderItems, InsertCustomer, InsertOrder, InsertOrderItem, auditLogs, InsertAuditLog, exchangeRates, InsertExchangeRate, profitAlertSettings, InsertProfitAlertSetting, staffMonthlyTargets, InsertStaffMonthlyTarget, dailyData, InsertDailyData, accounts, InsertAccount, dailyReportNotes, InsertDailyReportNote, quotations, quotationItems, InsertQuotation, InsertQuotationItem, paypalIncome, paypalExpense, InsertPaypalIncome, InsertPaypalExpense, reshipments, InsertReshipment, orderPayments, InsertOrderPayment, commissionRules, InsertCommissionRule } from "../drizzle/schema";
+import { InsertUser, users, customers, orders, orderItems, InsertCustomer, InsertOrder, InsertOrderItem, auditLogs, InsertAuditLog, exchangeRates, InsertExchangeRate, profitAlertSettings, InsertProfitAlertSetting, staffMonthlyTargets, InsertStaffMonthlyTarget, dailyData, InsertDailyData, accounts, InsertAccount, dailyReportNotes, InsertDailyReportNote, quotations, quotationItems, InsertQuotation, InsertQuotationItem, paypalIncome, paypalExpense, InsertPaypalIncome, InsertPaypalExpense, reshipments, InsertReshipment, orderPayments, InsertOrderPayment, commissionRules, InsertCommissionRule, bonusRules, InsertBonusRule } from "../drizzle/schema";
 import { ENV } from './_core/env';
 import { nanoid } from 'nanoid';
 import { createHash, randomBytes } from 'crypto';
@@ -3117,6 +3117,9 @@ export async function getSalaryReport(yearMonth: string) {
   // 2. 获取活跃的提成规则
   const rules = await db.select().from(commissionRules).where(eq(commissionRules.isActive, 1)).orderBy(commissionRules.sortOrder, commissionRules.minAmount);
 
+  // 2.5 获取活跃的高利润单奖励规则
+  const activeBonusRules = await db.select().from(bonusRules).where(eq(bonusRules.isActive, 1)).orderBy(bonusRules.profitThreshold);
+
   // 3. 获取每个客服在该月的营业额（从订单表汇总 totalAmountCny）
   const revenueResult = await db.execute(sql`
     SELECT staffId, staffName,
@@ -3148,6 +3151,48 @@ export async function getSalaryReport(yearMonth: string) {
       AND o.staffId IS NOT NULL
     GROUP BY o.staffId
   `);
+
+  // 4.5 获取每个客服的高利润订单明细（按单笔订单的总利润=productProfit+shippingProfit）
+  const orderProfitResult = await db.execute(sql`
+    SELECT o.staffId, o.id as orderId,
+      COALESCE(SUM(oi.productProfit), 0) + COALESCE(SUM(oi.shippingProfit), 0) as orderTotalProfit
+    FROM order_items oi
+    JOIN orders o ON oi.orderId = o.id
+    WHERE o.orderDate >= ${startDate} AND o.orderDate < ${endDate}
+      AND o.staffId IS NOT NULL
+    GROUP BY o.staffId, o.id
+  `);
+  const orderProfitRows = (orderProfitResult as any)[0] || [];
+  // 按客服分组，存储每笔订单的利润
+  const staffOrderProfits = new Map<number, number[]>();
+  for (const row of orderProfitRows) {
+    const profits = staffOrderProfits.get(row.staffId) || [];
+    profits.push(parseFloat(row.orderTotalProfit) || 0);
+    staffOrderProfits.set(row.staffId, profits);
+  }
+
+  // 高利润单奖励计算函数
+  function calcBonusReward(orderProfits: number[], bRules: typeof activeBonusRules) {
+    if (!bRules.length || !orderProfits.length) return { bonusAmount: 0, bonusOrderCount: 0 };
+    let totalBonus = 0;
+    let bonusCount = 0;
+    for (const profit of orderProfits) {
+      // 找到该订单利润匹配的最高档奖励（从高到低匹配）
+      let bestBonus = 0;
+      for (const rule of bRules) {
+        const threshold = parseFloat(rule.profitThreshold as string) || 0;
+        const bonus = parseFloat(rule.bonusAmount as string) || 0;
+        if (profit >= threshold) {
+          bestBonus = bonus; // 取最后一个匹配的（规则按阈值升序，所以最后匹配的是最高档）
+        }
+      }
+      if (bestBonus > 0) {
+        totalBonus += bestBonus;
+        bonusCount++;
+      }
+    }
+    return { bonusAmount: totalBonus, bonusOrderCount: bonusCount };
+  }
   const profitRows = (profitResult as any)[0] || [];
   const profitMap = new Map<number, { productProfit: number; shippingProfit: number }>();
   for (const row of profitRows) {
@@ -3214,7 +3259,11 @@ export async function getSalaryReport(yearMonth: string) {
     const profitRateCommission = calcProfitRateCommission(totalProfit, totalRevenue, profitRateRules);
     const commission = revenueCommission + profitCommission + profitRateCommission;
 
-    const totalSalary = baseSalary + commission;
+    // 计算高利润单特别奖励
+    const orderProfits = staffOrderProfits.get(staff.id) || [];
+    const { bonusAmount: highProfitBonus, bonusOrderCount: highProfitOrderCount } = calcBonusReward(orderProfits, activeBonusRules);
+
+    const totalSalary = baseSalary + commission + highProfitBonus;
 
     return {
       staffId: staff.id,
@@ -3229,6 +3278,8 @@ export async function getSalaryReport(yearMonth: string) {
       revenueCommission: Math.round(revenueCommission * 100) / 100,
       profitCommission: Math.round(profitCommission * 100) / 100,
       profitRateCommission: Math.round(profitRateCommission * 100) / 100,
+      highProfitBonus: Math.round(highProfitBonus * 100) / 100,
+      highProfitOrderCount,
       totalSalary: Math.round(totalSalary * 100) / 100,
       hireDate: staff.hireDate,
     };
@@ -3276,4 +3327,72 @@ export async function getSalaryHistory(months: number = 6, staffId?: number) {
   }
 
   return results;
+}
+
+// ========== 高利润单特别奖励规则 ==========
+
+export async function listBonusRules() {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(bonusRules).orderBy(bonusRules.profitThreshold);
+}
+
+export async function getActiveBonusRules() {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(bonusRules).where(eq(bonusRules.isActive, 1)).orderBy(bonusRules.profitThreshold);
+}
+
+export async function createBonusRule(data: {
+  name: string;
+  profitThreshold: string;
+  bonusAmount: string;
+  sortOrder?: number;
+  createdById?: number;
+  createdByName?: string;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  const result = await db.insert(bonusRules).values({
+    name: data.name,
+    profitThreshold: data.profitThreshold,
+    bonusAmount: data.bonusAmount,
+    sortOrder: data.sortOrder ?? 0,
+    createdById: data.createdById,
+    createdByName: data.createdByName,
+  });
+  return { id: result[0].insertId };
+}
+
+export async function updateBonusRule(id: number, data: Partial<{
+  name: string;
+  profitThreshold: string;
+  bonusAmount: string;
+  sortOrder: number;
+  isActive: number;
+}>) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  const updateData: any = {};
+  if (data.name !== undefined) updateData.name = data.name;
+  if (data.profitThreshold !== undefined) updateData.profitThreshold = data.profitThreshold;
+  if (data.bonusAmount !== undefined) updateData.bonusAmount = data.bonusAmount;
+  if (data.sortOrder !== undefined) updateData.sortOrder = data.sortOrder;
+  if (data.isActive !== undefined) updateData.isActive = data.isActive;
+  await db.update(bonusRules).set(updateData).where(eq(bonusRules.id, id));
+  return { success: true };
+}
+
+export async function deleteBonusRule(id: number) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  await db.delete(bonusRules).where(eq(bonusRules.id, id));
+  return { success: true };
+}
+
+export async function getBonusRuleById(id: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const result = await db.select().from(bonusRules).where(eq(bonusRules.id, id)).limit(1);
+  return result[0] || null;
 }

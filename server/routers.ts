@@ -43,6 +43,7 @@ import {
   listCommissionRules, getActiveCommissionRules, createCommissionRule, updateCommissionRule, deleteCommissionRule, getCommissionRuleById,
   getSalaryReport,
   getSalaryHistory,
+  listBonusRules, getActiveBonusRules, createBonusRule, updateBonusRule, deleteBonusRule,
 } from "./db";
 import type { SQL } from "drizzle-orm";
 import { sdk } from "./_core/sdk";
@@ -1080,6 +1081,50 @@ export const appRouter = router({
       id: z.number(),
     })).mutation(async ({ input }) => {
       await deleteCommissionRule(input.id);
+      return { success: true };
+    }),
+  }),
+
+  // ==================== 高利润单特别奖励规则 ====================
+  bonusRules: router({
+    list: adminProcedure.query(async () => {
+      return await listBonusRules();
+    }),
+
+    activeList: protectedProcedure.query(async () => {
+      return await getActiveBonusRules();
+    }),
+
+    create: adminProcedure.input(z.object({
+      name: z.string().min(1),
+      profitThreshold: z.string(),
+      bonusAmount: z.string(),
+      sortOrder: z.number().optional(),
+    })).mutation(async ({ input, ctx }) => {
+      return await createBonusRule({
+        ...input,
+        createdById: ctx.user.id,
+        createdByName: ctx.user.name || "未知",
+      });
+    }),
+
+    update: adminProcedure.input(z.object({
+      id: z.number(),
+      name: z.string().min(1).optional(),
+      profitThreshold: z.string().optional(),
+      bonusAmount: z.string().optional(),
+      sortOrder: z.number().optional(),
+      isActive: z.number().optional(),
+    })).mutation(async ({ input }) => {
+      const { id, ...data } = input;
+      await updateBonusRule(id, data);
+      return { success: true };
+    }),
+
+    delete: adminProcedure.input(z.object({
+      id: z.number(),
+    })).mutation(async ({ input }) => {
+      await deleteBonusRule(input.id);
       return { success: true };
     }),
   }),

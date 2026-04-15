@@ -450,3 +450,24 @@ export const commissionRules = mysqlTable("commission_rules", {
 
 export type CommissionRule = typeof commissionRules.$inferSelect;
 export type InsertCommissionRule = typeof commissionRules.$inferInsert;
+
+/**
+ * 高利润单特别奖励规则表
+ * 当单笔订单总利润超过设定阈值时，给予额外奖励金额
+ * 支持多档阶梯奖励：如利润>500奖50，利润>1000奖120
+ */
+export const bonusRules = mysqlTable("bonus_rules", {
+  id: int("id").autoincrement().primaryKey(),
+  name: varchar("name", { length: 128 }).notNull(), // 规则名称
+  profitThreshold: decimal("profitThreshold", { precision: 12, scale: 2 }).notNull(), // 单笔订单总利润阈值（含）
+  bonusAmount: decimal("bonusAmount", { precision: 12, scale: 2 }).notNull(), // 奖励金额（固定金额）
+  sortOrder: int("sortOrder").default(0), // 排序顺序
+  isActive: int("isActive").default(1).notNull(), // 1=启用, 0=禁用
+  createdById: int("createdById"),
+  createdByName: varchar("createdByName", { length: 128 }),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type BonusRule = typeof bonusRules.$inferSelect;
+export type InsertBonusRule = typeof bonusRules.$inferInsert;

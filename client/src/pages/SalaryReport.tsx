@@ -31,6 +31,12 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import {
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from "@/components/ui/tabs";
+import {
   ChevronLeft,
   ChevronRight,
   Wallet,
@@ -46,6 +52,8 @@ import {
   Percent,
   BarChart3,
   X,
+  Award,
+  Star,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -103,11 +111,25 @@ export default function SalaryReportPage() {
     sortOrder: 0,
   });
 
+  // 高利润奖励弹窗
+  const [showBonusForm, setShowBonusForm] = useState(false);
+  const [editingBonus, setEditingBonus] = useState<any>(null);
+  const [deleteBonusId, setDeleteBonusId] = useState<number | null>(null);
+  const [bonusForm, setBonusForm] = useState({
+    name: "",
+    profitThreshold: "",
+    bonusAmount: "",
+    sortOrder: 0,
+  });
+
   // 历史图表
   const [showHistoryChart, setShowHistoryChart] = useState(false);
   const [historyStaffId, setHistoryStaffId] = useState<number | undefined>(undefined);
   const [historyStaffName, setHistoryStaffName] = useState("");
   const [historyMonths, setHistoryMonths] = useState(6);
+
+  // 管理弹窗tab
+  const [rulesTab, setRulesTab] = useState("commission");
 
   const utils = trpc.useUtils();
 
@@ -129,6 +151,15 @@ export default function SalaryReportPage() {
 
   // 活跃提成规则（所有人可见）
   const { data: activeRules } = trpc.commissionRules.activeList.useQuery();
+
+  // 高利润奖励规则列表（管理员）
+  const { data: bonusRulesData, isLoading: bonusRulesLoading } = trpc.bonusRules.list.useQuery(
+    undefined,
+    { enabled: isAdmin }
+  );
+
+  // 活跃高利润奖励规则（所有人可见）
+  const { data: activeBonusRules } = trpc.bonusRules.activeList.useQuery();
 
   // 历史工资数据
   const { data: historyData, isLoading: historyLoading } = trpc.salaryReport.history.useQuery(
@@ -183,8 +214,59 @@ export default function SalaryReportPage() {
     onError: (err) => toast.error(err.message),
   });
 
+  // 高利润奖励 mutations
+  const createBonusMutation = trpc.bonusRules.create.useMutation({
+    onSuccess: () => {
+      toast.success("奖励规则创建成功");
+      utils.bonusRules.list.invalidate();
+      utils.bonusRules.activeList.invalidate();
+      utils.salaryReport.get.invalidate();
+      setShowBonusForm(false);
+      resetBonusForm();
+    },
+    onError: (err) => toast.error(err.message),
+  });
+
+  const updateBonusMutation = trpc.bonusRules.update.useMutation({
+    onSuccess: () => {
+      toast.success("奖励规则更新成功");
+      utils.bonusRules.list.invalidate();
+      utils.bonusRules.activeList.invalidate();
+      utils.salaryReport.get.invalidate();
+      setShowBonusForm(false);
+      setEditingBonus(null);
+      resetBonusForm();
+    },
+    onError: (err) => toast.error(err.message),
+  });
+
+  const deleteBonusMutation = trpc.bonusRules.delete.useMutation({
+    onSuccess: () => {
+      toast.success("奖励规则已删除");
+      utils.bonusRules.list.invalidate();
+      utils.bonusRules.activeList.invalidate();
+      utils.salaryReport.get.invalidate();
+      setDeleteBonusId(null);
+    },
+    onError: (err) => toast.error(err.message),
+  });
+
+  const toggleBonusActiveMutation = trpc.bonusRules.update.useMutation({
+    onSuccess: () => {
+      toast.success("状态更新成功");
+      utils.bonusRules.list.invalidate();
+      utils.bonusRules.activeList.invalidate();
+      utils.salaryReport.get.invalidate();
+    },
+    onError: (err) => toast.error(err.message),
+  });
+
   const resetRuleForm = () => {
     setRuleForm({ name: "", minAmount: "", maxAmount: "", commissionRate: "", commissionType: "revenue", sortOrder: 0 });
+  };
+
+  const resetBonusForm = () => {
+    setBonusForm({ name: "", profitThreshold: "", bonusAmount: "", sortOrder: 0 });
   };
 
   const navigateMonth = (delta: number) => {
@@ -209,6 +291,7 @@ export default function SalaryReportPage() {
     return {
       totalBaseSalary: reportData.reduce((s, r) => s + r.baseSalary, 0),
       totalCommission: reportData.reduce((s, r) => s + r.commission, 0),
+      totalHighProfitBonus: reportData.reduce((s, r) => s + (r.highProfitBonus || 0), 0),
       totalSalary: reportData.reduce((s, r) => s + r.totalSalary, 0),
       totalRevenue: reportData.reduce((s, r) => s + r.totalRevenue, 0),
       totalProfit: reportData.reduce((s, r) => s + r.totalProfit, 0),
@@ -220,7 +303,6 @@ export default function SalaryReportPage() {
   const chartData = useMemo(() => {
     if (!historyData) return [];
     if (historyStaffId) {
-      // 单个客服的历史
       return historyData.map((d: any) => ({
         month: formatShortMonth(d.yearMonth),
         底薪: d.baseSalary,
@@ -230,7 +312,6 @@ export default function SalaryReportPage() {
         利润: d.totalProfit,
       }));
     }
-    // 全部客服汇总
     const monthMap = new Map<string, any>();
     for (const d of historyData as any[]) {
       const existing = monthMap.get(d.yearMonth) || {
@@ -266,12 +347,11 @@ export default function SalaryReportPage() {
       return;
     }
 
-    const isRateMode = ruleForm.commissionType === "profitRate";
     const payload = {
       name: ruleForm.name.trim(),
       minAmount: ruleForm.minAmount ? parseFloat(ruleForm.minAmount).toFixed(2) : "0",
       maxAmount: ruleForm.maxAmount ? parseFloat(ruleForm.maxAmount).toFixed(2) : null,
-      commissionRate: (rate / 100).toFixed(4), // 转换为小数
+      commissionRate: (rate / 100).toFixed(4),
       commissionType: ruleForm.commissionType as "revenue" | "profit" | "profitRate",
       sortOrder: ruleForm.sortOrder,
     };
@@ -280,6 +360,44 @@ export default function SalaryReportPage() {
       updateRuleMutation.mutate({ id: editingRule.id, ...payload });
     } else {
       createRuleMutation.mutate(payload);
+    }
+  };
+
+  const handleBonusSubmit = () => {
+    if (!bonusForm.name.trim()) {
+      toast.error("请输入奖励名称");
+      return;
+    }
+    if (!bonusForm.profitThreshold.trim()) {
+      toast.error("请输入利润阈值");
+      return;
+    }
+    if (!bonusForm.bonusAmount.trim()) {
+      toast.error("请输入奖励金额");
+      return;
+    }
+    const threshold = parseFloat(bonusForm.profitThreshold);
+    const amount = parseFloat(bonusForm.bonusAmount);
+    if (isNaN(threshold) || threshold < 0) {
+      toast.error("利润阈值必须大于等于0");
+      return;
+    }
+    if (isNaN(amount) || amount <= 0) {
+      toast.error("奖励金额必须大于0");
+      return;
+    }
+
+    const payload = {
+      name: bonusForm.name.trim(),
+      profitThreshold: threshold.toFixed(2),
+      bonusAmount: amount.toFixed(2),
+      sortOrder: bonusForm.sortOrder,
+    };
+
+    if (editingBonus) {
+      updateBonusMutation.mutate({ id: editingBonus.id, ...payload });
+    } else {
+      createBonusMutation.mutate(payload);
     }
   };
 
@@ -296,6 +414,17 @@ export default function SalaryReportPage() {
     setShowRuleForm(true);
   };
 
+  const openEditBonus = (bonus: any) => {
+    setEditingBonus(bonus);
+    setBonusForm({
+      name: bonus.name,
+      profitThreshold: bonus.profitThreshold ? String(parseFloat(bonus.profitThreshold)) : "",
+      bonusAmount: bonus.bonusAmount ? String(parseFloat(bonus.bonusAmount)) : "",
+      sortOrder: bonus.sortOrder || 0,
+    });
+    setShowBonusForm(true);
+  };
+
   const openStaffHistory = (staffId: number, staffName: string) => {
     setHistoryStaffId(staffId);
     setHistoryStaffName(staffName);
@@ -308,7 +437,6 @@ export default function SalaryReportPage() {
     setShowHistoryChart(true);
   };
 
-  // 获取区间标签文字
   const getRangeLabel = (rule: any) => {
     const type = rule.commissionType || "revenue";
     const min = parseFloat(rule.minAmount);
@@ -398,9 +526,36 @@ export default function SalaryReportPage() {
         </Card>
       )}
 
+      {/* 当前高利润奖励规则展示 */}
+      {activeBonusRules && activeBonusRules.length > 0 && (
+        <Card className="border-0 shadow-sm bg-gradient-to-r from-amber-50 to-orange-50">
+          <CardContent className="py-4">
+            <div className="flex items-center gap-2 mb-3">
+              <Award className="h-4 w-4 text-amber-600" />
+              <span className="font-medium text-amber-800">高利润单特别奖励</span>
+            </div>
+            <div className="flex flex-wrap gap-3">
+              {activeBonusRules.map((rule: any) => (
+                <div key={rule.id} className="bg-white/80 rounded-lg px-3 py-2 text-sm border border-amber-100">
+                  <Badge variant="secondary" className="bg-amber-100 text-amber-700 text-[10px] mr-2">
+                    高利润奖励
+                  </Badge>
+                  <span className="text-muted-foreground">
+                    单笔利润 ≥ ¥{parseFloat(rule.profitThreshold).toLocaleString()}
+                  </span>
+                  <span className="mx-2 text-amber-600 font-semibold">
+                    奖励 ¥{parseFloat(rule.bonusAmount).toLocaleString()}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Summary Cards */}
       {summary && (
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+        <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
           <Card className="border-0 shadow-sm">
             <CardContent className="py-4">
               <div className="flex items-center justify-between">
@@ -431,11 +586,24 @@ export default function SalaryReportPage() {
             <CardContent className="py-4">
               <div className="flex items-center justify-between">
                 <div>
+                  <p className="text-xs text-muted-foreground">高利润奖励</p>
+                  <p className="text-xl font-bold mt-1 text-amber-600">¥{summary.totalHighProfitBonus.toLocaleString()}</p>
+                </div>
+                <div className="h-10 w-10 rounded-full bg-amber-100 flex items-center justify-center">
+                  <Award className="h-5 w-5 text-amber-600" />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+          <Card className="border-0 shadow-sm">
+            <CardContent className="py-4">
+              <div className="flex items-center justify-between">
+                <div>
                   <p className="text-xs text-muted-foreground">应发总工资</p>
                   <p className="text-xl font-bold mt-1 text-emerald-600">¥{summary.totalSalary.toLocaleString()}</p>
                 </div>
-                <div className="h-10 w-10 rounded-full bg-amber-100 flex items-center justify-center">
-                  <DollarSign className="h-5 w-5 text-amber-600" />
+                <div className="h-10 w-10 rounded-full bg-emerald-100 flex items-center justify-center">
+                  <DollarSign className="h-5 w-5 text-emerald-600" />
                 </div>
               </div>
             </CardContent>
@@ -490,6 +658,7 @@ export default function SalaryReportPage() {
                     <th className="text-right py-3 px-4 font-medium text-muted-foreground">运费利润(¥)</th>
                     <th className="text-right py-3 px-4 font-medium text-muted-foreground">总利润(¥)</th>
                     <th className="text-right py-3 px-4 font-medium text-muted-foreground">提成(¥)</th>
+                    <th className="text-right py-3 px-4 font-medium text-amber-700 bg-amber-50/50">高利润奖励(¥)</th>
                     <th className="text-right py-3 px-4 font-medium text-emerald-700 bg-emerald-50/50">应发工资(¥)</th>
                     <th className="text-center py-3 px-4 font-medium text-muted-foreground">操作</th>
                   </tr>
@@ -517,6 +686,16 @@ export default function SalaryReportPage() {
                       </td>
                       <td className="py-3 px-4 text-right">
                         <span className="text-amber-600 font-medium">¥{row.commission.toLocaleString()}</span>
+                      </td>
+                      <td className="py-3 px-4 text-right bg-amber-50/50">
+                        {(row.highProfitBonus || 0) > 0 ? (
+                          <div>
+                            <span className="text-amber-700 font-medium">¥{row.highProfitBonus.toLocaleString()}</span>
+                            <span className="text-xs text-muted-foreground ml-1">({row.highProfitOrderCount}单)</span>
+                          </div>
+                        ) : (
+                          <span className="text-muted-foreground">-</span>
+                        )}
                       </td>
                       <td className="py-3 px-4 text-right bg-emerald-50/50">
                         <span className="text-emerald-700 font-bold text-base">¥{row.totalSalary.toLocaleString()}</span>
@@ -546,6 +725,7 @@ export default function SalaryReportPage() {
                       <td className="py-3 px-4 text-right">¥{reportData.reduce((s: number, r: any) => s + r.shippingProfit, 0).toLocaleString()}</td>
                       <td className="py-3 px-4 text-right">¥{summary?.totalProfit.toLocaleString()}</td>
                       <td className="py-3 px-4 text-right text-amber-600">¥{summary?.totalCommission.toLocaleString()}</td>
+                      <td className="py-3 px-4 text-right bg-amber-50/50 text-amber-700">¥{summary?.totalHighProfitBonus.toLocaleString()}</td>
                       <td className="py-3 px-4 text-right bg-emerald-50/50 text-emerald-700 font-bold">¥{summary?.totalSalary.toLocaleString()}</td>
                       <td className="py-3 px-4"></td>
                     </tr>
@@ -594,7 +774,6 @@ export default function SalaryReportPage() {
               </div>
             ) : chartData.length > 0 ? (
               <div className="space-y-6">
-                {/* 工资构成柱状图 */}
                 <div>
                   <h3 className="text-sm font-medium text-muted-foreground mb-3">工资构成（底薪 + 提成）</h3>
                   <ResponsiveContainer width="100%" height={300}>
@@ -613,7 +792,6 @@ export default function SalaryReportPage() {
                   </ResponsiveContainer>
                 </div>
 
-                {/* 营业额与利润趋势折线图 */}
                 <div>
                   <h3 className="text-sm font-medium text-muted-foreground mb-3">营业额与利润趋势</h3>
                   <ResponsiveContainer width="100%" height={280}>
@@ -633,7 +811,6 @@ export default function SalaryReportPage() {
                   </ResponsiveContainer>
                 </div>
 
-                {/* 数据明细表 */}
                 <div>
                   <h3 className="text-sm font-medium text-muted-foreground mb-3">历史数据明细</h3>
                   <div className="border rounded-lg overflow-hidden">
@@ -674,7 +851,7 @@ export default function SalaryReportPage() {
         </DialogContent>
       </Dialog>
 
-      {/* ========== Commission Rules Management Dialog ========== */}
+      {/* ========== Commission & Bonus Rules Management Dialog ========== */}
       <Dialog open={showRulesDialog} onOpenChange={setShowRulesDialog}>
         <DialogContent className="sm:max-w-3xl max-h-[80vh] overflow-y-auto">
           <DialogHeader>
@@ -683,111 +860,221 @@ export default function SalaryReportPage() {
               提成制度管理
             </DialogTitle>
           </DialogHeader>
-          <div className="space-y-4 py-2">
-            <div className="flex items-center justify-between">
-              <p className="text-sm text-muted-foreground">
-                设置提成规则，支持按营业额、利润或利润率三种模式计算提成
-              </p>
-              <Button
-                size="sm"
-                onClick={() => {
-                  setEditingRule(null);
-                  resetRuleForm();
-                  setShowRuleForm(true);
-                }}
-                className="bg-emerald-600 hover:bg-emerald-700"
-              >
-                <Plus className="h-4 w-4 mr-1" />
-                添加规则
-              </Button>
-            </div>
+          <Tabs value={rulesTab} onValueChange={setRulesTab} className="w-full">
+            <TabsList className="grid w-full grid-cols-2">
+              <TabsTrigger value="commission" className="flex items-center gap-1.5">
+                <Percent className="h-3.5 w-3.5" />
+                提成规则
+              </TabsTrigger>
+              <TabsTrigger value="bonus" className="flex items-center gap-1.5">
+                <Award className="h-3.5 w-3.5" />
+                高利润单奖励
+              </TabsTrigger>
+            </TabsList>
 
-            {rulesLoading ? (
-              <div className="py-8 text-center text-muted-foreground">
-                <Loader2 className="h-5 w-5 animate-spin mx-auto mb-2" />
-                加载中...
+            {/* 提成规则 Tab */}
+            <TabsContent value="commission" className="space-y-4 mt-4">
+              <div className="flex items-center justify-between">
+                <p className="text-sm text-muted-foreground">
+                  设置提成规则，支持按营业额、利润或利润率三种模式计算提成
+                </p>
+                <Button
+                  size="sm"
+                  onClick={() => {
+                    setEditingRule(null);
+                    resetRuleForm();
+                    setShowRuleForm(true);
+                  }}
+                  className="bg-emerald-600 hover:bg-emerald-700"
+                >
+                  <Plus className="h-4 w-4 mr-1" />
+                  添加规则
+                </Button>
               </div>
-            ) : rulesData && rulesData.length > 0 ? (
-              <div className="border rounded-lg overflow-hidden">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b bg-muted/30">
-                      <th className="text-left py-2.5 px-3 font-medium text-muted-foreground">规则名称</th>
-                      <th className="text-center py-2.5 px-3 font-medium text-muted-foreground">提成模式</th>
-                      <th className="text-right py-2.5 px-3 font-medium text-muted-foreground">区间下限</th>
-                      <th className="text-right py-2.5 px-3 font-medium text-muted-foreground">区间上限</th>
-                      <th className="text-right py-2.5 px-3 font-medium text-muted-foreground">提成比例</th>
-                      <th className="text-center py-2.5 px-3 font-medium text-muted-foreground">状态</th>
-                      <th className="text-right py-2.5 px-3 font-medium text-muted-foreground">操作</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {rulesData.map((rule: any) => {
-                      const type = rule.commissionType || "revenue";
-                      const isRateMode = type === "profitRate";
-                      return (
-                        <tr key={rule.id} className="border-b last:border-0 hover:bg-muted/20">
-                          <td className="py-2.5 px-3 font-medium">{rule.name}</td>
-                          <td className="py-2.5 px-3 text-center">
-                            <Badge variant="secondary" className={COMMISSION_TYPE_COLORS[type]}>
-                              {COMMISSION_TYPE_LABELS[type]}
-                            </Badge>
+
+              {rulesLoading ? (
+                <div className="py-8 text-center text-muted-foreground">
+                  <Loader2 className="h-5 w-5 animate-spin mx-auto mb-2" />
+                  加载中...
+                </div>
+              ) : rulesData && rulesData.length > 0 ? (
+                <div className="border rounded-lg overflow-hidden">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b bg-muted/30">
+                        <th className="text-left py-2.5 px-3 font-medium text-muted-foreground">规则名称</th>
+                        <th className="text-center py-2.5 px-3 font-medium text-muted-foreground">提成模式</th>
+                        <th className="text-right py-2.5 px-3 font-medium text-muted-foreground">区间下限</th>
+                        <th className="text-right py-2.5 px-3 font-medium text-muted-foreground">区间上限</th>
+                        <th className="text-right py-2.5 px-3 font-medium text-muted-foreground">提成比例</th>
+                        <th className="text-center py-2.5 px-3 font-medium text-muted-foreground">状态</th>
+                        <th className="text-right py-2.5 px-3 font-medium text-muted-foreground">操作</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {rulesData.map((rule: any) => {
+                        const type = rule.commissionType || "revenue";
+                        const isRateMode = type === "profitRate";
+                        return (
+                          <tr key={rule.id} className="border-b last:border-0 hover:bg-muted/20">
+                            <td className="py-2.5 px-3 font-medium">{rule.name}</td>
+                            <td className="py-2.5 px-3 text-center">
+                              <Badge variant="secondary" className={COMMISSION_TYPE_COLORS[type]}>
+                                {COMMISSION_TYPE_LABELS[type]}
+                              </Badge>
+                            </td>
+                            <td className="py-2.5 px-3 text-right">
+                              {isRateMode ? `${parseFloat(rule.minAmount)}%` : `¥${parseFloat(rule.minAmount).toLocaleString()}`}
+                            </td>
+                            <td className="py-2.5 px-3 text-right">
+                              {rule.maxAmount
+                                ? (isRateMode ? `${parseFloat(rule.maxAmount)}%` : `¥${parseFloat(rule.maxAmount).toLocaleString()}`)
+                                : <span className="text-muted-foreground">无上限</span>}
+                            </td>
+                            <td className="py-2.5 px-3 text-right">
+                              <Badge variant="secondary" className="bg-emerald-100 text-emerald-700">
+                                {(parseFloat(rule.commissionRate) * 100).toFixed(1)}%
+                              </Badge>
+                            </td>
+                            <td className="py-2.5 px-3 text-center">
+                              <button
+                                onClick={() => toggleRuleActiveMutation.mutate({ id: rule.id, isActive: rule.isActive ? 0 : 1 })}
+                                className="cursor-pointer"
+                              >
+                                <Badge variant={rule.isActive ? "default" : "outline"} className={rule.isActive ? "bg-emerald-600" : ""}>
+                                  {rule.isActive ? "启用" : "禁用"}
+                                </Badge>
+                              </button>
+                            </td>
+                            <td className="py-2.5 px-3 text-right">
+                              <div className="flex items-center justify-end gap-1">
+                                <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEditRule(rule)}>
+                                  <Pencil className="h-3.5 w-3.5" />
+                                </Button>
+                                <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={() => setDeleteRuleId(rule.id)}>
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                </Button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <div className="py-8 text-center text-muted-foreground border rounded-lg">
+                  <ArrowUpDown className="h-8 w-8 mx-auto mb-2 opacity-40" />
+                  <p>暂无提成规则</p>
+                  <p className="text-xs mt-1">点击"添加规则"创建提成方案</p>
+                </div>
+              )}
+
+              <div className="rounded-lg bg-blue-50 border border-blue-200 p-3 text-sm text-blue-800 space-y-2">
+                <p className="font-medium">提成计算说明</p>
+                <p><strong>按营业额：</strong>阶梯累加，客服月营业额(¥)落入各区间，区间内金额乘以对应比例。</p>
+                <p><strong>按利润：</strong>阶梯累加，客服月利润(¥)落入各区间，区间内金额乘以对应比例。</p>
+                <p><strong>按利润率：</strong>根据利润率(%)落入的区间，用总利润乘以对应比例。例如利润率10%-20%区间提成8%，则利润率15%时提成 = 总利润 x 8%。</p>
+                <p className="text-blue-600">三种模式的提成可以同时设置，最终提成为各模式提成之和。</p>
+              </div>
+            </TabsContent>
+
+            {/* 高利润单奖励 Tab */}
+            <TabsContent value="bonus" className="space-y-4 mt-4">
+              <div className="flex items-center justify-between">
+                <p className="text-sm text-muted-foreground">
+                  当单笔订单总利润超过设定阈值时，给予客服额外固定奖励
+                </p>
+                <Button
+                  size="sm"
+                  onClick={() => {
+                    setEditingBonus(null);
+                    resetBonusForm();
+                    setShowBonusForm(true);
+                  }}
+                  className="bg-amber-600 hover:bg-amber-700"
+                >
+                  <Plus className="h-4 w-4 mr-1" />
+                  添加奖励规则
+                </Button>
+              </div>
+
+              {bonusRulesLoading ? (
+                <div className="py-8 text-center text-muted-foreground">
+                  <Loader2 className="h-5 w-5 animate-spin mx-auto mb-2" />
+                  加载中...
+                </div>
+              ) : bonusRulesData && bonusRulesData.length > 0 ? (
+                <div className="border rounded-lg overflow-hidden">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b bg-muted/30">
+                        <th className="text-left py-2.5 px-3 font-medium text-muted-foreground">奖励名称</th>
+                        <th className="text-right py-2.5 px-3 font-medium text-muted-foreground">利润阈值(¥)</th>
+                        <th className="text-right py-2.5 px-3 font-medium text-muted-foreground">奖励金额(¥)</th>
+                        <th className="text-center py-2.5 px-3 font-medium text-muted-foreground">状态</th>
+                        <th className="text-right py-2.5 px-3 font-medium text-muted-foreground">操作</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {bonusRulesData.map((bonus: any) => (
+                        <tr key={bonus.id} className="border-b last:border-0 hover:bg-muted/20">
+                          <td className="py-2.5 px-3">
+                            <div className="flex items-center gap-2">
+                              <Star className="h-4 w-4 text-amber-500" />
+                              <span className="font-medium">{bonus.name}</span>
+                            </div>
                           </td>
                           <td className="py-2.5 px-3 text-right">
-                            {isRateMode ? `${parseFloat(rule.minAmount)}%` : `¥${parseFloat(rule.minAmount).toLocaleString()}`}
+                            <span className="text-muted-foreground">≥</span>{" "}
+                            <span className="font-medium">¥{parseFloat(bonus.profitThreshold).toLocaleString()}</span>
                           </td>
                           <td className="py-2.5 px-3 text-right">
-                            {rule.maxAmount
-                              ? (isRateMode ? `${parseFloat(rule.maxAmount)}%` : `¥${parseFloat(rule.maxAmount).toLocaleString()}`)
-                              : <span className="text-muted-foreground">无上限</span>}
-                          </td>
-                          <td className="py-2.5 px-3 text-right">
-                            <Badge variant="secondary" className="bg-emerald-100 text-emerald-700">
-                              {(parseFloat(rule.commissionRate) * 100).toFixed(1)}%
+                            <Badge variant="secondary" className="bg-amber-100 text-amber-700">
+                              ¥{parseFloat(bonus.bonusAmount).toLocaleString()}
                             </Badge>
                           </td>
                           <td className="py-2.5 px-3 text-center">
                             <button
-                              onClick={() => toggleRuleActiveMutation.mutate({ id: rule.id, isActive: rule.isActive ? 0 : 1 })}
+                              onClick={() => toggleBonusActiveMutation.mutate({ id: bonus.id, isActive: bonus.isActive ? 0 : 1 })}
                               className="cursor-pointer"
                             >
-                              <Badge variant={rule.isActive ? "default" : "outline"} className={rule.isActive ? "bg-emerald-600" : ""}>
-                                {rule.isActive ? "启用" : "禁用"}
+                              <Badge variant={bonus.isActive ? "default" : "outline"} className={bonus.isActive ? "bg-amber-600" : ""}>
+                                {bonus.isActive ? "启用" : "禁用"}
                               </Badge>
                             </button>
                           </td>
                           <td className="py-2.5 px-3 text-right">
                             <div className="flex items-center justify-end gap-1">
-                              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEditRule(rule)}>
+                              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEditBonus(bonus)}>
                                 <Pencil className="h-3.5 w-3.5" />
                               </Button>
-                              <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={() => setDeleteRuleId(rule.id)}>
+                              <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={() => setDeleteBonusId(bonus.id)}>
                                 <Trash2 className="h-3.5 w-3.5" />
                               </Button>
                             </div>
                           </td>
                         </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            ) : (
-              <div className="py-8 text-center text-muted-foreground border rounded-lg">
-                <ArrowUpDown className="h-8 w-8 mx-auto mb-2 opacity-40" />
-                <p>暂无提成规则</p>
-                <p className="text-xs mt-1">点击"添加规则"创建提成方案</p>
-              </div>
-            )}
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <div className="py-8 text-center text-muted-foreground border rounded-lg">
+                  <Award className="h-8 w-8 mx-auto mb-2 opacity-40" />
+                  <p>暂无高利润单奖励规则</p>
+                  <p className="text-xs mt-1">点击"添加奖励规则"设置奖励方案</p>
+                </div>
+              )}
 
-            <div className="rounded-lg bg-blue-50 border border-blue-200 p-3 text-sm text-blue-800 space-y-2">
-              <p className="font-medium">提成计算说明</p>
-              <p><strong>按营业额：</strong>阶梯累加，客服月营业额(¥)落入各区间，区间内金额乘以对应比例。</p>
-              <p><strong>按利润：</strong>阶梯累加，客服月利润(¥)落入各区间，区间内金额乘以对应比例。</p>
-              <p><strong>按利润率：</strong>根据利润率(%)落入的区间，用总利润乘以对应比例。例如利润率10%-20%区间提成8%，则利润率15%时提成 = 总利润 x 8%。</p>
-              <p className="text-blue-600">三种模式的提成可以同时设置，最终提成为各模式提成之和。</p>
-            </div>
-          </div>
+              <div className="rounded-lg bg-amber-50 border border-amber-200 p-3 text-sm text-amber-800 space-y-2">
+                <p className="font-medium">高利润单奖励说明</p>
+                <p>当客服的<strong>单笔订单总利润</strong>（产品毛利润 + 运费利润）达到设定阈值时，该笔订单将获得额外的固定奖励金额。</p>
+                <p>支持设置多档阈值：例如利润≥500奖50元，利润≥1000奖120元。每笔订单取匹配的最高档奖励。</p>
+                <p className="text-amber-600">高利润奖励与提成独立计算，最终应发工资 = 底薪 + 提成 + 高利润奖励。</p>
+              </div>
+            </TabsContent>
+          </Tabs>
         </DialogContent>
       </Dialog>
 
@@ -880,6 +1167,70 @@ export default function SalaryReportPage() {
         </DialogContent>
       </Dialog>
 
+      {/* ========== Add/Edit Bonus Rule Form ========== */}
+      <Dialog open={showBonusForm} onOpenChange={(open) => { if (!open) { setShowBonusForm(false); setEditingBonus(null); } }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Award className="h-5 w-5 text-amber-600" />
+              {editingBonus ? "编辑奖励规则" : "添加奖励规则"}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label>奖励名称 <span className="text-destructive">*</span></Label>
+              <Input
+                placeholder="如：高利润奖励第一档"
+                value={bonusForm.name}
+                onChange={(e) => setBonusForm(f => ({ ...f, name: e.target.value }))}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>单笔订单利润阈值(¥) <span className="text-destructive">*</span></Label>
+              <Input
+                type="number"
+                placeholder="如 500 表示单笔利润≥500时触发"
+                value={bonusForm.profitThreshold}
+                onChange={(e) => setBonusForm(f => ({ ...f, profitThreshold: e.target.value }))}
+              />
+              <p className="text-xs text-muted-foreground">当单笔订单的总利润（产品毛利润+运费利润）达到此金额时触发奖励</p>
+            </div>
+            <div className="space-y-2">
+              <Label>奖励金额(¥) <span className="text-destructive">*</span></Label>
+              <Input
+                type="number"
+                placeholder="如 50 表示每笔奖励50元"
+                value={bonusForm.bonusAmount}
+                onChange={(e) => setBonusForm(f => ({ ...f, bonusAmount: e.target.value }))}
+              />
+              <p className="text-xs text-muted-foreground">每笔达标订单的固定奖励金额</p>
+            </div>
+            <div className="space-y-2">
+              <Label>排序</Label>
+              <Input
+                type="number"
+                placeholder="0"
+                value={bonusForm.sortOrder}
+                onChange={(e) => setBonusForm(f => ({ ...f, sortOrder: parseInt(e.target.value) || 0 }))}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setShowBonusForm(false); setEditingBonus(null); }}>
+              取消
+            </Button>
+            <Button
+              onClick={handleBonusSubmit}
+              disabled={createBonusMutation.isPending || updateBonusMutation.isPending}
+              className="bg-amber-600 hover:bg-amber-700"
+            >
+              {(createBonusMutation.isPending || updateBonusMutation.isPending) && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+              {editingBonus ? "保存修改" : "创建奖励规则"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* Delete Rule Confirmation */}
       <AlertDialog open={deleteRuleId !== null} onOpenChange={() => setDeleteRuleId(null)}>
         <AlertDialogContent>
@@ -900,6 +1251,28 @@ export default function SalaryReportPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Delete Bonus Rule Confirmation */}
+      <AlertDialog open={deleteBonusId !== null} onOpenChange={() => setDeleteBonusId(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>确认删除</AlertDialogTitle>
+            <AlertDialogDescription>
+              确定要删除此高利润奖励规则吗？删除后将影响工资计算。
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>取消</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => deleteBonusId && deleteBonusMutation.mutate({ id: deleteBonusId })}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              删除
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
+
