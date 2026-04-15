@@ -357,7 +357,7 @@ export default function ExcelImportDialog({ open, onOpenChange, onSuccess }: Exc
 
   return (
     <Dialog open={open} onOpenChange={(v) => { if (!v) handleClose(); else onOpenChange(v); }}>
-      <DialogContent className="max-w-5xl max-h-[85vh] flex flex-col overflow-hidden">
+      <DialogContent className="max-w-6xl max-h-[90vh] flex flex-col overflow-hidden">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <FileSpreadsheet className="h-5 w-5" />
@@ -445,7 +445,7 @@ export default function ExcelImportDialog({ open, onOpenChange, onSuccess }: Exc
               </Badge>
             </div>
 
-            <ScrollArea className="flex-1 border rounded-md max-h-[calc(85vh-280px)]">
+            <ScrollArea className="flex-1 border rounded-md min-h-0">
               <div className="p-3 space-y-1.5">
                 {excelHeaders.map((header, idx) => {
                   const currentField = columnMapping[idx] || "_skip";
@@ -632,7 +632,8 @@ export default function ExcelImportDialog({ open, onOpenChange, onSuccess }: Exc
               </div>
             )}
 
-            <ScrollArea className="flex-1 border rounded-md max-h-[calc(85vh-320px)]">
+            <ScrollArea className="flex-1 border rounded-md min-h-0">
+              <div className="min-w-[1000px]">
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -680,6 +681,7 @@ export default function ExcelImportDialog({ open, onOpenChange, onSuccess }: Exc
                   })}
                 </TableBody>
               </Table>
+              </div>
               {previewRows.length > 100 && (
                 <p className="text-xs text-muted-foreground text-center py-2">
                   仅显示前 100 行，共 {previewRows.length} 行

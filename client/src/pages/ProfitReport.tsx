@@ -68,7 +68,7 @@ export default function ProfitReportPage() {
   const [alertRate, setAlertRate] = useState("");
   const [alertEnabled, setAlertEnabled] = useState(true);
 
-  const { data: staffNames } = trpc.profitReport.staffNames.useQuery();
+  const { data: staffNames } = trpc.profitReport.staffNames.useQuery(undefined, { enabled: isAdmin });
 
   const queryInput = useMemo(() => ({
     startDate: startDate || undefined,
@@ -453,9 +453,9 @@ export default function ProfitReportPage() {
           </div>
 
           {/* Staff Performance Table & Chart with Alert Highlighting */}
-          {byStaff.length > 0 && (
-            <div className={`grid grid-cols-1 ${isAdmin ? 'lg:grid-cols-2' : ''} gap-4`}>
-              {isAdmin && <Card>
+          {isAdmin && byStaff.length > 0 && (
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              <Card>
                 <CardHeader className="pb-2">
                   <CardTitle className="text-base">客服利润排名</CardTitle>
                   <CardDescription>按利润降序排列</CardDescription>
@@ -473,11 +473,11 @@ export default function ProfitReportPage() {
                     </BarChart>
                   </ResponsiveContainer>
                 </CardContent>
-              </Card>}
+              </Card>
 
               <Card>
                 <CardHeader className="pb-2">
-                  <CardTitle className="text-base">{isAdmin ? "客服利润详情" : "我的利润详情"}</CardTitle>
+                  <CardTitle className="text-base">客服利润详情</CardTitle>
                   {isAdmin && alertSetting?.enabled === 1 && (
                     <CardDescription className="flex items-center gap-1 text-xs">
                       <AlertTriangle className="h-3 w-3 text-red-500" />

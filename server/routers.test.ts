@@ -745,6 +745,44 @@ describe("Profit Report", () => {
     // Staff gets filtered data (only their own)
     expect(result).toBeDefined();
     expect(result.summary).toBeDefined();
+    // Verify getProfitReport was called with staff's own name
+    const { getProfitReport } = await import("./db");
+    const lastCall = (getProfitReport as any).mock.calls.at(-1);
+    expect(lastCall[0].staffName).toBe("Staff User"); // staff context user name
+  });
+
+  it("staff cannot override staffName filter", async () => {
+    const ctx = createStaffContext();
+    const caller = appRouter.createCaller(ctx);
+    // Even if staff tries to pass another staffName, it should be overridden
+    await caller.profitReport.summary({ staffName: "Other Staff" });
+    const { getProfitReport } = await import("./db");
+    const lastCall = (getProfitReport as any).mock.calls.at(-1);
+    expect(lastCall[0].staffName).toBe("Staff User"); // forced to own name
+  });
+
+  it("staff monthly comparison is filtered to own name", async () => {
+    const ctx = createStaffContext();
+    const caller = appRouter.createCaller(ctx);
+    await caller.profitReport.monthlyComparison({});
+    const { getMonthlyProfitComparison } = await import("./db");
+    const lastCall = (getMonthlyProfitComparison as any).mock.calls.at(-1);
+    expect(lastCall[0]).toBe("Staff User");
+  });
+
+  it("staff quarterly comparison is filtered to own name", async () => {
+    const ctx = createStaffContext();
+    const caller = appRouter.createCaller(ctx);
+    await caller.profitReport.quarterlyComparison({});
+    const { getQuarterlyProfitComparison } = await import("./db");
+    const lastCall = (getQuarterlyProfitComparison as any).mock.calls.at(-1);
+    expect(lastCall[0]).toBe("Staff User");
+  });
+
+  it("staff cannot access alert setting", async () => {
+    const ctx = createStaffContext();
+    const caller = appRouter.createCaller(ctx);
+    await expect(caller.profitReport.alertSetting()).rejects.toThrow();
   });
 
   it("any authenticated user can get staff names", async () => {
