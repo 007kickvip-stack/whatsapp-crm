@@ -266,7 +266,7 @@ export default function ProfitReportPage() {
                 <div className="flex items-center gap-2 text-sm text-gray-500">
                   <TrendingUp className="h-4 w-4" />总利润 (¥)
                 </div>
-                <p className="text-2xl font-bold text-emerald-600 mt-1">¥{fmtMoney(summary?.totalProfit)}</p>
+                <p className="text-2xl font-bold text-emerald-600 mt-1">¥{fmtMoney(productProfit + shippingProfit)}</p>
               </CardContent>
             </Card>
             <Card>
@@ -279,52 +279,22 @@ export default function ProfitReportPage() {
             </Card>
           </div>
 
-          {/* Detailed Breakdown */}
+          {/* Product Profit & Shipping Profit */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-base flex items-center gap-2">
-                  <Package className="h-4 w-4 text-blue-500" />产品利润明细
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-3 text-sm">
-                  <div className="flex justify-between">
-                    <span className="text-gray-500">总售价</span>
-                    <span className="font-mono">¥{fmtMoney(summary?.totalSellingPrice)}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-gray-500">总产品成本</span>
-                    <span className="font-mono text-red-500">-¥{fmtMoney(summary?.totalProductCost)}</span>
-                  </div>
-                  <div className="border-t pt-2 flex justify-between font-bold">
-                    <span>产品毛利润</span>
-                    <span className="font-mono text-emerald-600">¥{fmtMoney(summary?.totalProductProfit)}</span>
-                  </div>
+              <CardContent className="pt-4 pb-4">
+                <div className="flex items-center gap-2 text-sm text-gray-500">
+                  <Package className="h-4 w-4 text-blue-500" />产品毛利润
                 </div>
+                <p className="text-2xl font-bold text-blue-600 mt-1">¥{fmtMoney(productProfit)}</p>
               </CardContent>
             </Card>
             <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-base flex items-center gap-2">
-                  <Truck className="h-4 w-4 text-amber-500" />运费利润明细
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-3 text-sm">
-                  <div className="flex justify-between">
-                    <span className="text-gray-500">收取运费</span>
-                    <span className="font-mono">¥{fmtMoney(summary?.totalShippingCharged)}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-gray-500">实际运费</span>
-                    <span className="font-mono text-red-500">-¥{fmtMoney(summary?.totalShippingActual)}</span>
-                  </div>
-                  <div className="border-t pt-2 flex justify-between font-bold">
-                    <span>运费利润</span>
-                    <span className="font-mono text-emerald-600">¥{fmtMoney(summary?.totalShippingProfit)}</span>
-                  </div>
+              <CardContent className="pt-4 pb-4">
+                <div className="flex items-center gap-2 text-sm text-gray-500">
+                  <Truck className="h-4 w-4 text-amber-500" />运费利润
                 </div>
+                <p className="text-2xl font-bold text-amber-600 mt-1">¥{fmtMoney(shippingProfit)}</p>
               </CardContent>
             </Card>
           </div>
