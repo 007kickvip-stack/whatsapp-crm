@@ -69,7 +69,6 @@ import TrackingDialog from "@/components/TrackingDialog";
 import TrackingHoverCard from "@/components/TrackingHoverCard";
 import AccountSelect from "@/components/AccountSelect";
 import CountrySelect from "@/components/CountrySelect";
-import BulkAddItemsDialog from "@/components/BulkAddItemsDialog";
 import PaymentRecordsPanel from "@/components/PaymentRecordsPanel";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -605,10 +604,15 @@ export default function OrdersPage() {
   const [trackingOpen, setTrackingOpen] = useState(false);
   const [trackingNo, setTrackingNo] = useState("");
   const [trackingType, setTrackingType] = useState<"domestic" | "international">("domestic");
-  // Bulk add items dialog state
-  const [bulkAddOpen, setBulkAddOpen] = useState(false);
-  const [bulkAddOrderId, setBulkAddOrderId] = useState<number>(0);
-  const [bulkAddOrderNumber, setBulkAddOrderNumber] = useState("");
+  // Bulk add items inline state
+  const [bulkAddCount, setBulkAddCount] = useState(2);
+  const bulkCreateMutation = trpc.orderItems.bulkCreate.useMutation({
+    onSuccess: (result) => {
+      toast.success(`成功添加 ${result.count} 个子项`);
+      utils.orders.list.invalidate();
+    },
+    onError: (err) => toast.error(err.message),
+  });
   // Collapse/expand state: set of collapsed order IDs
   const [collapsedOrders, setCollapsedOrders] = useState<Set<number>>(new Set());
 
@@ -1197,23 +1201,52 @@ export default function OrdersPage() {
                 </TooltipTrigger>
                 <TooltipContent>添加子项</TooltipContent>
               </Tooltip>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-6 w-6 text-blue-600 hover:text-blue-700"
-                    onClick={() => {
-                      setBulkAddOrderId(row.orderId);
-                      setBulkAddOrderNumber(row.orderNumber);
-                      setBulkAddOpen(true);
-                    }}
-                  >
-                    <Layers className="h-3 w-3" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>批量添加子项</TooltipContent>
-              </Tooltip>
+              <Popover>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <PopoverTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-6 w-6 text-blue-600 hover:text-blue-700"
+                      >
+                        <Layers className="h-3 w-3" />
+                      </Button>
+                    </PopoverTrigger>
+                  </TooltipTrigger>
+                  <TooltipContent>批量添加子项</TooltipContent>
+                </Tooltip>
+                <PopoverContent className="w-[200px] p-3" align="start">
+                  <div className="space-y-2">
+                    <p className="text-xs font-medium text-muted-foreground">添加子项数量</p>
+                    <div className="flex items-center gap-2">
+                      <Input
+                        type="number"
+                        min={1}
+                        max={50}
+                        value={bulkAddCount}
+                        onChange={(e) => setBulkAddCount(Math.max(1, Math.min(50, parseInt(e.target.value) || 1)))}
+                        className="h-8 text-sm w-20 text-center"
+                      />
+                      <Button
+                        size="sm"
+                        className="h-8 flex-1"
+                        disabled={bulkCreateMutation.isPending}
+                        onClick={() => {
+                          bulkCreateMutation.mutate({
+                            orderId: row.orderId,
+                            items: Array.from({ length: bulkAddCount }, () => ({
+                              orderNumber: row.orderNumber || undefined,
+                            })),
+                          });
+                        }}
+                      >
+                        {bulkCreateMutation.isPending ? "添加中..." : "确认"}
+                      </Button>
+                    </div>
+                  </div>
+                </PopoverContent>
+              </Popover>
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Button
@@ -2169,14 +2202,7 @@ export default function OrdersPage() {
         type={trackingType}
       />
 
-      {/* Bulk Add Items Dialog */}
-      <BulkAddItemsDialog
-        open={bulkAddOpen}
-        onOpenChange={setBulkAddOpen}
-        orderId={bulkAddOrderId}
-        orderNumber={bulkAddOrderNumber}
-        onSuccess={() => utils.orders.list.invalidate()}
-      />
+
 
       {/* Delete Order Confirmation */}
       <AlertDialog open={deleteId !== null} onOpenChange={() => setDeleteId(null)}>
