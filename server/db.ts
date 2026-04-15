@@ -2765,7 +2765,7 @@ export async function repairPaypalIncomeSync() {
     WHERE pi.paymentId IS NOT NULL
       AND (
         (pi.paymentScreenshotUrl IS NULL AND op.screenshotUrl IS NOT NULL AND op.screenshotUrl != '')
-        OR (pi.incomeDate IS NULL AND op.paymentDate IS NOT NULL)
+        OR (pi.incomeDate IS NULL AND (op.paymentDate IS NOT NULL OR o.orderDate IS NOT NULL))
         OR (pi.orderNumber IS NULL AND o.orderNumber IS NOT NULL AND o.orderNumber != '')
         OR (pi.paymentType IS NULL AND op.paymentType IS NOT NULL AND op.paymentType != '')
       )
@@ -2793,6 +2793,7 @@ export async function repairPaypalIncomeSync() {
     WHERE pi.paymentId IS NULL
       AND (
         (pi.orderNumber IS NULL AND o.orderNumber IS NOT NULL AND o.orderNumber != '')
+        OR (pi.incomeDate IS NULL AND o.orderDate IS NOT NULL)
         OR (pi.paymentScreenshotUrl IS NULL AND EXISTS (
           SELECT 1 FROM order_items oi WHERE oi.orderId = o.id AND oi.paymentScreenshotUrl IS NOT NULL
         ))
@@ -2803,6 +2804,7 @@ export async function repairPaypalIncomeSync() {
     await db.execute(sql`
       UPDATE paypal_income SET
         paymentScreenshotUrl = COALESCE(paymentScreenshotUrl, ${row.screenshotUrl || null}),
+        incomeDate = COALESCE(incomeDate, ${row.orderDate || null}),
         orderNumber = COALESCE(orderNumber, ${row.orderNumber || null})
       WHERE id = ${row.id}
     `);

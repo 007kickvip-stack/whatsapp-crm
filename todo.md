@@ -659,3 +659,8 @@
 ## 客户管理联系方式列显示优化
 - [x] 联系方式列内容过长时截断显示（限制max-w-[120px]+truncate+省略号）
 - [x] 悬浮时显示完整内容（Tooltip组件，最大宽度300px，自动换行）
+
+## Bug修复：PayPal收支日期未同步
+- [x] 排查syncPaymentToPaypalIncome中日期传递逻辑（原因：repairSync条件未覆盖paymentDate为NULL但orderDate存在的情况）
+- [x] 修复repairSync日期条件：增加orderDate回退，同时修复orderLinked部分也同步日期
+- [x] 测试验证（192条测试全部通过）
