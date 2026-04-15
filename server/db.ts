@@ -1,6 +1,6 @@
 import { eq, like, and, sql, desc, or, SQL, inArray, isNotNull } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
-import { InsertUser, users, customers, orders, orderItems, InsertCustomer, InsertOrder, InsertOrderItem, auditLogs, InsertAuditLog, exchangeRates, InsertExchangeRate, profitAlertSettings, InsertProfitAlertSetting, staffMonthlyTargets, InsertStaffMonthlyTarget, dailyData, InsertDailyData, accounts, InsertAccount, dailyReportNotes, InsertDailyReportNote, quotations, quotationItems, InsertQuotation, InsertQuotationItem, paypalIncome, paypalExpense, InsertPaypalIncome, InsertPaypalExpense } from "../drizzle/schema";
+import { InsertUser, users, customers, orders, orderItems, InsertCustomer, InsertOrder, InsertOrderItem, auditLogs, InsertAuditLog, exchangeRates, InsertExchangeRate, profitAlertSettings, InsertProfitAlertSetting, staffMonthlyTargets, InsertStaffMonthlyTarget, dailyData, InsertDailyData, accounts, InsertAccount, dailyReportNotes, InsertDailyReportNote, quotations, quotationItems, InsertQuotation, InsertQuotationItem, paypalIncome, paypalExpense, InsertPaypalIncome, InsertPaypalExpense, reshipments, InsertReshipment } from "../drizzle/schema";
 import { ENV } from './_core/env';
 import { nanoid } from 'nanoid';
 import { createHash, randomBytes } from 'crypto';
@@ -2584,4 +2584,90 @@ export async function syncOrdersToPaypalIncome(userId: number) {
   }
   
   return { created };
+}
+
+// ==================== Reshipment Helpers ====================
+
+export async function createReshipment(data: InsertReshipment) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const result = await db.insert(reshipments).values(data);
+  return result[0].insertId;
+}
+
+export async function updateReshipment(id: number, data: Partial<InsertReshipment>) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.update(reshipments).set(data).where(eq(reshipments.id, id));
+}
+
+export async function deleteReshipment(id: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.delete(reshipments).where(eq(reshipments.id, id));
+}
+
+export async function getReshipmentById(id: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const rows = await db.select().from(reshipments).where(eq(reshipments.id, id)).limit(1);
+  return rows[0] ?? null;
+}
+
+export async function listReshipments(params: {
+  page?: number;
+  pageSize?: number;
+  search?: string;
+  staffName?: string;
+  dateFrom?: string;
+  dateTo?: string;
+  orderStatus?: string;
+  staffId?: number;
+}) {
+  const db = await getDb();
+  if (!db) return { data: [], total: 0 };
+  const { page = 1, pageSize = 50, search, staffName, dateFrom, dateTo, orderStatus, staffId } = params;
+  const offset = (page - 1) * pageSize;
+  const conditions: SQL[] = [];
+  if (search) {
+    conditions.push(
+      or(
+        like(reshipments.customerWhatsapp, `%${search}%`),
+        like(reshipments.orderNumber, `%${search}%`),
+        like(reshipments.originalOrderNo, `%${search}%`),
+        like(reshipments.staffName, `%${search}%`),
+        like(reshipments.account, `%${search}%`),
+        like(reshipments.domesticTrackingNo, `%${search}%`),
+        like(reshipments.internationalTrackingNo, `%${search}%`),
+        like(reshipments.reshipReason, `%${search}%`)
+      )!
+    );
+  }
+  if (staffName) {
+    conditions.push(eq(reshipments.staffName, staffName));
+  }
+  if (staffId) {
+    conditions.push(eq(reshipments.staffId, staffId));
+  }
+  if (dateFrom) {
+    conditions.push(sql`${reshipments.reshipDate} >= ${dateFrom}`);
+  }
+  if (dateTo) {
+    conditions.push(sql`${reshipments.reshipDate} <= ${dateTo}`);
+  }
+  if (orderStatus) {
+    conditions.push(eq(reshipments.orderStatus, orderStatus));
+  }
+  const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
+  const [data, countResult] = await Promise.all([
+    db.select().from(reshipments).where(whereClause).orderBy(desc(reshipments.id)).limit(pageSize).offset(offset),
+    db.select({ count: sql<number>`count(*)` }).from(reshipments).where(whereClause),
+  ]);
+  return { data, total: countResult[0]?.count ?? 0 };
+}
+
+export async function getReshipmentsByOriginalOrderId(orderId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(reshipments).where(eq(reshipments.originalOrderId, orderId)).orderBy(desc(reshipments.id));
 }

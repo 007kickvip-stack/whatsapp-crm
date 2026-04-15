@@ -35,6 +35,7 @@ import {
   createPaypalExpense, updatePaypalExpense, deletePaypalExpense, listPaypalExpense,
   getPaypalBalanceSummary, syncOrdersToPaypalIncome,
   syncOrderToPaypalIncome, updatePaypalIncomeFromOrder, deletePaypalIncomeByOrderId,
+  createReshipment, updateReshipment, deleteReshipment, getReshipmentById, listReshipments, getReshipmentsByOriginalOrderId,
 } from "./db";
 import type { SQL } from "drizzle-orm";
 import { sdk } from "./_core/sdk";
@@ -1581,6 +1582,164 @@ export const appRouter = router({
         await logAction(ctx, "sync", "paypalIncome", 0, undefined, `同步${result.created}条订单数据`);
       }
       return result;
+    }),
+  }),
+
+  // ==================== Reshipment Routes ====================
+  reshipments: router({
+    list: protectedProcedure.input(z.object({
+      page: z.number().default(1),
+      pageSize: z.number().default(50),
+      search: z.string().optional(),
+      staffName: z.string().optional(),
+      dateFrom: z.string().optional(),
+      dateTo: z.string().optional(),
+      orderStatus: z.string().optional(),
+    })).query(({ input, ctx }) => {
+      // 客服只能看自己的补发记录
+      const params: any = { ...input };
+      if (ctx.user.role !== 'admin') {
+        params.staffId = ctx.user.id;
+      }
+      return listReshipments(params);
+    }),
+
+    getById: protectedProcedure.input(z.object({ id: z.number() })).query(async ({ input }) => {
+      return getReshipmentById(input.id);
+    }),
+
+    getByOriginalOrderId: protectedProcedure.input(z.object({ orderId: z.number() })).query(async ({ input }) => {
+      return getReshipmentsByOriginalOrderId(input.orderId);
+    }),
+
+    create: protectedProcedure.input(z.object({
+      reshipDate: z.string().optional(),
+      staffName: z.string().optional(),
+      account: z.string().optional(),
+      customerWhatsapp: z.string().optional(),
+      orderNumber: z.string().optional(),
+      orderImageUrl: z.string().optional(),
+      size: z.string().optional(),
+      domesticTrackingNo: z.string().optional(),
+      sizeRecommendation: z.string().optional(),
+      contactInfo: z.string().optional(),
+      internationalTrackingNo: z.string().optional(),
+      originalOrderNo: z.string().optional(),
+      shipDate: z.string().optional(),
+      quantity: z.number().optional(),
+      source: z.string().optional(),
+      orderStatus: z.string().optional(),
+      totalProfit: z.string().optional(),
+      reshipReason: z.string().optional(),
+      customerPaidAmount: z.string().optional(),
+      reshipCost: z.string().optional(),
+      actualShipping: z.string().optional(),
+      profitLoss: z.string().optional(),
+      originalOrderId: z.number().optional(),
+    })).mutation(async ({ input, ctx }) => {
+      const id = await createReshipment({
+        ...input,
+        reshipDate: input.reshipDate ? new Date(input.reshipDate + "T00:00:00") : null,
+        shipDate: input.shipDate ? new Date(input.shipDate + "T00:00:00") : null,
+        staffId: ctx.user.id,
+        createdById: ctx.user.id,
+      } as any);
+      await logAction(ctx, "create", "reshipment", id);
+      return { id };
+    }),
+
+    // 从订单创建补发记录（自动填充订单信息）
+    createFromOrder: protectedProcedure.input(z.object({
+      orderId: z.number(),
+      reshipReason: z.string().optional(),
+    })).mutation(async ({ input, ctx }) => {
+      const order = await getOrderWithItems(input.orderId);
+      if (!order) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "订单不存在" });
+      }
+      // 获取第一个子项的信息作为默认值
+      const firstItem = order.items?.[0];
+      const today = new Date().toISOString().slice(0, 10);
+      const id = await createReshipment({
+        reshipDate: new Date(today + "T00:00:00"),
+        staffName: order.staffName || ctx.user.name || null,
+        staffId: ctx.user.id,
+        account: order.account || null,
+        customerWhatsapp: order.customerWhatsapp || null,
+        orderNumber: null,
+        orderImageUrl: firstItem?.orderImageUrl || null,
+        size: firstItem?.size || null,
+        domesticTrackingNo: null,
+        sizeRecommendation: firstItem?.sizeRecommendation || null,
+        contactInfo: firstItem?.contactInfo || null,
+        internationalTrackingNo: null,
+        originalOrderNo: order.orderNumber || null,
+        shipDate: null,
+        quantity: 1,
+        source: firstItem?.source || null,
+        orderStatus: "已报货，待发货",
+        totalProfit: "0",
+        reshipReason: input.reshipReason || null,
+        customerPaidAmount: "0",
+        reshipCost: "0",
+        actualShipping: "0",
+        profitLoss: "0",
+        originalOrderId: input.orderId,
+        createdById: ctx.user.id,
+      } as any);
+      await logAction(ctx, "create", "reshipment", id, undefined, `从订单#${input.orderId}创建补发记录`);
+      return { id };
+    }),
+
+    update: protectedProcedure.input(z.object({
+      id: z.number(),
+      reshipDate: z.string().optional(),
+      staffName: z.string().optional(),
+      account: z.string().optional(),
+      customerWhatsapp: z.string().optional(),
+      orderNumber: z.string().optional(),
+      orderImageUrl: z.string().optional(),
+      size: z.string().optional(),
+      domesticTrackingNo: z.string().optional(),
+      sizeRecommendation: z.string().optional(),
+      contactInfo: z.string().optional(),
+      internationalTrackingNo: z.string().optional(),
+      originalOrderNo: z.string().optional(),
+      shipDate: z.string().optional(),
+      quantity: z.number().optional(),
+      source: z.string().optional(),
+      orderStatus: z.string().optional(),
+      totalProfit: z.string().optional(),
+      reshipReason: z.string().optional(),
+      customerPaidAmount: z.string().optional(),
+      reshipCost: z.string().optional(),
+      actualShipping: z.string().optional(),
+      profitLoss: z.string().optional(),
+    })).mutation(async ({ input, ctx }) => {
+      const { id, ...data } = input;
+      const updateData: any = { ...data };
+      if (data.reshipDate !== undefined) {
+        updateData.reshipDate = data.reshipDate ? new Date(data.reshipDate + "T00:00:00") : null;
+      }
+      if (data.shipDate !== undefined) {
+        updateData.shipDate = data.shipDate ? new Date(data.shipDate + "T00:00:00") : null;
+      }
+      // 自动计算盈亏
+      const customerPaid = parseFloat(data.customerPaidAmount || "0") || 0;
+      const cost = parseFloat(data.reshipCost || "0") || 0;
+      const shipping = parseFloat(data.actualShipping || "0") || 0;
+      if (data.customerPaidAmount !== undefined || data.reshipCost !== undefined || data.actualShipping !== undefined) {
+        updateData.profitLoss = String(customerPaid - cost - shipping);
+      }
+      await updateReshipment(id, updateData);
+      await logAction(ctx, "update", "reshipment", id, undefined, JSON.stringify(data));
+      return { success: true };
+    }),
+
+    delete: protectedProcedure.input(z.object({ id: z.number() })).mutation(async ({ input, ctx }) => {
+      await deleteReshipment(input.id);
+      await logAction(ctx, "delete", "reshipment", input.id);
+      return { success: true };
     }),
   }),
 });

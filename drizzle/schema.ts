@@ -366,3 +366,40 @@ export const paypalExpense = mysqlTable("paypal_expense", {
 
 export type PaypalExpense = typeof paypalExpense.$inferSelect;
 export type InsertPaypalExpense = typeof paypalExpense.$inferInsert;
+
+/**
+ * 补发表 - 记录订单补发信息
+ */
+export const reshipments = mysqlTable("reshipments", {
+  id: int("id").autoincrement().primaryKey(),
+  reshipDate: date("reshipDate"), // 日期
+  staffName: varchar("staffName", { length: 64 }), // 客服名字
+  staffId: int("staffId"), // 客服ID
+  account: varchar("account", { length: 64 }), // 账号
+  customerWhatsapp: varchar("customerWhatsapp", { length: 255 }), // 客户WhatsApp
+  orderNumber: varchar("orderNumber", { length: 128 }), // 订单编号
+  orderImageUrl: text("orderImageUrl"), // 订单图片
+  size: varchar("size", { length: 64 }), // Size
+  domesticTrackingNo: varchar("domesticTrackingNo", { length: 128 }), // 国内单号
+  sizeRecommendation: text("sizeRecommendation"), // 推荐码数
+  contactInfo: text("contactInfo"), // 联系方式
+  internationalTrackingNo: varchar("internationalTrackingNo", { length: 128 }), // 国际跟踪单号
+  originalOrderNo: varchar("originalOrderNo", { length: 128 }), // 原订单号
+  shipDate: date("shipDate"), // 发出日期
+  quantity: int("quantity").default(1), // 件数
+  source: varchar("source", { length: 128 }), // 货源
+  orderStatus: varchar("orderStatus", { length: 64 }).default("已报货，待发货"), // 订单状态
+  totalProfit: decimal("totalProfit", { precision: 12, scale: 2 }).default("0"), // 总利润
+  reshipReason: text("reshipReason"), // 补发原因
+  customerPaidAmount: decimal("customerPaidAmount", { precision: 12, scale: 2 }).default("0"), // 客户补的金额
+  reshipCost: decimal("reshipCost", { precision: 12, scale: 2 }).default("0"), // 补发成本
+  actualShipping: decimal("actualShipping", { precision: 12, scale: 2 }).default("0"), // 实际运费
+  profitLoss: decimal("profitLoss", { precision: 12, scale: 2 }).default("0"), // 盈亏 = 客户补的金额 - 补发成本 - 实际运费
+  originalOrderId: int("originalOrderId"), // 关联原始订单ID
+  createdById: int("createdById"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type Reshipment = typeof reshipments.$inferSelect;
+export type InsertReshipment = typeof reshipments.$inferInsert;

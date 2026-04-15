@@ -59,6 +59,7 @@ import {
   Layers,
   ChevronsUpDown,
   ExternalLink,
+  RefreshCw,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useLocation } from "wouter";
@@ -667,6 +668,15 @@ export default function OrdersPage() {
     onError: (err) => toast.error(err.message),
   });
 
+  // Create reshipment from order
+  const createReshipmentMutation = trpc.reshipments.createFromOrder.useMutation({
+    onSuccess: (result) => {
+      toast.success("补发记录已创建，正在跳转到补发表...");
+      setLocation("/reshipments");
+    },
+    onError: (err) => toast.error(err.message),
+  });
+
   // Delete a single order item
   const [deleteItemInfo, setDeleteItemInfo] = useState<{ id: number; orderId: number } | null>(null);
   const deleteItemMutation = trpc.orderItems.delete.useMutation({
@@ -1128,6 +1138,21 @@ export default function OrdersPage() {
                   </Button>
                 </TooltipTrigger>
                 <TooltipContent>批量添加子项</TooltipContent>
+              </Tooltip>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-6 w-6 text-orange-500 hover:text-orange-600"
+                    onClick={() => {
+                      createReshipmentMutation.mutate({ orderId: row.orderId });
+                    }}
+                  >
+                    <RefreshCw className="h-3 w-3" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>补发</TooltipContent>
               </Tooltip>
             </div>
           ) : hasItem ? (
