@@ -35,6 +35,7 @@ import {
   createPaypalExpense, updatePaypalExpense, deletePaypalExpense, listPaypalExpense,
   getPaypalBalanceSummary, syncOrdersToPaypalIncome,
   syncOrderToPaypalIncome, updatePaypalIncomeFromOrder, deletePaypalIncomeByOrderId,
+  syncPaymentToPaypalIncome, updatePaypalIncomeFromPayment, deletePaypalIncomeByPaymentId,
   createReshipment, updateReshipment, deleteReshipment, getReshipmentById, listReshipments, getReshipmentsByOriginalOrderId,
   createOrderPayment, updateOrderPayment, deleteOrderPayment, getOrderPaymentsByOrderId, getOrderPaymentById,
 } from "./db";
@@ -1775,6 +1776,8 @@ export const appRouter = router({
         paymentDate: paymentDate ? new Date(paymentDate) : undefined,
         createdById: ctx.user.id,
       } as any);
+      // 自动同步到PayPal收入表
+      await syncPaymentToPaypalIncome(id, input.orderId, ctx.user.id);
       await logAction(ctx, "create", "orderPayment", id, undefined, `订单ID:${input.orderId} 类型:${input.paymentType} 金额:${input.amount}`);
       return { id };
     }),
@@ -1794,12 +1797,16 @@ export const appRouter = router({
         ...rest,
         paymentDate: paymentDate ? new Date(paymentDate) : undefined,
       } as any);
+      // 同步更新PayPal收入记录
+      await updatePaypalIncomeFromPayment(id);
       await logAction(ctx, "update", "orderPayment", id);
       return { success: true };
     }),
 
     // 删除支付记录
     delete: protectedProcedure.input(z.object({ id: z.number() })).mutation(async ({ input, ctx }) => {
+      // 先删除PayPal关联记录
+      await deletePaypalIncomeByPaymentId(input.id);
       await deleteOrderPayment(input.id);
       await logAction(ctx, "delete", "orderPayment", input.id);
       return { success: true };
