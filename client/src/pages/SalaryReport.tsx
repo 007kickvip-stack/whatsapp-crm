@@ -94,6 +94,21 @@ export default function SalaryReportPage() {
   const { user } = useAuth();
   const isAdmin = user?.role === "admin";
 
+  // 权限守卫：仅管理员可访问
+  if (!isAdmin) {
+    return (
+      <div className="flex items-center justify-center h-[60vh]">
+        <Card className="max-w-md w-full">
+          <CardContent className="pt-6 text-center">
+            <div className="text-4xl mb-4">🔒</div>
+            <h2 className="text-xl font-semibold mb-2">无访问权限</h2>
+            <p className="text-muted-foreground">工资与提成报表仅管理员可查看，请联系管理员。</p>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
   // 月份选择
   const [yearMonth, setYearMonth] = useState(() => {
     const now = new Date();

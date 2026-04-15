@@ -76,8 +76,10 @@ const dataMenuItems: MenuItem[] = [
   { icon: CalendarDays, label: "每日数据", path: "/daily-data" },
   { icon: BarChart3, label: "利润报表", path: "/profit-report" },
   { icon: Target, label: "目标管理", path: "/staff-targets" },
-  { icon: Banknote, label: "工资与提成", path: "/salary-report" },
 ];
+
+// 仅管理员可见的工资与提成菜单
+const salaryMenuItem: MenuItem = { icon: Banknote, label: "工资与提成", path: "/salary-report" };
 
 // 仅管理员可见的系统管理菜单
 const adminMenuItems: MenuItem[] = [
@@ -146,7 +148,7 @@ function DashboardLayoutContent({
   const isAdmin = user?.role === "admin";
 
   const allMenuItems = useMemo(() => {
-    return [...mainMenuItems, ...dataMenuItems, ...(isAdmin ? adminMenuItems : [])];
+    return [...mainMenuItems, ...dataMenuItems, ...(isAdmin ? [salaryMenuItem, ...adminMenuItems] : [])];
   }, [isAdmin]);
 
   const activeMenuItem = allMenuItems.find((item) => {
@@ -268,6 +270,24 @@ function DashboardLayoutContent({
                     </SidebarMenuItem>
                   );
                 })}
+                {isAdmin && (() => {
+                  const isActive = location.startsWith(salaryMenuItem.path);
+                  return (
+                    <SidebarMenuItem key={salaryMenuItem.path}>
+                      <SidebarMenuButton
+                        isActive={isActive}
+                        onClick={() => setLocation(salaryMenuItem.path)}
+                        tooltip={salaryMenuItem.label}
+                        className="h-10 transition-all font-normal"
+                      >
+                        <salaryMenuItem.icon
+                          className={`h-4 w-4 ${isActive ? "text-primary" : ""}`}
+                        />
+                        <span>{salaryMenuItem.label}</span>
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  );
+                })()}
               </SidebarMenu>
             </SidebarGroup>
 

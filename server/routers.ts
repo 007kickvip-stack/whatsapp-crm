@@ -1134,35 +1134,30 @@ export const appRouter = router({
   // ==================== 工资报表 ====================
   salaryReport: router({
     // 获取指定月份的工资报表
-    get: protectedProcedure.input(z.object({
+    get: adminProcedure.input(z.object({
       yearMonth: z.string().regex(/^\d{4}-\d{2}$/),
-    })).query(async ({ input, ctx }) => {
-      const report = await getSalaryReport(input.yearMonth);
-      if (ctx.user.role === "admin") return report;
-      // 客服只能看自己的
-      return report.filter(r => r.staffId === ctx.user.id);
+    })).query(async ({ input }) => {
+      return await getSalaryReport(input.yearMonth);
     }),
 
     // 获取历史工资数据（用于图表）
-    history: protectedProcedure.input(z.object({
+    history: adminProcedure.input(z.object({
       months: z.number().min(1).max(24).optional(),
       staffId: z.number().optional(),
-    })).query(async ({ input, ctx }) => {
+    })).query(async ({ input }) => {
       const months = input.months || 6;
-      // 客服只能查看自己的历史
-      const targetStaffId = ctx.user.role === "admin" ? input.staffId : ctx.user.id;
-      return await getSalaryHistory(months, targetStaffId);
+      return await getSalaryHistory(months, input.staffId);
     }),
 
     // 获取指定月份的工资调整项
-    getAdjustments: protectedProcedure.input(z.object({
+    getAdjustments: adminProcedure.input(z.object({
       yearMonth: z.string().regex(/^\d{4}-\d{2}$/),
     })).query(async ({ input }) => {
       return await listSalaryAdjustments(input.yearMonth);
     }),
 
     // 获取单个客服的工资调整项
-    getAdjustment: protectedProcedure.input(z.object({
+    getAdjustment: adminProcedure.input(z.object({
       staffId: z.number(),
       yearMonth: z.string().regex(/^\d{4}-\d{2}$/),
     })).query(async ({ input }) => {

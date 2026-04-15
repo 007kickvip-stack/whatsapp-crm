@@ -238,15 +238,12 @@ describe("Salary Report", () => {
     }
   });
 
-  it("staff can only see their own salary report", async () => {
-    const report = await staffCaller.salaryReport.get({
-      yearMonth: "2026-04",
-    });
-    expect(Array.isArray(report)).toBe(true);
-    // All entries should belong to staffId=100
-    for (const entry of report) {
-      expect(entry.staffId).toBe(100);
-    }
+  it("staff cannot access salary report (should throw FORBIDDEN)", async () => {
+    await expect(
+      staffCaller.salaryReport.get({
+        yearMonth: "2026-04",
+      })
+    ).rejects.toThrow();
   });
 
   it("salary report returns valid numbers", async () => {
@@ -302,26 +299,21 @@ describe("Salary History", () => {
     }
   });
 
-  it("staff can only see their own salary history", async () => {
-    const history = await staffCaller.salaryReport.history({
-      months: 3,
-    });
-    expect(Array.isArray(history)).toBe(true);
-    for (const entry of history) {
-      expect(entry.staffId).toBe(100);
-    }
+  it("staff cannot access salary history (should throw FORBIDDEN)", async () => {
+    await expect(
+      staffCaller.salaryReport.history({
+        months: 3,
+      })
+    ).rejects.toThrow();
   });
 
-  it("staff cannot see other staff's history even if staffId is provided", async () => {
-    const history = await staffCaller.salaryReport.history({
-      months: 3,
-      staffId: 1, // Try to see admin's history
-    });
-    expect(Array.isArray(history)).toBe(true);
-    // Should still only see their own data (staffId=100)
-    for (const entry of history) {
-      expect(entry.staffId).toBe(100);
-    }
+  it("staff cannot access salary history even with staffId (should throw FORBIDDEN)", async () => {
+    await expect(
+      staffCaller.salaryReport.history({
+        months: 3,
+        staffId: 1,
+      })
+    ).rejects.toThrow();
   });
 
   it("history returns correct yearMonth format", async () => {
