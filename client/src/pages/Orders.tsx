@@ -61,6 +61,8 @@ import {
   ExternalLink,
   RefreshCw,
   DollarSign,
+  CheckCircle2,
+  XCircle,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useLocation } from "wouter";
@@ -613,6 +615,26 @@ export default function OrdersPage() {
     },
     onError: (err) => toast.error(err.message),
   });
+  // Batch selection state
+  const [selectedOrderIds, setSelectedOrderIds] = useState<Set<number>>(new Set());
+  const toggleSelectOrder = useCallback((orderId: number) => {
+    setSelectedOrderIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(orderId)) next.delete(orderId);
+      else next.add(orderId);
+      return next;
+    });
+  }, []);
+  // toggleSelectAll defined after data query below
+  // Batch completion status mutation
+  const batchCompletionMutation = trpc.orderCompletion.batchUpdate.useMutation({
+    onSuccess: (result) => {
+      toast.success(`成功更新 ${result.count} 个订单的完成状态`);
+      utils.orders.list.invalidate();
+      setSelectedOrderIds(new Set());
+    },
+    onError: (err) => toast.error(err.message),
+  });
   // Collapse/expand state: set of collapsed order IDs
   const [collapsedOrders, setCollapsedOrders] = useState<Set<number>>(new Set());
 
@@ -651,6 +673,16 @@ export default function OrdersPage() {
   );
 
   const { data, isLoading } = trpc.orders.list.useQuery(queryInput);
+
+  const toggleSelectAll = useCallback(() => {
+    if (!data?.data) return;
+    const allIds = data.data.map((o: any) => o.id);
+    if (selectedOrderIds.size >= allIds.length && allIds.length > 0) {
+      setSelectedOrderIds(new Set());
+    } else {
+      setSelectedOrderIds(new Set(allIds));
+    }
+  }, [data, selectedOrderIds]);
 
   const toggleAllCollapse = useCallback(() => {
     if (!data?.data) return;
@@ -1142,7 +1174,19 @@ export default function OrdersPage() {
         className={`${borderTop} ${bgClass} hover:bg-emerald-50/40 transition-colors group`}
       >
         {/* Action buttons */}
-        <td className="py-1 px-1 text-center border-r border-gray-100 sticky left-0 bg-inherit z-[5]">
+        {/* Checkbox column */}
+        {row.isFirstRow && (
+          <td
+            className="py-1 px-1 text-center border-r border-gray-100 sticky left-0 bg-inherit z-[5]"
+            rowSpan={row.visibleItemCount}
+          >
+            <Checkbox
+              checked={selectedOrderIds.has(row.orderId)}
+              onCheckedChange={() => toggleSelectOrder(row.orderId)}
+            />
+          </td>
+        )}
+        <td className="py-1 px-1 text-center border-r border-gray-100 sticky left-[36px] bg-inherit z-[5]">
           {row.isFirstRow ? (
             <div className="flex items-center justify-center gap-0.5">
               {/* Collapse/expand toggle for multi-item orders */}
@@ -2005,6 +2049,61 @@ export default function OrdersPage() {
         </CardContent>
       </Card>
 
+      {/* Batch action toolbar */}
+      {selectedOrderIds.size > 0 && (
+        <Card className="border-0 shadow-sm bg-emerald-50 border-emerald-200">
+          <CardContent className="py-2 px-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <span className="text-sm font-medium text-emerald-700">
+                  已选择 {selectedOrderIds.size} 个订单
+                </span>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-7 gap-1 text-xs border-emerald-300 text-emerald-700 hover:bg-emerald-100"
+                  onClick={() => setSelectedOrderIds(new Set())}
+                >
+                  <X className="h-3 w-3" />
+                  取消选择
+                </Button>
+              </div>
+              <div className="flex items-center gap-2">
+                <Button
+                  size="sm"
+                  className="h-7 gap-1 text-xs bg-emerald-600 hover:bg-emerald-700"
+                  disabled={batchCompletionMutation.isPending}
+                  onClick={() => {
+                    batchCompletionMutation.mutate({
+                      orderIds: Array.from(selectedOrderIds),
+                      completionStatus: "已完成",
+                    });
+                  }}
+                >
+                  <CheckCircle2 className="h-3.5 w-3.5" />
+                  {batchCompletionMutation.isPending ? "处理中..." : "标记为已完成"}
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-7 gap-1 text-xs border-orange-300 text-orange-700 hover:bg-orange-50"
+                  disabled={batchCompletionMutation.isPending}
+                  onClick={() => {
+                    batchCompletionMutation.mutate({
+                      orderIds: Array.from(selectedOrderIds),
+                      completionStatus: "未完成",
+                    });
+                  }}
+                >
+                  <XCircle className="h-3.5 w-3.5" />
+                  标记为未完成
+                </Button>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Excel-style Table */}
       <Card className="border-0 shadow-sm">
         <CardContent className="p-0">
@@ -2019,7 +2118,14 @@ export default function OrdersPage() {
                 <table className="w-max min-w-full text-xs border-collapse">
                   <thead className="sticky top-0 z-10">
                     <tr className="bg-emerald-600 text-white">
-                      <th className="py-2 px-2 text-center font-medium border-r border-emerald-500 whitespace-nowrap sticky left-0 bg-emerald-600 z-20" style={{ width: "110px" }}>
+                      <th className="py-2 px-1 text-center font-medium border-r border-emerald-500 whitespace-nowrap sticky left-0 bg-emerald-600 z-20" style={{ width: "36px" }}>
+                        <Checkbox
+                          checked={data?.data && data.data.length > 0 && selectedOrderIds.size >= data.data.length}
+                          onCheckedChange={toggleSelectAll}
+                          className="border-white data-[state=checked]:bg-white data-[state=checked]:text-emerald-600"
+                        />
+                      </th>
+                      <th className="py-2 px-2 text-center font-medium border-r border-emerald-500 whitespace-nowrap sticky left-[36px] bg-emerald-600 z-20" style={{ width: "110px" }}>
                         <div className="flex items-center justify-center gap-1">
                           <span>操作</span>
                           <Tooltip>
