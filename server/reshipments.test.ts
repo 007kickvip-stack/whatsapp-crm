@@ -50,7 +50,7 @@ vi.mock("./db", async (importOriginal) => {
           account: "test-account",
           customerWhatsapp: "+1234567890",
           orderNumber: "RS-001",
-          originalOrderNo: "ORD-001",
+          originalOrderNo: null,
           orderStatus: "已报货，待发货",
           quantity: 1,
           totalProfit: "0",
@@ -233,7 +233,7 @@ describe("reshipments", () => {
       expect(result).toEqual({ ids: [1], count: 1 });
       expect(createReshipment).toHaveBeenCalledWith(
         expect.objectContaining({
-          originalOrderNo: "ORD-001",
+          originalOrderNo: null,
           staffName: "Test Staff",
           account: "test-account",
           customerWhatsapp: "+1234567890",

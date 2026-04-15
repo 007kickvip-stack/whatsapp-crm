@@ -440,7 +440,6 @@ export default function ReshipmentsPage() {
     { key: "sizeRecommendation", label: "推荐码数", width: "70px" },
     { key: "contactInfo", label: "联系方式", width: "90px" },
     { key: "internationalTrackingNo", label: "补发国际跟踪单号", width: "110px" },
-    { key: "originalOrderNo", label: "补发原订单号", width: "100px" },
     { key: "shipDate", label: "发出日期", width: "90px" },
     { key: "quantity", label: "件数", width: "50px" },
     { key: "source", label: "货源", width: "70px" },
@@ -497,7 +496,7 @@ export default function ReshipmentsPage() {
             <div className="relative">
               <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
               <Input
-                placeholder="搜索WhatsApp/订单编号/原订单号..."
+                placeholder="搜索WhatsApp/订单编号..."
                 value={search}
                 onChange={(e) => { setSearch(e.target.value); setPage(1); }}
                 className="pl-7 h-8 text-xs"
@@ -700,15 +699,6 @@ export default function ReshipmentsPage() {
                         value={row.internationalTrackingNo || ""}
                         onSave={(v) => saveField(row.id, "internationalTrackingNo", v)}
                         className="text-center"
-                      />
-                    </td>
-
-                    {/* 原订单号 */}
-                    <td className="px-1 py-1 text-center">
-                      <EditableCell
-                        value={row.originalOrderNo || ""}
-                        onSave={(v) => saveField(row.id, "originalOrderNo", v)}
-                        className="text-center font-medium text-blue-600"
                       />
                     </td>
 
