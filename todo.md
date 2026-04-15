@@ -673,3 +673,7 @@
 
 ## 支付截图上传前自动压缩大图
 - [x] 前端在上传截图前自动压缩：>500KB的图片用canvas缩放到最大1920px边长+JPEG质量逐步降低，压缩后显示原始/压缩后大小提示
+
+## 仪表盘预估总利润改为每日数据预估毛利润总和
+- [x] 后端：getDashboardSummary中estimatedProfit改为从daily_data表的estimatedProfit字段SUM累加
+- [x] 前端：无需修改，已自动显示正确数据

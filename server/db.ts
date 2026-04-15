@@ -1875,16 +1875,15 @@ export async function getDashboardSummary(filters: DashboardFilters) {
   if (filters.staffId) conditions.push(sql`o.staffId = ${filters.staffId}`);
   const whereStr = conditions.length > 0 ? sql.join([sql`WHERE `, sql.join(conditions, sql` AND `)], sql``) : sql``;
 
-  // 总营业额 & 预估总利润（从order_items汇总）
+  // 总营业额（从order_items汇总）
   const revenueResult = await db.execute(sql`
     SELECT 
-      COALESCE(SUM(oi.amountCny), 0) as totalRevenueCny,
-      COALESCE(SUM(oi.productProfit), 0) as estimatedProfit
+      COALESCE(SUM(oi.amountCny), 0) as totalRevenueCny
     FROM order_items oi
     JOIN orders o ON oi.orderId = o.id
     ${whereStr}
   `);
-  const rev = (revenueResult as any)[0]?.[0] || { totalRevenueCny: 0, estimatedProfit: 0 };
+  const rev = (revenueResult as any)[0]?.[0] || { totalRevenueCny: 0 };
 
   // 从每日数据表汇总回访人数和好评人数
   const dailyConditions: SQL[] = [];
@@ -1899,11 +1898,12 @@ export async function getDashboardSummary(filters: DashboardFilters) {
       COALESCE(SUM(dd.telegramPraiseCount), 0) as totalPraise,
       COALESCE(SUM(dd.newCustomerCount), 0) as totalNewCustomers,
       COALESCE(SUM(dd.newOrderCount), 0) as newCustomerOrders,
-      COALESCE(SUM(dd.oldOrderCount), 0) as oldCustomerOrders
+      COALESCE(SUM(dd.oldOrderCount), 0) as oldCustomerOrders,
+      COALESCE(SUM(dd.estimatedProfit), 0) as estimatedProfit
     FROM daily_data dd
     ${dailyWhereStr}
   `);
-  const daily = (dailyResult as any)[0]?.[0] || { totalReturnVisit: 0, totalPraise: 0, totalNewCustomers: 0, newCustomerOrders: 0, oldCustomerOrders: 0 };
+  const daily = (dailyResult as any)[0]?.[0] || { totalReturnVisit: 0, totalPraise: 0, totalNewCustomers: 0, newCustomerOrders: 0, oldCustomerOrders: 0, estimatedProfit: 0 };
 
   // 老客总数：在customers表中有多次订单的客户数
   const oldCustConditions: SQL[] = [];
@@ -1922,7 +1922,7 @@ export async function getDashboardSummary(filters: DashboardFilters) {
 
   return {
     totalRevenueCny: Number(rev.totalRevenueCny),
-    estimatedProfit: Number(rev.estimatedProfit),
+    estimatedProfit: Number(daily.estimatedProfit),
     totalReturnVisit: Number(daily.totalReturnVisit),
     totalPraise: Number(daily.totalPraise),
     totalNewCustomers: Number(daily.totalNewCustomers),
