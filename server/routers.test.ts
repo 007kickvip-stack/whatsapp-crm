@@ -866,15 +866,18 @@ describe("staffTargets", () => {
     expect(result.success).toBe(true);
   });
 
-  it("admin can get target progress", async () => {
+  it("admin can get target progress with details and null teamSummary", async () => {
     const ctx = createAdminContext();
     const caller = appRouter.createCaller(ctx);
     const result = await caller.staffTargets.progress({ yearMonth: "2026-04" });
-    expect(Array.isArray(result)).toBe(true);
-    expect(result.length).toBe(1);
-    expect(result[0].profitProgress).toBe(0.5);
-    expect(result[0].revenueProgress).toBe(0.6);
-    expect(result[0].profitGap).toBe("2500.00");
+    expect(result).toHaveProperty("details");
+    expect(result).toHaveProperty("teamSummary");
+    expect(result.teamSummary).toBeNull();
+    expect(Array.isArray(result.details)).toBe(true);
+    expect(result.details.length).toBe(1);
+    expect(result.details[0].profitProgress).toBe(0.5);
+    expect(result.details[0].revenueProgress).toBe(0.6);
+    expect(result.details[0].profitGap).toBe("2500.00");
   });
 
   it("admin can get staff list", async () => {
@@ -891,6 +894,25 @@ describe("staffTargets", () => {
     const result = await caller.staffTargets.list({ yearMonth: "2026-04" });
     // Staff gets filtered data (only their own targets)
     expect(Array.isArray(result)).toBe(true);
+  });
+
+  it("staff gets progress with teamSummary and filtered details", async () => {
+    const ctx = createStaffContext();
+    const caller = appRouter.createCaller(ctx);
+    const result = await caller.staffTargets.progress({ yearMonth: "2026-04" });
+    expect(result).toHaveProperty("details");
+    expect(result).toHaveProperty("teamSummary");
+    // teamSummary should contain aggregated team data
+    expect(result.teamSummary).not.toBeNull();
+    expect(result.teamSummary).toHaveProperty("totalProfitTarget");
+    expect(result.teamSummary).toHaveProperty("totalActualProfit");
+    expect(result.teamSummary).toHaveProperty("totalRevenueTarget");
+    expect(result.teamSummary).toHaveProperty("totalActualRevenue");
+    // details should only contain staff's own data
+    expect(Array.isArray(result.details)).toBe(true);
+    for (const d of result.details) {
+      expect(d.staffId).toBe(2); // staff context user id
+    }
   });
 
   it("staff cannot upsert targets", async () => {

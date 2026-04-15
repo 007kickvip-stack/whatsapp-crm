@@ -760,3 +760,8 @@
 - [x] 后端：paypalIncome.list已有客服权限过滤（staffId=ctx.user.id）；paypalExpense/paypalBalance/paypalSync全部为adminProcedure
 - [x] 前端：客服视角隐藏总汇总卡片、支出Tab、同步/新增/删除按钮；客服只能看到自己的收入记录
 - [x] 测试验证（242条测试全部通过）
+
+## 目标管理客服权限优化
+- [x] 后端：progress API改为返回{ details, teamSummary }结构，客服获取团队汇总+自己的详情，管理员获取全部详情
+- [x] 前端：客服视角显示团队目标汇总卡片+自己的目标完成详情，隐藏其他客服数据
+- [x] 测试验证（243条测试全部通过）

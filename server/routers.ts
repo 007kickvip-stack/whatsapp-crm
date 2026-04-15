@@ -1023,14 +1023,23 @@ export const appRouter = router({
       await logAction(ctx, "delete", "staffTarget", input.id);
       return { success: true };
     }),
-    // 客服可以查看目标进度（但只能看自己的）
+    // 客服可以查看目标进度（客服看自己的详情 + 团队汇总）
     progress: protectedProcedure.input(z.object({
       yearMonth: z.string().regex(/^\d{4}-\d{2}$/),
     })).query(async ({ input, ctx }) => {
       const allProgress = await getStaffTargetProgress(input.yearMonth);
-      if (ctx.user.role === "admin") return allProgress;
-      // 客服只能看自己的进度
-      return allProgress.filter(p => p.staffId === ctx.user.id);
+      if (ctx.user.role === "admin") {
+        return { details: allProgress, teamSummary: null };
+      }
+      // 客服：计算团队汇总，但详情只返回自己的
+      const teamSummary = {
+        totalProfitTarget: allProgress.reduce((s: number, p: any) => s + parseFloat(p.profitTarget), 0),
+        totalActualProfit: allProgress.reduce((s: number, p: any) => s + parseFloat(p.actualProfit), 0),
+        totalRevenueTarget: allProgress.reduce((s: number, p: any) => s + parseFloat(p.revenueTarget), 0),
+        totalActualRevenue: allProgress.reduce((s: number, p: any) => s + parseFloat(p.actualRevenue), 0),
+      };
+      const myProgress = allProgress.filter(p => p.staffId === ctx.user.id);
+      return { details: myProgress, teamSummary };
     }),
     // 客服列表仅管理员可见
     staffList: adminProcedure.query(async () => {

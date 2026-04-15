@@ -52,10 +52,14 @@ export default function StaffTargetsPage() {
   const ymInput = useMemo(() => ({ yearMonth }), [yearMonth]);
 
   const { data: targets, isLoading: targetsLoading } = trpc.staffTargets.list.useQuery(ymInput);
-  const { data: progress, isLoading: progressLoading } = trpc.staffTargets.progress.useQuery(ymInput);
+  const { data: progressData, isLoading: progressLoading } = trpc.staffTargets.progress.useQuery(ymInput);
   const { data: staffList } = trpc.staffTargets.staffList.useQuery(undefined, { enabled: isAdmin });
 
   const utils = trpc.useUtils();
+
+  // Extract details and teamSummary from the new API shape
+  const progress = progressData?.details || [];
+  const teamSummary = progressData?.teamSummary || null;
 
   const upsertMutation = trpc.staffTargets.upsert.useMutation({
     onSuccess: () => {
@@ -124,21 +128,30 @@ export default function StaffTargetsPage() {
     }
   };
 
-  // 客服和管理员都可以查看目标管理，后端会自动过滤数据
-
   // Already-assigned staff IDs for this month
   const assignedStaffIds = new Set((targets || []).map((t: any) => t.staffId));
   const availableStaff = editingTarget
     ? staffList || []
     : (staffList || []).filter((s: any) => !assignedStaffIds.has(s.staffId));
 
-  // Summary stats from progress
-  const totalProfitTarget = (progress || []).reduce((sum: number, p: any) => sum + parseFloat(p.profitTarget), 0);
-  const totalActualProfit = (progress || []).reduce((sum: number, p: any) => sum + parseFloat(p.actualProfit), 0);
-  const totalRevenueTarget = (progress || []).reduce((sum: number, p: any) => sum + parseFloat(p.revenueTarget), 0);
-  const totalActualRevenue = (progress || []).reduce((sum: number, p: any) => sum + parseFloat(p.actualRevenue), 0);
+  // Summary stats: for admin, compute from details; for staff, use teamSummary from backend
+  const totalProfitTarget = teamSummary
+    ? teamSummary.totalProfitTarget
+    : progress.reduce((sum: number, p: any) => sum + parseFloat(p.profitTarget), 0);
+  const totalActualProfit = teamSummary
+    ? teamSummary.totalActualProfit
+    : progress.reduce((sum: number, p: any) => sum + parseFloat(p.actualProfit), 0);
+  const totalRevenueTarget = teamSummary
+    ? teamSummary.totalRevenueTarget
+    : progress.reduce((sum: number, p: any) => sum + parseFloat(p.revenueTarget), 0);
+  const totalActualRevenue = teamSummary
+    ? teamSummary.totalActualRevenue
+    : progress.reduce((sum: number, p: any) => sum + parseFloat(p.actualRevenue), 0);
   const overallProfitProgress = totalProfitTarget > 0 ? totalActualProfit / totalProfitTarget : 0;
   const overallRevenueProgress = totalRevenueTarget > 0 ? totalActualRevenue / totalRevenueTarget : 0;
+
+  // Check if there's any data to show team summary (for staff, teamSummary exists; for admin, progress has data)
+  const hasTeamData = teamSummary ? (teamSummary.totalProfitTarget > 0 || teamSummary.totalRevenueTarget > 0) : progress.length > 0;
 
   return (
     <div className="p-4 md:p-6 space-y-6 max-w-7xl mx-auto">
@@ -178,8 +191,8 @@ export default function StaffTargetsPage() {
         </CardContent>
       </Card>
 
-      {/* Overall Summary Cards */}
-      {progress && progress.length > 0 && (
+      {/* Overall Team Summary Cards */}
+      {hasTeamData && (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <Card>
             <CardHeader className="pb-2">
@@ -245,8 +258,8 @@ export default function StaffTargetsPage() {
       ) : progress && progress.length > 0 ? (
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-base">客服目标完成详情</CardTitle>
-            <CardDescription>{formatYearMonth(yearMonth)} 各客服目标完成率和差距分析</CardDescription>
+            <CardTitle className="text-base">{isAdmin ? "客服目标完成详情" : "我的目标完成详情"}</CardTitle>
+            <CardDescription>{formatYearMonth(yearMonth)} {isAdmin ? "各客服目标完成率和差距分析" : "您的目标完成率和差距分析"}</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
