@@ -36,6 +36,7 @@ import {
   getPaypalBalanceSummary, syncOrdersToPaypalIncome,
   syncOrderToPaypalIncome, updatePaypalIncomeFromOrder, deletePaypalIncomeByOrderId,
   createReshipment, updateReshipment, deleteReshipment, getReshipmentById, listReshipments, getReshipmentsByOriginalOrderId,
+  createOrderPayment, updateOrderPayment, deleteOrderPayment, getOrderPaymentsByOrderId, getOrderPaymentById,
 } from "./db";
 import type { SQL } from "drizzle-orm";
 import { sdk } from "./_core/sdk";
@@ -1741,6 +1742,81 @@ export const appRouter = router({
       await deleteReshipment(input.id);
       await logAction(ctx, "delete", "reshipment", input.id);
       return { success: true };
+    }),
+  }),
+
+  // ==================== 订单支付记录 ====================
+  orderPayments: router({
+    // 按订单ID查询所有支付记录
+    listByOrder: protectedProcedure.input(z.object({
+      orderId: z.number(),
+    })).query(async ({ input }) => {
+      return getOrderPaymentsByOrderId(input.orderId);
+    }),
+
+    // 获取单条支付记录
+    getById: protectedProcedure.input(z.object({ id: z.number() })).query(async ({ input }) => {
+      return getOrderPaymentById(input.id);
+    }),
+
+    // 创建支付记录
+    create: protectedProcedure.input(z.object({
+      orderId: z.number(),
+      paymentType: z.string().default("全款"),
+      amount: z.string().default("0"),
+      screenshotUrl: z.string().optional(),
+      paymentDate: z.string().optional(),
+      receivingAccount: z.string().optional(),
+      remarks: z.string().optional(),
+    })).mutation(async ({ input, ctx }) => {
+      const { paymentDate, ...rest } = input;
+      const id = await createOrderPayment({
+        ...rest,
+        paymentDate: paymentDate ? new Date(paymentDate) : undefined,
+        createdById: ctx.user.id,
+      } as any);
+      await logAction(ctx, "create", "orderPayment", id, undefined, `订单ID:${input.orderId} 类型:${input.paymentType} 金额:${input.amount}`);
+      return { id };
+    }),
+
+    // 更新支付记录
+    update: protectedProcedure.input(z.object({
+      id: z.number(),
+      paymentType: z.string().optional(),
+      amount: z.string().optional(),
+      screenshotUrl: z.string().optional(),
+      paymentDate: z.string().optional(),
+      receivingAccount: z.string().optional(),
+      remarks: z.string().optional(),
+    })).mutation(async ({ input, ctx }) => {
+      const { id, paymentDate, ...rest } = input;
+      await updateOrderPayment(id, {
+        ...rest,
+        paymentDate: paymentDate ? new Date(paymentDate) : undefined,
+      } as any);
+      await logAction(ctx, "update", "orderPayment", id);
+      return { success: true };
+    }),
+
+    // 删除支付记录
+    delete: protectedProcedure.input(z.object({ id: z.number() })).mutation(async ({ input, ctx }) => {
+      await deleteOrderPayment(input.id);
+      await logAction(ctx, "delete", "orderPayment", input.id);
+      return { success: true };
+    }),
+
+    // 上传支付截图
+    uploadScreenshot: protectedProcedure.input(z.object({
+      paymentId: z.number(),
+      base64: z.string(),
+      filename: z.string(),
+    })).mutation(async ({ input }) => {
+      const buffer = Buffer.from(input.base64, "base64");
+      const ext = input.filename.split(".").pop() || "jpg";
+      const key = `payment-screenshots/${input.paymentId}-${nanoid(8)}.${ext}`;
+      const { url } = await storagePut(key, buffer, `image/${ext === "png" ? "png" : "jpeg"}`);
+      await updateOrderPayment(input.paymentId, { screenshotUrl: url });
+      return { url };
     }),
   }),
 });

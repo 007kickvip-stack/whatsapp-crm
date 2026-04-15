@@ -1,6 +1,6 @@
 import { eq, like, and, sql, desc, or, SQL, inArray, isNotNull } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
-import { InsertUser, users, customers, orders, orderItems, InsertCustomer, InsertOrder, InsertOrderItem, auditLogs, InsertAuditLog, exchangeRates, InsertExchangeRate, profitAlertSettings, InsertProfitAlertSetting, staffMonthlyTargets, InsertStaffMonthlyTarget, dailyData, InsertDailyData, accounts, InsertAccount, dailyReportNotes, InsertDailyReportNote, quotations, quotationItems, InsertQuotation, InsertQuotationItem, paypalIncome, paypalExpense, InsertPaypalIncome, InsertPaypalExpense, reshipments, InsertReshipment } from "../drizzle/schema";
+import { InsertUser, users, customers, orders, orderItems, InsertCustomer, InsertOrder, InsertOrderItem, auditLogs, InsertAuditLog, exchangeRates, InsertExchangeRate, profitAlertSettings, InsertProfitAlertSetting, staffMonthlyTargets, InsertStaffMonthlyTarget, dailyData, InsertDailyData, accounts, InsertAccount, dailyReportNotes, InsertDailyReportNote, quotations, quotationItems, InsertQuotation, InsertQuotationItem, paypalIncome, paypalExpense, InsertPaypalIncome, InsertPaypalExpense, reshipments, InsertReshipment, orderPayments, InsertOrderPayment } from "../drizzle/schema";
 import { ENV } from './_core/env';
 import { nanoid } from 'nanoid';
 import { createHash, randomBytes } from 'crypto';
@@ -2674,4 +2674,85 @@ export async function getReshipmentsByOriginalOrderId(orderId: number) {
   const db = await getDb();
   if (!db) return [];
   return db.select().from(reshipments).where(eq(reshipments.originalOrderId, orderId)).orderBy(desc(reshipments.id));
+}
+
+
+// ==================== Order Payment Helpers ====================
+
+export async function createOrderPayment(data: InsertOrderPayment) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const result = await db.insert(orderPayments).values(data);
+  const paymentId = result[0].insertId;
+  // Auto-sync order paymentAmount
+  await syncOrderPaymentAmount(data.orderId);
+  return paymentId;
+}
+
+export async function updateOrderPayment(id: number, data: Partial<InsertOrderPayment>) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.update(orderPayments).set(data).where(eq(orderPayments.id, id));
+  // If orderId is in data, sync that order; otherwise fetch the payment to get orderId
+  if (data.orderId) {
+    await syncOrderPaymentAmount(data.orderId);
+  } else {
+    const payment = await db.select().from(orderPayments).where(eq(orderPayments.id, id)).limit(1);
+    if (payment[0]) {
+      await syncOrderPaymentAmount(payment[0].orderId);
+    }
+  }
+}
+
+export async function deleteOrderPayment(id: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  // Get orderId before deleting
+  const payment = await db.select().from(orderPayments).where(eq(orderPayments.id, id)).limit(1);
+  const orderId = payment[0]?.orderId;
+  await db.delete(orderPayments).where(eq(orderPayments.id, id));
+  // Sync order paymentAmount after deletion
+  if (orderId) {
+    await syncOrderPaymentAmount(orderId);
+  }
+}
+
+export async function getOrderPaymentsByOrderId(orderId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(orderPayments).where(eq(orderPayments.orderId, orderId)).orderBy(orderPayments.paymentDate, orderPayments.id);
+}
+
+export async function getOrderPaymentById(id: number) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db.select().from(orderPayments).where(eq(orderPayments.id, id)).limit(1);
+  return result[0];
+}
+
+/**
+ * 自动汇总订单的所有支付记录金额，更新到订单的paymentAmount字段
+ */
+export async function syncOrderPaymentAmount(orderId: number) {
+  const db = await getDb();
+  if (!db) return;
+  const result = await db.select({
+    total: sql<string>`COALESCE(SUM(${orderPayments.amount}), 0)`
+  }).from(orderPayments).where(eq(orderPayments.orderId, orderId));
+  const totalAmount = result[0]?.total ?? "0";
+  await db.update(orders).set({ paymentAmount: totalAmount }).where(eq(orders.id, orderId));
+  
+  // Also update paymentStatus based on total paid vs total order amount
+  const order = await db.select().from(orders).where(eq(orders.id, orderId)).limit(1);
+  if (order[0]) {
+    const paid = parseFloat(totalAmount);
+    const totalUsd = parseFloat(order[0].totalAmountUsd ?? "0");
+    let paymentStatus = "未付款";
+    if (paid > 0 && paid < totalUsd) {
+      paymentStatus = "已付定金";
+    } else if (paid > 0 && paid >= totalUsd) {
+      paymentStatus = "已付全款";
+    }
+    await db.update(orders).set({ paymentStatus }).where(eq(orders.id, orderId));
+  }
 }

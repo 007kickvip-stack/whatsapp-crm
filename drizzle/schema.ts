@@ -403,3 +403,23 @@ export const reshipments = mysqlTable("reshipments", {
 
 export type Reshipment = typeof reshipments.$inferSelect;
 export type InsertReshipment = typeof reshipments.$inferInsert;
+
+/**
+ * 订单支付记录表 - 支持一个订单多次付款（定金/尾款/全款/补款等）
+ */
+export const orderPayments = mysqlTable("order_payments", {
+  id: int("id").autoincrement().primaryKey(),
+  orderId: int("orderId").notNull(), // 关联订单ID
+  paymentType: varchar("paymentType", { length: 32 }).notNull().default("全款"), // 定金/尾款/全款/补款
+  amount: decimal("amount", { precision: 12, scale: 2 }).notNull().default("0"), // 支付金额 $
+  screenshotUrl: text("screenshotUrl"), // 支付截图URL
+  paymentDate: date("paymentDate"), // 支付日期
+  receivingAccount: varchar("receivingAccount", { length: 128 }), // 收款账号
+  remarks: text("remarks"), // 备注
+  createdById: int("createdById"), // 创建人ID
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type OrderPayment = typeof orderPayments.$inferSelect;
+export type InsertOrderPayment = typeof orderPayments.$inferInsert;

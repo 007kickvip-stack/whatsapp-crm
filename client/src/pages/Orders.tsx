@@ -60,6 +60,7 @@ import {
   ChevronsUpDown,
   ExternalLink,
   RefreshCw,
+  DollarSign,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useLocation } from "wouter";
@@ -69,6 +70,7 @@ import TrackingHoverCard from "@/components/TrackingHoverCard";
 import AccountSelect from "@/components/AccountSelect";
 import CountrySelect from "@/components/CountrySelect";
 import BulkAddItemsDialog from "@/components/BulkAddItemsDialog";
+import PaymentRecordsPanel from "@/components/PaymentRecordsPanel";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Checkbox } from "@/components/ui/checkbox";
 
@@ -552,6 +554,11 @@ export default function OrdersPage() {
   const [filterIntlTracking, setFilterIntlTracking] = useState("");
   const [filterLogisticsStatus, setFilterLogisticsStatus] = useState<string>("");
   const [filterCountry, setFilterCountry] = useState<string>("");
+  // Payment records panel state
+  const [paymentPanelOpen, setPaymentPanelOpen] = useState(false);
+  const [paymentPanelOrderId, setPaymentPanelOrderId] = useState<number>(0);
+  const [paymentPanelOrderNumber, setPaymentPanelOrderNumber] = useState("");
+  const [paymentPanelTotalUsd, setPaymentPanelTotalUsd] = useState("0");
   const [filterExpanded, setFilterExpanded] = useState(false);
   const [previewImage, setPreviewImage] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
@@ -1510,28 +1517,41 @@ export default function OrdersPage() {
           {fmtPct(row.profitRate)}
         </td>
 
-        {/* 29. 付款截图 - item level with upload, paste, delete */}
+        {/* 29. 付款截图 - 点击打开支付记录面板 */}
         <td className="py-1 px-1 border-r border-gray-100 text-center">
-          {hasItem ? (
-            <ImageUploadCell
-              imageUrl={row.paymentScreenshotUrl}
-              onUploaded={(url) => saveItemField(row.itemId!, row.orderId, "paymentScreenshotUrl", url)}
-              onRemove={() => saveItemField(row.itemId!, row.orderId, "paymentScreenshotUrl", "")}
-              onPreview={setPreviewImage}
-              uploadMutation={uploadMutation}
-            />
+          {row.isFirstRow ? (
+            <button
+              className="w-full h-full flex items-center justify-center cursor-pointer hover:bg-gray-50 rounded transition-colors p-0.5"
+              onClick={() => {
+                setPaymentPanelOrderId(row.orderId);
+                setPaymentPanelOrderNumber(row.orderNumber || "");
+                setPaymentPanelTotalUsd(row.amountUsd || "0");
+                setPaymentPanelOpen(true);
+              }}
+              title="查看/管理支付记录"
+            >
+              <DollarSign className="h-4 w-4 text-green-600" />
+            </button>
           ) : null}
         </td>
 
-        {/* 29.5. 付款金额($) - order level */}
+        {/* 29.5. 付款金额($) - 点击打开支付记录面板 */}
         <td className="py-1 px-1 border-r border-gray-100 text-center text-[11px]">
           {row.isFirstRow ? (
-            <EditableCell
-              value={row.paymentAmount || "0.00"}
-              type="number"
-              onSave={(v) => saveOrderField(row.orderId, "paymentAmount", v)}
-              placeholder="0.00"
-            />
+            <button
+              className="w-full text-center cursor-pointer hover:bg-gray-50 rounded px-1 py-0.5 transition-colors"
+              onClick={() => {
+                setPaymentPanelOrderId(row.orderId);
+                setPaymentPanelOrderNumber(row.orderNumber || "");
+                setPaymentPanelTotalUsd(row.amountUsd || "0");
+                setPaymentPanelOpen(true);
+              }}
+              title="查看/管理支付记录"
+            >
+              <span className={`font-medium ${parseFloat(row.paymentAmount || "0") > 0 ? "text-green-600" : "text-gray-400"}`}>
+                ${parseFloat(row.paymentAmount || "0").toFixed(2)}
+              </span>
+            </button>
           ) : null}
         </td>
 
@@ -2145,6 +2165,15 @@ export default function OrdersPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Payment Records Panel */}
+      <PaymentRecordsPanel
+        orderId={paymentPanelOrderId}
+        orderNumber={paymentPanelOrderNumber}
+        totalAmountUsd={paymentPanelTotalUsd}
+        open={paymentPanelOpen}
+        onOpenChange={setPaymentPanelOpen}
+      />
     </div>
   );
 }

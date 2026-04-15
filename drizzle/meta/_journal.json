@@ -190,6 +190,13 @@
       "when": 1776244182835,
       "tag": "0026_spooky_the_santerians",
       "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "5",
+      "when": 1776246802290,
+      "tag": "0027_clammy_mac_gargan",
+      "breakpoints": true
     }
   ]
 }

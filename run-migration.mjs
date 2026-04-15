@@ -1,7 +1,7 @@
 import fs from 'fs';
 import mysql from 'mysql2/promise';
 
-const sql = fs.readFileSync('drizzle/0026_spooky_the_santerians.sql', 'utf8');
+const sql = fs.readFileSync('drizzle/0027_clammy_mac_gargan.sql', 'utf8');
 const conn = await mysql.createConnection(process.env.DATABASE_URL);
 try {
   await conn.execute(sql);
