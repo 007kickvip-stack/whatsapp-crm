@@ -145,11 +145,56 @@ export default function PaymentRecordsPanel({
     setEditId(payment.id);
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (!formAmount || parseFloat(formAmount) <= 0) {
       toast.error("请输入有效的支付金额");
       return;
     }
+
+    // If formScreenshot is a base64 data URL, upload to S3 first
+    let screenshotUrl = formScreenshot || undefined;
+    if (screenshotUrl && screenshotUrl.startsWith("data:")) {
+      try {
+        setUploading(true);
+        const base64Data = screenshotUrl.split(",")[1];
+        const mimeMatch = screenshotUrl.match(/data:([^;]+);/);
+        const ext = mimeMatch?.[1]?.split("/")[1] || "jpg";
+        // We need a temporary paymentId for upload; for new records, create first then upload
+        if (editId) {
+          const result = await uploadScreenshotMutation.mutateAsync({
+            paymentId: editId,
+            base64: base64Data,
+            filename: `screenshot.${ext}`,
+          });
+          screenshotUrl = result.url;
+        } else {
+          // For new records: create without screenshot first, then upload
+          const { id: newId } = await createMutation.mutateAsync({
+            orderId,
+            paymentType: formType,
+            amount: formAmount,
+            paymentDate: formDate || undefined,
+            receivingAccount: formAccount || undefined,
+            remarks: formRemarks || undefined,
+          });
+          // Now upload the screenshot to the newly created record
+          await uploadScreenshotMutation.mutateAsync({
+            paymentId: newId,
+            base64: base64Data,
+            filename: `screenshot.${ext}`,
+          });
+          utils.orderPayments.listByOrder.invalidate({ orderId });
+          setUploading(false);
+          return; // Already created and uploaded
+        }
+      } catch {
+        toast.error("截图上传失败");
+        setUploading(false);
+        return;
+      }
+      setUploading(false);
+    }
+
     if (editId) {
       updateMutation.mutate({
         id: editId,
@@ -158,7 +203,7 @@ export default function PaymentRecordsPanel({
         paymentDate: formDate || undefined,
         receivingAccount: formAccount || undefined,
         remarks: formRemarks || undefined,
-        screenshotUrl: formScreenshot || undefined,
+        screenshotUrl: screenshotUrl && !screenshotUrl.startsWith("data:") ? screenshotUrl : undefined,
       });
     } else {
       createMutation.mutate({
