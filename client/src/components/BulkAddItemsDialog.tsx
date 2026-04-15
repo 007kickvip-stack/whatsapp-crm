@@ -8,7 +8,6 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
-  DialogFooter,
 } from "@/components/ui/dialog";
 import {
   Select,
@@ -19,7 +18,6 @@ import {
 } from "@/components/ui/select";
 import { Plus, Trash2, Loader2, Copy } from "lucide-react";
 import { toast } from "sonner";
-import { ScrollArea } from "@/components/ui/scroll-area";
 
 type ItemForm = {
   orderNumber: string;
@@ -31,7 +29,6 @@ type ItemForm = {
   productCost: string;
   shippingActual: string;
   itemStatus: string;
-  paymentStatus: string;
   remarks: string;
 };
 
@@ -45,7 +42,6 @@ const emptyItem: ItemForm = {
   productCost: "",
   shippingActual: "",
   itemStatus: "已报货，待发货",
-  paymentStatus: "未付款",
   remarks: "",
 };
 
@@ -60,8 +56,6 @@ const ORDER_STATUSES = [
   "顾客已收货",
   "已退款",
 ];
-
-const PAYMENT_STATUSES = ["未付款", "待付款", "已付款", "部分付款"];
 
 export default function BulkAddItemsDialog({
   open,
@@ -119,7 +113,6 @@ export default function BulkAddItemsDialog({
   }, []);
 
   const handleSubmit = () => {
-    // Filter out completely empty rows
     const validItems = items.filter(
       (item) => item.orderNumber || item.size || item.amountUsd || item.sellingPrice || item.source
     );
@@ -140,7 +133,6 @@ export default function BulkAddItemsDialog({
         productCost: item.productCost || undefined,
         shippingActual: item.shippingActual || undefined,
         itemStatus: item.itemStatus || undefined,
-        paymentStatus: item.paymentStatus || undefined,
         remarks: item.remarks || undefined,
       })),
     });
@@ -153,8 +145,8 @@ export default function BulkAddItemsDialog({
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className="max-w-5xl max-h-[90vh] flex flex-col">
-        <DialogHeader>
+      <DialogContent className="max-w-5xl max-h-[90vh] flex flex-col p-0">
+        <DialogHeader className="px-6 pt-6 pb-2 shrink-0">
           <DialogTitle className="flex items-center gap-2">
             批量添加子项
             <span className="text-sm font-normal text-muted-foreground">
@@ -163,7 +155,8 @@ export default function BulkAddItemsDialog({
           </DialogTitle>
         </DialogHeader>
 
-        <ScrollArea className="flex-1 max-h-[60vh] pr-2">
+        {/* 可滚动的内容区域 */}
+        <div className="flex-1 overflow-y-auto px-6 pb-2" style={{ minHeight: 0 }}>
           <div className="space-y-3">
             {items.map((item, idx) => (
               <div
@@ -297,24 +290,6 @@ export default function BulkAddItemsDialog({
                       </SelectContent>
                     </Select>
                   </div>
-                  <div className="space-y-1">
-                    <Label className="text-[10px] text-muted-foreground">付款状态</Label>
-                    <Select
-                      value={item.paymentStatus}
-                      onValueChange={(v) => updateItem(idx, "paymentStatus", v)}
-                    >
-                      <SelectTrigger className="h-7 text-xs">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {PAYMENT_STATUSES.map((s) => (
-                          <SelectItem key={s} value={s}>
-                            {s}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
                   <div className="space-y-1 col-span-2">
                     <Label className="text-[10px] text-muted-foreground">备注</Label>
                     <Input
@@ -328,40 +303,42 @@ export default function BulkAddItemsDialog({
               </div>
             ))}
           </div>
-        </ScrollArea>
-
-        <div className="flex items-center justify-between pt-2 border-t">
-          <Button variant="outline" size="sm" onClick={addRow} className="gap-1">
-            <Plus className="h-3.5 w-3.5" />
-            添加一行
-          </Button>
-          <div className="text-xs text-muted-foreground">
-            提示：空行将被自动忽略
-          </div>
         </div>
 
-        <DialogFooter>
-          <Button variant="outline" onClick={handleClose}>
-            取消
-          </Button>
-          <Button
-            onClick={handleSubmit}
-            disabled={bulkCreateMutation.isPending}
-            className="gap-2"
-          >
-            {bulkCreateMutation.isPending ? (
-              <>
-                <Loader2 className="h-4 w-4 animate-spin" />
-                提交中...
-              </>
-            ) : (
-              <>
-                <Plus className="h-4 w-4" />
-                批量添加 ({items.filter((i) => i.orderNumber || i.size || i.amountUsd || i.sellingPrice || i.source).length} 项)
-              </>
-            )}
-          </Button>
-        </DialogFooter>
+        {/* 固定在底部的操作栏 */}
+        <div className="shrink-0 border-t px-6 py-3 bg-background flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <Button variant="outline" size="sm" onClick={addRow} className="gap-1">
+              <Plus className="h-3.5 w-3.5" />
+              添加一行
+            </Button>
+            <span className="text-xs text-muted-foreground">
+              提示：空行将被自动忽略
+            </span>
+          </div>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" onClick={handleClose}>
+              取消
+            </Button>
+            <Button
+              onClick={handleSubmit}
+              disabled={bulkCreateMutation.isPending}
+              className="gap-2"
+            >
+              {bulkCreateMutation.isPending ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  提交中...
+                </>
+              ) : (
+                <>
+                  <Plus className="h-4 w-4" />
+                  批量添加 ({items.filter((i) => i.orderNumber || i.size || i.amountUsd || i.sellingPrice || i.source).length} 项)
+                </>
+              )}
+            </Button>
+          </div>
+        </div>
       </DialogContent>
     </Dialog>
   );

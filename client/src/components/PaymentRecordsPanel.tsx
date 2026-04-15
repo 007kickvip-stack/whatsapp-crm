@@ -218,9 +218,57 @@ export default function PaymentRecordsPanel({
   };
 
   // Core file upload handler
+  // 图片压缩：大于500KB或尺寸超过1920px时自动压缩
+  const compressImage = useCallback(async (file: File): Promise<{ base64: string; mimeType: string }> => {
+    const MAX_SIZE = 500 * 1024; // 500KB
+    const MAX_DIM = 1920; // 最大边长
+
+    // 小图片直接返回
+    if (file.size <= MAX_SIZE) {
+      const reader = new FileReader();
+      const result = await new Promise<string>((resolve) => {
+        reader.onload = () => resolve(reader.result as string);
+        reader.readAsDataURL(file);
+      });
+      const [header, data] = result.split(",");
+      return { base64: data, mimeType: file.type };
+    }
+
+    // 大图片用canvas压缩
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => {
+        let { width, height } = img;
+        // 缩放到最大边长
+        if (width > MAX_DIM || height > MAX_DIM) {
+          const ratio = Math.min(MAX_DIM / width, MAX_DIM / height);
+          width = Math.round(width * ratio);
+          height = Math.round(height * ratio);
+        }
+        const canvas = document.createElement("canvas");
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) { reject(new Error("Canvas not supported")); return; }
+        ctx.drawImage(img, 0, 0, width, height);
+        // 逐步降低质量直到小于目标大小
+        let quality = 0.8;
+        let dataUrl = canvas.toDataURL("image/jpeg", quality);
+        while (dataUrl.length * 0.75 > MAX_SIZE && quality > 0.1) {
+          quality -= 0.1;
+          dataUrl = canvas.toDataURL("image/jpeg", quality);
+        }
+        const base64 = dataUrl.split(",")[1];
+        resolve({ base64, mimeType: "image/jpeg" });
+      };
+      img.onerror = () => reject(new Error("图片加载失败"));
+      img.src = URL.createObjectURL(file);
+    });
+  }, []);
+
   const handleFileUpload = useCallback(async (file: File, paymentId?: number) => {
-    if (file.size > 5 * 1024 * 1024) {
-      toast.error("文件大小不能超过 5MB");
+    if (file.size > 10 * 1024 * 1024) {
+      toast.error("文件大小不能超过 10MB");
       return;
     }
     if (!file.type.startsWith("image/")) {
@@ -229,12 +277,13 @@ export default function PaymentRecordsPanel({
     }
     setUploading(true);
     try {
-      const reader = new FileReader();
-      const base64Promise = new Promise<string>((resolve) => {
-        reader.onload = () => resolve((reader.result as string).split(",")[1]);
-        reader.readAsDataURL(file);
-      });
-      const base64 = await base64Promise;
+      const { base64, mimeType } = await compressImage(file);
+      const wasCompressed = file.size > 500 * 1024;
+      if (wasCompressed) {
+        const originalKB = Math.round(file.size / 1024);
+        const compressedKB = Math.round(base64.length * 0.75 / 1024);
+        toast.info(`图片已压缩：${originalKB}KB → ${compressedKB}KB`);
+      }
 
       if (paymentId) {
         await uploadScreenshotMutation.mutateAsync({
@@ -245,7 +294,7 @@ export default function PaymentRecordsPanel({
         utils.orderPayments.listByOrder.invalidate({ orderId });
         toast.success("截图上传成功");
       } else {
-        setFormScreenshot(`data:${file.type};base64,${base64}`);
+        setFormScreenshot(`data:${mimeType};base64,${base64}`);
         toast.success("截图已选择，保存后将上传");
       }
     } catch {
@@ -253,7 +302,7 @@ export default function PaymentRecordsPanel({
     } finally {
       setUploading(false);
     }
-  }, [orderId]);
+  }, [orderId, compressImage]);
 
   // Paste handler for the main dialog
   useEffect(() => {

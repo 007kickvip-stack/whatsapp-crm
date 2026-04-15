@@ -2089,21 +2089,7 @@ export default function OrdersPage() {
                   </SelectContent>
                 </Select>
               </div>
-              <div className="space-y-2">
-                <Label>付款状态</Label>
-                <Select value={form.paymentStatus} onValueChange={(v) => setForm({ ...form, paymentStatus: v })}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {PAYMENT_STATUSES.map((s) => (
-                      <SelectItem key={s} value={s}>
-                        <span className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-medium border ${paymentColor(s)}`}>{s}</span>
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
+
             </div>
             <div className="space-y-2">
               <Label>备注</Label>
