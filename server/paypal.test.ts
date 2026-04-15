@@ -121,13 +121,20 @@ import {
   syncOrdersToPaypalIncome,
 } from "./db";
 
-const mockCtx = {
-  user: { id: 1, name: "Test Staff", role: "admin" as const, openId: "test-open-id", email: null },
+const adminCtx = {
+  user: { id: 1, name: "Test Admin", role: "admin" as const, openId: "admin-open-id", email: null },
   req: {} as any,
   res: { clearCookie: vi.fn() } as any,
 };
 
-const caller = appRouter.createCaller(mockCtx as any);
+const staffCtx = {
+  user: { id: 2, name: "Test Staff", role: "user" as const, openId: "staff-open-id", email: null },
+  req: {} as any,
+  res: { clearCookie: vi.fn() } as any,
+};
+
+const caller = appRouter.createCaller(adminCtx as any);
+const staffCaller = appRouter.createCaller(staffCtx as any);
 
 // ==================== PayPal Income Tests ====================
 describe("PayPal Income CRUD", () => {
@@ -135,7 +142,7 @@ describe("PayPal Income CRUD", () => {
     vi.clearAllMocks();
   });
 
-  it("should list income records", async () => {
+  it("should list income records (admin sees all - no staffId filter)", async () => {
     const result = await caller.paypalIncome.list({ page: 1, pageSize: 50 });
     expect(result.data).toHaveLength(1);
     expect(result.total).toBe(1);
@@ -147,6 +154,20 @@ describe("PayPal Income CRUD", () => {
       receivingAccount: undefined,
       dateFrom: undefined,
       dateTo: undefined,
+      staffId: undefined,
+    });
+  });
+
+  it("should list income records (staff sees only own records - staffId filter applied)", async () => {
+    await staffCaller.paypalIncome.list({ page: 1, pageSize: 50 });
+    expect(listPaypalIncome).toHaveBeenCalledWith({
+      page: 1,
+      pageSize: 50,
+      search: undefined,
+      receivingAccount: undefined,
+      dateFrom: undefined,
+      dateTo: undefined,
+      staffId: 2,
     });
   });
 
@@ -159,6 +180,7 @@ describe("PayPal Income CRUD", () => {
       receivingAccount: "廖欧妹",
       dateFrom: undefined,
       dateTo: undefined,
+      staffId: undefined,
     });
   });
 
@@ -171,6 +193,7 @@ describe("PayPal Income CRUD", () => {
       receivingAccount: undefined,
       dateFrom: undefined,
       dateTo: undefined,
+      staffId: undefined,
     });
   });
 
@@ -188,6 +211,7 @@ describe("PayPal Income CRUD", () => {
       receivingAccount: undefined,
       dateFrom: "2026-04-01",
       dateTo: "2026-04-30",
+      staffId: undefined,
     });
   });
 
@@ -258,6 +282,67 @@ describe("PayPal Income CRUD", () => {
     const result = await caller.paypalIncome.delete({ id: 1 });
     expect(result.success).toBe(true);
     expect(deletePaypalIncome).toHaveBeenCalledWith(1);
+  });
+});
+
+// ==================== PayPal Expense Permission Tests ====================
+describe("PayPal Expense Permission Control", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("should allow admin to list expenses", async () => {
+    const result = await caller.paypalExpense.list({ page: 1, pageSize: 50 });
+    expect(result.data).toHaveLength(1);
+    expect(result.total).toBe(1);
+  });
+
+  it("should deny staff from listing expenses", async () => {
+    await expect(staffCaller.paypalExpense.list({ page: 1, pageSize: 50 })).rejects.toThrow();
+  });
+
+  it("should deny staff from creating expenses", async () => {
+    await expect(staffCaller.paypalExpense.create({
+      expenseDate: "2026-04-10",
+      account: "Account1",
+      amount: "50.00",
+    })).rejects.toThrow();
+  });
+
+  it("should deny staff from deleting expenses", async () => {
+    await expect(staffCaller.paypalExpense.delete({ id: 1 })).rejects.toThrow();
+  });
+});
+
+// ==================== PayPal Balance Summary Permission Tests ====================
+describe("PayPal Balance Summary Permission Control", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("should allow admin to view balance summary", async () => {
+    const result = await caller.paypalBalance.summary();
+    expect(result).toHaveLength(2);
+  });
+
+  it("should deny staff from viewing balance summary", async () => {
+    await expect(staffCaller.paypalBalance.summary()).rejects.toThrow();
+  });
+});
+
+// ==================== PayPal Sync Permission Tests ====================
+describe("PayPal Sync Permission Control", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("should allow admin to sync orders", async () => {
+    const result = await caller.paypalSync.syncFromOrders();
+    expect(result.created).toBe(3);
+  });
+
+  it("should deny staff from syncing orders", async () => {
+    await expect(staffCaller.paypalSync.syncFromOrders()).rejects.toThrow();
   });
 });
 
@@ -383,5 +468,35 @@ describe("PayPal Sync From Orders", () => {
     const result = await caller.paypalSync.syncFromOrders();
     expect(result.created).toBe(3);
     expect(syncOrdersToPaypalIncome).toHaveBeenCalledTimes(1);
+  });
+});
+
+// ==================== Staff Income Access Tests ====================
+describe("Staff PayPal Income Access", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("should allow staff to create income records", async () => {
+    const result = await staffCaller.paypalIncome.create({
+      paymentAmount: "100.00",
+      receivingAccount: "廖欧妹",
+    });
+    expect(result.id).toBe(1);
+    const callArgs = (createPaypalIncome as any).mock.calls[0][0];
+    expect(callArgs.createdById).toBe(2); // staff user id
+  });
+
+  it("should allow staff to update income records", async () => {
+    const result = await staffCaller.paypalIncome.update({
+      id: 1,
+      paymentAmount: "150.00",
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("should allow staff to delete income records", async () => {
+    const result = await staffCaller.paypalIncome.delete({ id: 1 });
+    expect(result.success).toBe(true);
   });
 });

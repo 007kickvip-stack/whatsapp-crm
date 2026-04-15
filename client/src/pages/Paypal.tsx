@@ -664,6 +664,8 @@ function IncomeTable({
   dateTo: string;
   receivingAccountFilter: string;
 }) {
+  const { user } = useAuth();
+  const isAdmin = user?.role === "admin";
   const utils = trpc.useUtils();
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState("");
@@ -775,45 +777,49 @@ function IncomeTable({
               className="h-7 pl-7 text-xs w-40"
             />
           </div>
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() => syncMut.mutate()}
-            disabled={syncMut.isPending}
-            className="h-7 text-xs border-emerald-200 text-emerald-700 hover:bg-emerald-50"
-            title="订单创建时会自动同步，此按钮用于补充同步历史订单"
-          >
-            {syncMut.isPending ? (
-              <Loader2 className="w-3 h-3 mr-1 animate-spin" />
-            ) : (
-              <RefreshCw className="w-3 h-3 mr-1" />
-            )}
-            补充同步
-          </Button>
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() => repairMut.mutate()}
-            disabled={repairMut.isPending}
-            className="h-7 text-xs border-blue-200 text-blue-700 hover:bg-blue-50"
-            title="修复已有记录中缺失的截图、日期和订单编号"
-          >
-            {repairMut.isPending ? (
-              <Loader2 className="w-3 h-3 mr-1 animate-spin" />
-            ) : (
-              <RefreshCw className="w-3 h-3 mr-1" />
-            )}
-            修复同步
-          </Button>
-          <Button
-            size="sm"
-            onClick={handleAddRow}
-            disabled={createMut.isPending}
-            className="h-7 text-xs bg-emerald-600 hover:bg-emerald-700"
-          >
-            <Plus className="w-3 h-3 mr-1" />
-            新增
-          </Button>
+          {isAdmin && (
+            <>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => syncMut.mutate()}
+                disabled={syncMut.isPending}
+                className="h-7 text-xs border-emerald-200 text-emerald-700 hover:bg-emerald-50"
+                title="订单创建时会自动同步，此按钮用于补充同步历史订单"
+              >
+                {syncMut.isPending ? (
+                  <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+                ) : (
+                  <RefreshCw className="w-3 h-3 mr-1" />
+                )}
+                补充同步
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => repairMut.mutate()}
+                disabled={repairMut.isPending}
+                className="h-7 text-xs border-blue-200 text-blue-700 hover:bg-blue-50"
+                title="修复已有记录中缺失的截图、日期和订单编号"
+              >
+                {repairMut.isPending ? (
+                  <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+                ) : (
+                  <RefreshCw className="w-3 h-3 mr-1" />
+                )}
+                修复同步
+              </Button>
+              <Button
+                size="sm"
+                onClick={handleAddRow}
+                disabled={createMut.isPending}
+                className="h-7 text-xs bg-emerald-600 hover:bg-emerald-700"
+              >
+                <Plus className="w-3 h-3 mr-1" />
+                新增
+              </Button>
+            </>
+          )}
         </div>
       </div>
 
@@ -835,7 +841,7 @@ function IncomeTable({
               <th className="px-2 py-2 text-center font-medium w-[110px]">收款账户</th>
               <th className="px-2 py-2 text-center font-medium w-[70px]">客服名字</th>
               <th className="px-2 py-2 text-center font-medium">备注</th>
-              <th className="px-2 py-2 text-center font-medium w-[40px]">操作</th>
+              {isAdmin && <th className="px-2 py-2 text-center font-medium w-[40px]">操作</th>}
             </tr>
           </thead>
           <tbody>
@@ -974,15 +980,17 @@ function IncomeTable({
                       className="text-center"
                     />
                   </td>
-                  <td className="px-2 py-1.5 text-center">
-                    <button
-                      onClick={() => handleDelete(row.id)}
-                      className="text-gray-300 hover:text-red-500 transition-colors"
-                      title="删除"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
-                  </td>
+                  {isAdmin && (
+                    <td className="px-2 py-1.5 text-center">
+                      <button
+                        onClick={() => handleDelete(row.id)}
+                        className="text-gray-300 hover:text-red-500 transition-colors"
+                        title="删除"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </td>
+                  )}
                 </tr>
               ))
             )}
@@ -1242,8 +1250,9 @@ function ExpenseTable({
 // ============================================================
 export default function PaypalPage() {
   const { user } = useAuth();
+  const isAdmin = user?.role === "admin";
   const { data: balanceData, isLoading: balanceLoading } =
-    trpc.paypalBalance.summary.useQuery();
+    trpc.paypalBalance.summary.useQuery(undefined, { enabled: isAdmin });
 
   const [activeTab, setActiveTab] = useState<"income" | "expense">("income");
 
@@ -1271,11 +1280,13 @@ export default function PaypalPage() {
         </div>
       </div>
 
-      {/* Balance Cards */}
-      <BalanceCards
-        balanceData={balanceData || []}
-        isLoading={balanceLoading}
-      />
+      {/* Balance Cards - 仅管理员可见 */}
+      {isAdmin && (
+        <BalanceCards
+          balanceData={balanceData || []}
+          isLoading={balanceLoading}
+        />
+      )}
 
       {/* Filter Bar */}
       <FilterBar
@@ -1288,34 +1299,36 @@ export default function PaypalPage() {
         onReset={handleResetFilters}
       />
 
-      {/* Tab Switch */}
-      <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-1 w-fit">
-        <button
-          onClick={() => setActiveTab("income")}
-          className={`px-4 py-1.5 rounded-md text-xs font-medium transition-all ${
-            activeTab === "income"
-              ? "bg-white text-emerald-700 shadow-sm"
-              : "text-gray-500 hover:text-gray-700"
-          }`}
-        >
-          <TrendingUp className="w-3.5 h-3.5 inline mr-1" />
-          收入
-        </button>
-        <button
-          onClick={() => setActiveTab("expense")}
-          className={`px-4 py-1.5 rounded-md text-xs font-medium transition-all ${
-            activeTab === "expense"
-              ? "bg-white text-red-600 shadow-sm"
-              : "text-gray-500 hover:text-gray-700"
-          }`}
-        >
-          <TrendingDown className="w-3.5 h-3.5 inline mr-1" />
-          支出
-        </button>
-      </div>
+      {/* Tab Switch - 仅管理员可见支出Tab */}
+      {isAdmin && (
+        <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-1 w-fit">
+          <button
+            onClick={() => setActiveTab("income")}
+            className={`px-4 py-1.5 rounded-md text-xs font-medium transition-all ${
+              activeTab === "income"
+                ? "bg-white text-emerald-700 shadow-sm"
+                : "text-gray-500 hover:text-gray-700"
+            }`}
+          >
+            <TrendingUp className="w-3.5 h-3.5 inline mr-1" />
+            收入
+          </button>
+          <button
+            onClick={() => setActiveTab("expense")}
+            className={`px-4 py-1.5 rounded-md text-xs font-medium transition-all ${
+              activeTab === "expense"
+                ? "bg-white text-red-600 shadow-sm"
+                : "text-gray-500 hover:text-gray-700"
+            }`}
+          >
+            <TrendingDown className="w-3.5 h-3.5 inline mr-1" />
+            支出
+          </button>
+        </div>
+      )}
 
       {/* Tables */}
-      {activeTab === "income" ? (
+      {(!isAdmin || activeTab === "income") ? (
         <IncomeTable
           dateFrom={dateFrom}
           dateTo={dateTo}

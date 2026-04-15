@@ -2338,12 +2338,16 @@ export async function listPaypalIncome(params: {
   receivingAccount?: string;
   dateFrom?: string;
   dateTo?: string;
+  staffId?: number;
 }) {
   const db = await getDb();
   if (!db) return { data: [], total: 0 };
-  const { page = 1, pageSize = 50, search, receivingAccount, dateFrom, dateTo } = params;
+  const { page = 1, pageSize = 50, search, receivingAccount, dateFrom, dateTo, staffId } = params;
   const offset = (page - 1) * pageSize;
   const conditions: SQL[] = [];
+  if (staffId !== undefined) {
+    conditions.push(eq(paypalIncome.createdById, staffId));
+  }
   if (search) {
     conditions.push(
       or(

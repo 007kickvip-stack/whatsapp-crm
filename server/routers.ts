@@ -1642,8 +1642,9 @@ export const appRouter = router({
       receivingAccount: z.string().optional(),
       dateFrom: z.string().optional(),
       dateTo: z.string().optional(),
-    })).query(({ input }) => {
-      return listPaypalIncome(input);
+    })).query(({ input, ctx }) => {
+      const staffId = ctx.user.role === "admin" ? undefined : ctx.user.id;
+      return listPaypalIncome({ ...input, staffId });
     }),
 
     create: protectedProcedure.input(z.object({
@@ -1717,7 +1718,7 @@ export const appRouter = router({
 
   // ==================== PayPal Expense Routes ====================
   paypalExpense: router({
-    list: protectedProcedure.input(z.object({
+    list: adminProcedure.input(z.object({
       page: z.number().default(1),
       pageSize: z.number().default(50),
       search: z.string().optional(),
@@ -1727,7 +1728,7 @@ export const appRouter = router({
       return listPaypalExpense(input);
     }),
 
-    create: protectedProcedure.input(z.object({
+    create: adminProcedure.input(z.object({
       expenseDate: z.string().optional(),
       account: z.string().optional(),
       amount: z.string().optional(),
@@ -1742,7 +1743,7 @@ export const appRouter = router({
       return { id };
     }),
 
-    update: protectedProcedure.input(z.object({
+    update: adminProcedure.input(z.object({
       id: z.number(),
       expenseDate: z.string().optional(),
       account: z.string().optional(),
@@ -1759,7 +1760,7 @@ export const appRouter = router({
       return { success: true };
     }),
 
-    delete: protectedProcedure.input(z.object({ id: z.number() })).mutation(async ({ input, ctx }) => {
+    delete: adminProcedure.input(z.object({ id: z.number() })).mutation(async ({ input, ctx }) => {
       await deletePaypalExpense(input.id);
       await logAction(ctx, "delete", "paypalExpense", input.id);
       return { success: true };
@@ -1768,14 +1769,14 @@ export const appRouter = router({
 
   // ==================== PayPal Balance Summary ====================
   paypalBalance: router({
-    summary: protectedProcedure.query(async () => {
+    summary: adminProcedure.query(async () => {
       return getPaypalBalanceSummary();
     }),
   }),
 
   // ==================== PayPal Sync from Orders ====================
   paypalSync: router({
-    syncFromOrders: protectedProcedure.mutation(async ({ ctx }) => {
+    syncFromOrders: adminProcedure.mutation(async ({ ctx }) => {
       const result = await syncOrdersToPaypalIncome(ctx.user.id);
       if (result.created > 0) {
         await logAction(ctx, "sync", "paypalIncome", 0, undefined, `同步${result.created}条订单数据`);
@@ -1783,7 +1784,7 @@ export const appRouter = router({
       return result;
     }),
     // 修复同步：更新已有记录中缺失的截图、日期和订单编号
-    repairSync: protectedProcedure.mutation(async ({ ctx }) => {
+    repairSync: adminProcedure.mutation(async ({ ctx }) => {
       const result = await repairPaypalIncomeSync();
       if (result.updated > 0) {
         await logAction(ctx, "repair", "paypalIncome", 0, undefined, `修复${result.updated}条记录的缺失数据`);

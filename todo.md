@@ -755,3 +755,8 @@
 - [x] 前端：侧边栏工资与提成菜单仅管理员可见
 - [x] 前端：工资报表页面添加权限守卫（客服访问时显示无权限提示）
 - [x] 测试覆盖（230条测试全部通过）
+
+## PayPal收支客服权限优化
+- [x] 后端：paypalIncome.list已有客服权限过滤（staffId=ctx.user.id）；paypalExpense/paypalBalance/paypalSync全部为adminProcedure
+- [x] 前端：客服视角隐藏总汇总卡片、支出Tab、同步/新增/删除按钮；客服只能看到自己的收入记录
+- [x] 测试验证（242条测试全部通过）
