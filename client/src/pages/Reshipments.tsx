@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { trpc } from "@/lib/trpc";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { toast } from "sonner";
@@ -38,6 +38,8 @@ import {
   Filter,
   ChevronLeft,
   ChevronRight,
+  ChevronDown,
+  ChevronUp,
   RefreshCw,
 } from "lucide-react";
 import AccountSelect from "@/components/AccountSelect";
@@ -340,6 +342,43 @@ function StatusSelect({
 }
 
 // ============================================================
+// FlatRow type for grouped display
+// ============================================================
+type FlatRow = {
+  id: number;
+  isFirstRow: boolean;
+  groupKey: string; // orderNumber or unique fallback
+  visibleItemCount: number; // for rowSpan
+  totalItemCount: number;
+  isCollapsed: boolean;
+  // Order-level (shared) fields
+  reshipDate: string | null;
+  staffName: string | null;
+  account: string | null;
+  customerWhatsapp: string | null;
+  orderNumber: string | null;
+  contactInfo: string | null;
+  totalProfit: string | null;
+  originalOrderId: number | null;
+  // Item-level (per-row) fields
+  orderImageUrl: string | null;
+  size: string | null;
+  domesticTrackingNo: string | null;
+  sizeRecommendation: string | null;
+  internationalTrackingNo: string | null;
+  shipDate: string | null;
+  quantity: number | null;
+  source: string | null;
+  orderStatus: string | null;
+  reshipReason: string | null;
+  customerPaidAmount: string | null;
+  reshipCost: string | null;
+  actualShipping: string | null;
+  logisticsCompensation: string | null;
+  profitLoss: string | null;
+};
+
+// ============================================================
 // Main Component
 // ============================================================
 export default function ReshipmentsPage() {
@@ -355,6 +394,7 @@ export default function ReshipmentsPage() {
   const [statusFilter, setStatusFilter] = useState("");
   const [showFilters, setShowFilters] = useState(false);
   const [deleteId, setDeleteId] = useState<number | null>(null);
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
 
   const pageSize = 50;
 
@@ -393,6 +433,18 @@ export default function ReshipmentsPage() {
     onError: (err) => toast.error(err.message),
   });
 
+  const toggleCollapse = useCallback((groupKey: string) => {
+    setCollapsedGroups((prev) => {
+      const next = new Set(prev);
+      if (next.has(groupKey)) {
+        next.delete(groupKey);
+      } else {
+        next.add(groupKey);
+      }
+      return next;
+    });
+  }, []);
+
   const saveField = useCallback(
     (id: number, field: string, value: string | number) => {
       const payload: any = { id, [field]: value };
@@ -414,6 +466,21 @@ export default function ReshipmentsPage() {
     [data]
   );
 
+  // Save a shared (order-level) field: update all records in the same group
+  const saveGroupField = useCallback(
+    (groupKey: string, field: string, value: string | number) => {
+      const records = data?.data || [];
+      const groupRecords = records.filter((r: any) => {
+        const key = r.orderNumber ? r.orderNumber : `__single_${r.id}`;
+        return key === groupKey;
+      });
+      for (const r of groupRecords) {
+        updateMutation.mutate({ id: (r as any).id, [field]: value });
+      }
+    },
+    [data]
+  );
+
   const handleAddRow = () => {
     const today = new Date().toISOString().slice(0, 10);
     createMutation.mutate({
@@ -426,9 +493,73 @@ export default function ReshipmentsPage() {
   const total = data?.total || 0;
   const totalPages = Math.ceil(total / pageSize);
 
+  // Build flat rows grouped by orderNumber
+  const flatRows: FlatRow[] = useMemo(() => {
+    if (!records.length) return [];
+
+    // Group records by orderNumber
+    const groups = new Map<string, any[]>();
+    const groupOrder: string[] = [];
+    for (const rec of records) {
+      const key = rec.orderNumber ? rec.orderNumber : `__single_${rec.id}`;
+      if (!groups.has(key)) {
+        groups.set(key, []);
+        groupOrder.push(key);
+      }
+      groups.get(key)!.push(rec);
+    }
+
+    const rows: FlatRow[] = [];
+    for (const key of groupOrder) {
+      const groupRecords = groups.get(key)!;
+      const isCollapsed = collapsedGroups.has(key);
+      const totalItemCount = groupRecords.length;
+      const visibleRecords = isCollapsed && totalItemCount > 1 ? [groupRecords[0]] : groupRecords;
+      const visibleItemCount = visibleRecords.length;
+
+      visibleRecords.forEach((rec: any, idx: number) => {
+        rows.push({
+          id: rec.id,
+          isFirstRow: idx === 0,
+          groupKey: key,
+          visibleItemCount,
+          totalItemCount,
+          isCollapsed,
+          // Shared fields (from first record in group)
+          reshipDate: idx === 0 ? formatDate(rec.reshipDate) : null,
+          staffName: idx === 0 ? rec.staffName : null,
+          account: idx === 0 ? rec.account : null,
+          customerWhatsapp: idx === 0 ? rec.customerWhatsapp : null,
+          orderNumber: idx === 0 ? rec.orderNumber : null,
+          contactInfo: idx === 0 ? rec.contactInfo : null,
+          totalProfit: idx === 0 ? rec.totalProfit : null,
+          originalOrderId: idx === 0 ? rec.originalOrderId : null,
+          // Per-row fields
+          orderImageUrl: rec.orderImageUrl,
+          size: rec.size,
+          domesticTrackingNo: rec.domesticTrackingNo,
+          sizeRecommendation: rec.sizeRecommendation,
+          internationalTrackingNo: rec.internationalTrackingNo,
+          shipDate: formatDate(rec.shipDate),
+          quantity: rec.quantity,
+          source: rec.source,
+          orderStatus: rec.orderStatus,
+          reshipReason: rec.reshipReason,
+          customerPaidAmount: rec.customerPaidAmount,
+          reshipCost: rec.reshipCost,
+          actualShipping: rec.actualShipping,
+          logisticsCompensation: rec.logisticsCompensation,
+          profitLoss: rec.profitLoss,
+        });
+      });
+    }
+    return rows;
+  }, [records, collapsedGroups]);
+
   // Table columns definition
   const columns = [
-    { key: "index", label: "#", width: "36px" },
+    { key: "actions", label: "", width: "36px" },
+    { key: "index", label: "#", width: "30px" },
     { key: "reshipDate", label: "日期", width: "90px" },
     { key: "staffName", label: "客服名字", width: "70px" },
     { key: "account", label: "账号", width: "90px" },
@@ -451,8 +582,329 @@ export default function ReshipmentsPage() {
     { key: "actualShipping", label: "补发实际运费", width: "80px" },
     { key: "logisticsCompensation", label: "物流赔偿金额", width: "90px" },
     { key: "profitLoss", label: "盈亏", width: "70px" },
-    { key: "actions", label: "操作", width: "50px" },
+    { key: "delete", label: "操作", width: "50px" },
   ];
+
+  // Counter for group numbering
+  let groupCounter = 0;
+
+  const renderRow = (row: FlatRow, rowIdx: number) => {
+    const isGroupBoundary = row.isFirstRow;
+    const borderTop = isGroupBoundary ? "border-t-2 border-t-emerald-200" : "border-t border-t-gray-100";
+    const bgClass = isGroupBoundary ? "bg-white" : "bg-gray-50/50";
+
+    if (isGroupBoundary) groupCounter++;
+
+    return (
+      <tr
+        key={row.id}
+        className={`${borderTop} ${bgClass} hover:bg-gray-50/80 group transition-colors`}
+      >
+        {/* Action: collapse/expand + delete */}
+        {row.isFirstRow && (
+          <td
+            className="py-1 px-1 text-center border-r border-gray-100 align-middle"
+            rowSpan={row.visibleItemCount}
+          >
+            <div className="flex items-center justify-center gap-0.5">
+              {row.totalItemCount > 1 && (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button
+                      className="p-0.5 rounded hover:bg-emerald-100 transition-colors"
+                      onClick={() => toggleCollapse(row.groupKey)}
+                    >
+                      {row.isCollapsed ? (
+                        <ChevronDown className="h-3 w-3 text-emerald-600" />
+                      ) : (
+                        <ChevronUp className="h-3 w-3 text-emerald-600" />
+                      )}
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    {row.isCollapsed ? `展开 (${row.totalItemCount} 条记录)` : "折叠"}
+                  </TooltipContent>
+                </Tooltip>
+              )}
+            </div>
+          </td>
+        )}
+
+        {/* # - group number with rowSpan */}
+        {row.isFirstRow && (
+          <td
+            className="px-2 py-1.5 text-center text-gray-400 border-r border-gray-100 align-middle"
+            rowSpan={row.visibleItemCount}
+          >
+            {groupCounter}
+            {row.totalItemCount > 1 && (
+              <span className="ml-0.5 text-[9px] text-emerald-500 font-medium">
+                ({row.totalItemCount})
+              </span>
+            )}
+          </td>
+        )}
+
+        {/* 日期 - shared, rowSpan */}
+        {row.isFirstRow && (
+          <td
+            className="px-1 py-1 text-center border-r border-gray-100 align-middle"
+            rowSpan={row.visibleItemCount}
+          >
+            <input
+              type="date"
+              value={row.reshipDate || ""}
+              onChange={(e) => saveGroupField(row.groupKey, "reshipDate", e.target.value)}
+              className="w-full text-[11px] text-center bg-transparent border-0 outline-none cursor-pointer hover:bg-emerald-50 rounded px-0.5 py-0.5"
+            />
+          </td>
+        )}
+
+        {/* 客服名字 - shared, rowSpan */}
+        {row.isFirstRow && (
+          <td
+            className="px-1 py-1 text-center border-r border-gray-100 align-middle"
+            rowSpan={row.visibleItemCount}
+          >
+            <EditableCell
+              value={row.staffName || ""}
+              onSave={(v) => saveGroupField(row.groupKey, "staffName", v)}
+              className="text-center"
+            />
+          </td>
+        )}
+
+        {/* 账号 - shared, rowSpan */}
+        {row.isFirstRow && (
+          <td
+            className="px-1 py-1 text-center border-r border-gray-100 align-middle"
+            rowSpan={row.visibleItemCount}
+          >
+            <AccountSelect
+              value={row.account || ""}
+              onValueChange={(v) => saveGroupField(row.groupKey, "account", v)}
+              compact
+            />
+          </td>
+        )}
+
+        {/* 客户WhatsApp - shared, rowSpan */}
+        {row.isFirstRow && (
+          <td
+            className="px-1 py-1 text-center border-r border-gray-100 align-middle"
+            rowSpan={row.visibleItemCount}
+          >
+            <EditableCell
+              value={row.customerWhatsapp || ""}
+              onSave={(v) => saveGroupField(row.groupKey, "customerWhatsapp", v)}
+              className="text-center"
+            />
+          </td>
+        )}
+
+        {/* 订单编号 - shared, rowSpan */}
+        {row.isFirstRow && (
+          <td
+            className="px-1 py-1 text-center border-r border-gray-100 align-middle"
+            rowSpan={row.visibleItemCount}
+          >
+            <EditableCell
+              value={row.orderNumber || ""}
+              onSave={(v) => saveGroupField(row.groupKey, "orderNumber", v)}
+              className="text-center font-medium"
+            />
+          </td>
+        )}
+
+        {/* 订单图片 - per row */}
+        <td className="px-1 py-1 text-center border-r border-gray-100">
+          <ImageUploadCell
+            value={row.orderImageUrl || ""}
+            onSave={(url) => saveField(row.id, "orderImageUrl", url)}
+          />
+        </td>
+
+        {/* Size - per row */}
+        <td className="px-1 py-1 text-center border-r border-gray-100">
+          <EditableCell
+            value={row.size || ""}
+            onSave={(v) => saveField(row.id, "size", v)}
+            className="text-center"
+          />
+        </td>
+
+        {/* 国内单号 - per row */}
+        <td className="px-1 py-1 text-center border-r border-gray-100">
+          <EditableCell
+            value={row.domesticTrackingNo || ""}
+            onSave={(v) => saveField(row.id, "domesticTrackingNo", v)}
+            className="text-center"
+          />
+        </td>
+
+        {/* 推荐码数 - per row */}
+        <td className="px-1 py-1 text-center border-r border-gray-100">
+          <EditableCell
+            value={row.sizeRecommendation || ""}
+            onSave={(v) => saveField(row.id, "sizeRecommendation", v)}
+            className="text-center"
+          />
+        </td>
+
+        {/* 联系方式 - shared, rowSpan */}
+        {row.isFirstRow && (
+          <td
+            className="px-1 py-1 text-center border-r border-gray-100 align-middle max-w-[200px]"
+            rowSpan={row.visibleItemCount}
+          >
+            <EditableCell
+              value={row.contactInfo || ""}
+              onSave={(v) => saveGroupField(row.groupKey, "contactInfo", v)}
+              className="text-center"
+              placeholder="联系方式"
+            />
+          </td>
+        )}
+
+        {/* 国际跟踪单号 - per row */}
+        <td className="px-1 py-1 text-center border-r border-gray-100">
+          <EditableCell
+            value={row.internationalTrackingNo || ""}
+            onSave={(v) => saveField(row.id, "internationalTrackingNo", v)}
+            className="text-center"
+          />
+        </td>
+
+        {/* 发出日期 - per row */}
+        <td className="px-1 py-1 text-center border-r border-gray-100">
+          <input
+            type="date"
+            value={row.shipDate || ""}
+            onChange={(e) => saveField(row.id, "shipDate", e.target.value)}
+            className="w-full text-[11px] text-center bg-transparent border-0 outline-none cursor-pointer hover:bg-emerald-50 rounded px-0.5 py-0.5"
+          />
+        </td>
+
+        {/* 件数 - per row */}
+        <td className="px-1 py-1 text-center border-r border-gray-100">
+          <EditableCell
+            value={String(row.quantity || 1)}
+            onSave={(v) => saveField(row.id, "quantity", parseInt(v) || 1)}
+            type="number"
+            className="text-center"
+          />
+        </td>
+
+        {/* 货源 - per row */}
+        <td className="px-1 py-1 text-center border-r border-gray-100">
+          <EditableCell
+            value={row.source || ""}
+            onSave={(v) => saveField(row.id, "source", v)}
+            className="text-center"
+          />
+        </td>
+
+        {/* 订单状态 - per row */}
+        <td className="px-1 py-1 text-center border-r border-gray-100">
+          <StatusSelect
+            value={row.orderStatus || ""}
+            onValueChange={(v) => saveField(row.id, "orderStatus", v)}
+          />
+        </td>
+
+        {/* 总利润 - shared, rowSpan */}
+        {row.isFirstRow && (
+          <td
+            className="px-1 py-1 text-center border-r border-gray-100 align-middle"
+            rowSpan={row.visibleItemCount}
+          >
+            <EditableCell
+              value={fmtNum(row.totalProfit)}
+              onSave={(v) => saveGroupField(row.groupKey, "totalProfit", v)}
+              type="number"
+              className="text-center"
+            />
+          </td>
+        )}
+
+        {/* 补发原因 - per row */}
+        <td className="px-1 py-1 text-center border-r border-gray-100">
+          <EditableCell
+            value={row.reshipReason || ""}
+            onSave={(v) => saveField(row.id, "reshipReason", v)}
+            className="text-center"
+            placeholder="填写原因"
+          />
+        </td>
+
+        {/* 客户补的金额 - per row */}
+        <td className="px-1 py-1 text-center border-r border-gray-100">
+          <EditableCell
+            value={fmtNum(row.customerPaidAmount)}
+            onSave={(v) => saveField(row.id, "customerPaidAmount", v)}
+            type="number"
+            className="text-center"
+          />
+        </td>
+
+        {/* 补发成本 - per row */}
+        <td className="px-1 py-1 text-center border-r border-gray-100">
+          <EditableCell
+            value={fmtNum(row.reshipCost)}
+            onSave={(v) => saveField(row.id, "reshipCost", v)}
+            type="number"
+            className="text-center"
+          />
+        </td>
+
+        {/* 补发实际运费 - per row */}
+        <td className="px-1 py-1 text-center border-r border-gray-100">
+          <EditableCell
+            value={fmtNum(row.actualShipping)}
+            onSave={(v) => saveField(row.id, "actualShipping", v)}
+            type="number"
+            className="text-center"
+          />
+        </td>
+
+        {/* 物流赔偿金额 - per row */}
+        <td className="px-1 py-1 text-center border-r border-gray-100">
+          <EditableCell
+            value={fmtNum(row.logisticsCompensation)}
+            onSave={(v) => saveField(row.id, "logisticsCompensation", v)}
+            type="number"
+            className="text-center"
+          />
+        </td>
+
+        {/* 盈亏 - per row */}
+        <td className="px-1 py-1 text-center border-r border-gray-100">
+          {(() => {
+            const val = parseFloat(String(row.profitLoss || "0"));
+            const color = val > 0 ? "text-green-600" : val < 0 ? "text-red-600" : "text-gray-500";
+            return <span className={`font-medium ${color}`}>{fmtNum(val)}</span>;
+          })()}
+        </td>
+
+        {/* 操作 - per row */}
+        <td className="px-1 py-1 text-center">
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-6 w-6 text-destructive hover:text-destructive"
+                onClick={() => setDeleteId(row.id)}
+              >
+                <Trash2 className="h-3 w-3" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>删除</TooltipContent>
+          </Tooltip>
+        </td>
+      </tr>
+    );
+  };
 
   return (
     <div className="space-y-4">
@@ -565,7 +1017,7 @@ export default function ReshipmentsPage() {
       {/* Table */}
       <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="w-full text-[11px]" style={{ minWidth: "2400px" }}>
+          <table className="w-full text-[11px]" style={{ minWidth: "2500px" }}>
             <thead>
               <tr className="bg-emerald-50 border-b border-gray-200">
                 {columns.map((col) => (
@@ -586,246 +1038,14 @@ export default function ReshipmentsPage() {
                     <Loader2 className="h-6 w-6 animate-spin text-emerald-500 mx-auto" />
                   </td>
                 </tr>
-              ) : records.length === 0 ? (
+              ) : flatRows.length === 0 ? (
                 <tr>
                   <td colSpan={columns.length} className="text-center py-12 text-gray-400">
                     暂无补发记录
                   </td>
                 </tr>
               ) : (
-                records.map((row: any, idx: number) => (
-                  <tr
-                    key={row.id}
-                    className="border-b border-gray-100 hover:bg-gray-50/50 group transition-colors"
-                  >
-                    {/* # */}
-                    <td className="px-2 py-1.5 text-center text-gray-400">
-                      {(page - 1) * pageSize + idx + 1}
-                    </td>
-
-                    {/* 日期 */}
-                    <td className="px-1 py-1 text-center">
-                      <input
-                        type="date"
-                        value={formatDate(row.reshipDate)}
-                        onChange={(e) => saveField(row.id, "reshipDate", e.target.value)}
-                        className="w-full text-[11px] text-center bg-transparent border-0 outline-none cursor-pointer hover:bg-emerald-50 rounded px-0.5 py-0.5"
-                      />
-                    </td>
-
-                    {/* 客服名字 */}
-                    <td className="px-1 py-1 text-center">
-                      <EditableCell
-                        value={row.staffName || ""}
-                        onSave={(v) => saveField(row.id, "staffName", v)}
-                        className="text-center"
-                      />
-                    </td>
-
-                    {/* 账号 */}
-                    <td className="px-1 py-1 text-center">
-                      <AccountSelect
-                        value={row.account || ""}
-                        onValueChange={(v) => saveField(row.id, "account", v)}
-                        compact
-                      />
-                    </td>
-
-                    {/* 客户WhatsApp */}
-                    <td className="px-1 py-1 text-center">
-                      <EditableCell
-                        value={row.customerWhatsapp || ""}
-                        onSave={(v) => saveField(row.id, "customerWhatsapp", v)}
-                        className="text-center"
-                      />
-                    </td>
-
-                    {/* 订单编号 */}
-                    <td className="px-1 py-1 text-center">
-                      <EditableCell
-                        value={row.orderNumber || ""}
-                        onSave={(v) => saveField(row.id, "orderNumber", v)}
-                        className="text-center"
-                      />
-                    </td>
-
-                    {/* 订单图片 */}
-                    <td className="px-1 py-1 text-center">
-                      <ImageUploadCell
-                        value={row.orderImageUrl || ""}
-                        onSave={(url) => saveField(row.id, "orderImageUrl", url)}
-                      />
-                    </td>
-
-                    {/* Size */}
-                    <td className="px-1 py-1 text-center">
-                      <EditableCell
-                        value={row.size || ""}
-                        onSave={(v) => saveField(row.id, "size", v)}
-                        className="text-center"
-                      />
-                    </td>
-
-                    {/* 国内单号 */}
-                    <td className="px-1 py-1 text-center">
-                      <EditableCell
-                        value={row.domesticTrackingNo || ""}
-                        onSave={(v) => saveField(row.id, "domesticTrackingNo", v)}
-                        className="text-center"
-                      />
-                    </td>
-
-                    {/* 推荐码数 */}
-                    <td className="px-1 py-1 text-center">
-                      <EditableCell
-                        value={row.sizeRecommendation || ""}
-                        onSave={(v) => saveField(row.id, "sizeRecommendation", v)}
-                        className="text-center"
-                      />
-                    </td>
-
-                    {/* 联系方式 */}
-                    <td className="px-1 py-1 text-center">
-                      <EditableCell
-                        value={row.contactInfo || ""}
-                        onSave={(v) => saveField(row.id, "contactInfo", v)}
-                        className="text-center"
-                      />
-                    </td>
-
-                    {/* 国际跟踪单号 */}
-                    <td className="px-1 py-1 text-center">
-                      <EditableCell
-                        value={row.internationalTrackingNo || ""}
-                        onSave={(v) => saveField(row.id, "internationalTrackingNo", v)}
-                        className="text-center"
-                      />
-                    </td>
-
-                    {/* 发出日期 */}
-                    <td className="px-1 py-1 text-center">
-                      <input
-                        type="date"
-                        value={formatDate(row.shipDate)}
-                        onChange={(e) => saveField(row.id, "shipDate", e.target.value)}
-                        className="w-full text-[11px] text-center bg-transparent border-0 outline-none cursor-pointer hover:bg-emerald-50 rounded px-0.5 py-0.5"
-                      />
-                    </td>
-
-                    {/* 件数 */}
-                    <td className="px-1 py-1 text-center">
-                      <EditableCell
-                        value={String(row.quantity || 1)}
-                        onSave={(v) => saveField(row.id, "quantity", parseInt(v) || 1)}
-                        type="number"
-                        className="text-center"
-                      />
-                    </td>
-
-                    {/* 货源 */}
-                    <td className="px-1 py-1 text-center">
-                      <EditableCell
-                        value={row.source || ""}
-                        onSave={(v) => saveField(row.id, "source", v)}
-                        className="text-center"
-                      />
-                    </td>
-
-                    {/* 订单状态 */}
-                    <td className="px-1 py-1 text-center">
-                      <StatusSelect
-                        value={row.orderStatus || ""}
-                        onValueChange={(v) => saveField(row.id, "orderStatus", v)}
-                      />
-                    </td>
-
-                    {/* 总利润 */}
-                    <td className="px-1 py-1 text-center">
-                      <EditableCell
-                        value={fmtNum(row.totalProfit)}
-                        onSave={(v) => saveField(row.id, "totalProfit", v)}
-                        type="number"
-                        className="text-center"
-                      />
-                    </td>
-
-                    {/* 补发原因 */}
-                    <td className="px-1 py-1 text-center">
-                      <EditableCell
-                        value={row.reshipReason || ""}
-                        onSave={(v) => saveField(row.id, "reshipReason", v)}
-                        className="text-center"
-                        placeholder="填写原因"
-                      />
-                    </td>
-
-                    {/* 客户补的金额 */}
-                    <td className="px-1 py-1 text-center">
-                      <EditableCell
-                        value={fmtNum(row.customerPaidAmount)}
-                        onSave={(v) => saveField(row.id, "customerPaidAmount", v)}
-                        type="number"
-                        className="text-center"
-                      />
-                    </td>
-
-                    {/* 补发成本 */}
-                    <td className="px-1 py-1 text-center">
-                      <EditableCell
-                        value={fmtNum(row.reshipCost)}
-                        onSave={(v) => saveField(row.id, "reshipCost", v)}
-                        type="number"
-                        className="text-center"
-                      />
-                    </td>
-
-                    {/* 补发实际运费 */}
-                    <td className="px-1 py-1 text-center">
-                      <EditableCell
-                        value={fmtNum(row.actualShipping)}
-                        onSave={(v) => saveField(row.id, "actualShipping", v)}
-                        type="number"
-                        className="text-center"
-                      />
-                    </td>
-
-                    {/* 物流赔偿金额 */}
-                    <td className="px-1 py-1 text-center">
-                      <EditableCell
-                        value={fmtNum(row.logisticsCompensation)}
-                        onSave={(v) => saveField(row.id, "logisticsCompensation", v)}
-                        type="number"
-                        className="text-center"
-                      />
-                    </td>
-
-                    {/* 盈亏 */}
-                    <td className="px-1 py-1 text-center">
-                      {(() => {
-                        const val = parseFloat(String(row.profitLoss || "0"));
-                        const color = val > 0 ? "text-green-600" : val < 0 ? "text-red-600" : "text-gray-500";
-                        return <span className={`font-medium ${color}`}>{fmtNum(val)}</span>;
-                      })()}
-                    </td>
-
-                    {/* 操作 */}
-                    <td className="px-1 py-1 text-center">
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-6 w-6 text-destructive hover:text-destructive"
-                            onClick={() => setDeleteId(row.id)}
-                          >
-                            <Trash2 className="h-3 w-3" />
-                          </Button>
-                        </TooltipTrigger>
-                        <TooltipContent>删除</TooltipContent>
-                      </Tooltip>
-                    </td>
-                  </tr>
-                ))
+                flatRows.map((row, idx) => renderRow(row, idx))
               )}
             </tbody>
           </table>
