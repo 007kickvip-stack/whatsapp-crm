@@ -232,6 +232,13 @@
       "when": 1776258419757,
       "tag": "0032_striped_power_pack",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "5",
+      "when": 1776259352467,
+      "tag": "0033_icy_scorpion",
+      "breakpoints": true
     }
   ]
 }

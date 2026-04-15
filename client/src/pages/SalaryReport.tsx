@@ -14,6 +14,13 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
   AlertDialog,
   AlertDialogAction,
   AlertDialogCancel,
@@ -37,8 +44,40 @@ import {
   Settings,
   ArrowUpDown,
   Percent,
+  BarChart3,
+  X,
 } from "lucide-react";
 import { toast } from "sonner";
+import {
+  ResponsiveContainer,
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Legend,
+  LineChart,
+  Line,
+} from "recharts";
+
+const COMMISSION_TYPE_LABELS: Record<string, string> = {
+  revenue: "按营业额",
+  profit: "按利润",
+  profitRate: "按利润率",
+};
+
+const COMMISSION_TYPE_COLORS: Record<string, string> = {
+  revenue: "bg-blue-100 text-blue-700",
+  profit: "bg-emerald-100 text-emerald-700",
+  profitRate: "bg-purple-100 text-purple-700",
+};
+
+const COMMISSION_TYPE_DESCRIPTIONS: Record<string, string> = {
+  revenue: "根据客服月营业额(¥)落入的区间，阶梯累加计算提成",
+  profit: "根据客服月利润(¥)落入的区间，阶梯累加计算提成",
+  profitRate: "根据客服月利润率(%)落入的区间，用总利润乘以对应比例计算提成",
+};
 
 export default function SalaryReportPage() {
   const { user } = useAuth();
@@ -60,12 +99,21 @@ export default function SalaryReportPage() {
     minAmount: "",
     maxAmount: "",
     commissionRate: "",
+    commissionType: "revenue" as string,
     sortOrder: 0,
   });
+
+  // 历史图表
+  const [showHistoryChart, setShowHistoryChart] = useState(false);
+  const [historyStaffId, setHistoryStaffId] = useState<number | undefined>(undefined);
+  const [historyStaffName, setHistoryStaffName] = useState("");
+  const [historyMonths, setHistoryMonths] = useState(6);
 
   const utils = trpc.useUtils();
 
   const stableYearMonth = useMemo(() => yearMonth, [yearMonth]);
+  const stableHistoryMonths = useMemo(() => historyMonths, [historyMonths]);
+  const stableHistoryStaffId = useMemo(() => historyStaffId, [historyStaffId]);
 
   // 工资报表数据
   const { data: reportData, isLoading: reportLoading } = trpc.salaryReport.get.useQuery(
@@ -81,6 +129,12 @@ export default function SalaryReportPage() {
 
   // 活跃提成规则（所有人可见）
   const { data: activeRules } = trpc.commissionRules.activeList.useQuery();
+
+  // 历史工资数据
+  const { data: historyData, isLoading: historyLoading } = trpc.salaryReport.history.useQuery(
+    { months: stableHistoryMonths, staffId: stableHistoryStaffId },
+    { enabled: showHistoryChart }
+  );
 
   // 提成规则 mutations
   const createRuleMutation = trpc.commissionRules.create.useMutation({
@@ -130,7 +184,7 @@ export default function SalaryReportPage() {
   });
 
   const resetRuleForm = () => {
-    setRuleForm({ name: "", minAmount: "", maxAmount: "", commissionRate: "", sortOrder: 0 });
+    setRuleForm({ name: "", minAmount: "", maxAmount: "", commissionRate: "", commissionType: "revenue", sortOrder: 0 });
   };
 
   const navigateMonth = (delta: number) => {
@@ -142,6 +196,11 @@ export default function SalaryReportPage() {
   const formatMonth = (ym: string) => {
     const [y, m] = ym.split("-");
     return `${y}年${parseInt(m)}月`;
+  };
+
+  const formatShortMonth = (ym: string) => {
+    const [, m] = ym.split("-");
+    return `${parseInt(m)}月`;
   };
 
   // 汇总数据
@@ -156,6 +215,41 @@ export default function SalaryReportPage() {
       staffCount: reportData.length,
     };
   }, [reportData]);
+
+  // 历史图表数据
+  const chartData = useMemo(() => {
+    if (!historyData) return [];
+    if (historyStaffId) {
+      // 单个客服的历史
+      return historyData.map((d: any) => ({
+        month: formatShortMonth(d.yearMonth),
+        底薪: d.baseSalary,
+        提成: d.commission,
+        应发工资: d.totalSalary,
+        营业额: d.totalRevenue,
+        利润: d.totalProfit,
+      }));
+    }
+    // 全部客服汇总
+    const monthMap = new Map<string, any>();
+    for (const d of historyData as any[]) {
+      const existing = monthMap.get(d.yearMonth) || {
+        month: formatShortMonth(d.yearMonth),
+        底薪: 0,
+        提成: 0,
+        应发工资: 0,
+        营业额: 0,
+        利润: 0,
+      };
+      existing.底薪 += d.baseSalary;
+      existing.提成 += d.commission;
+      existing.应发工资 += d.totalSalary;
+      existing.营业额 += d.totalRevenue;
+      existing.利润 += d.totalProfit;
+      monthMap.set(d.yearMonth, existing);
+    }
+    return Array.from(monthMap.values());
+  }, [historyData, historyStaffId]);
 
   const handleRuleSubmit = () => {
     if (!ruleForm.name.trim()) {
@@ -172,11 +266,13 @@ export default function SalaryReportPage() {
       return;
     }
 
+    const isRateMode = ruleForm.commissionType === "profitRate";
     const payload = {
       name: ruleForm.name.trim(),
       minAmount: ruleForm.minAmount ? parseFloat(ruleForm.minAmount).toFixed(2) : "0",
       maxAmount: ruleForm.maxAmount ? parseFloat(ruleForm.maxAmount).toFixed(2) : null,
       commissionRate: (rate / 100).toFixed(4), // 转换为小数
+      commissionType: ruleForm.commissionType as "revenue" | "profit" | "profitRate",
       sortOrder: ruleForm.sortOrder,
     };
 
@@ -194,9 +290,34 @@ export default function SalaryReportPage() {
       minAmount: rule.minAmount ? String(parseFloat(rule.minAmount)) : "",
       maxAmount: rule.maxAmount ? String(parseFloat(rule.maxAmount)) : "",
       commissionRate: rule.commissionRate ? String(parseFloat(rule.commissionRate) * 100) : "",
+      commissionType: rule.commissionType || "revenue",
       sortOrder: rule.sortOrder || 0,
     });
     setShowRuleForm(true);
+  };
+
+  const openStaffHistory = (staffId: number, staffName: string) => {
+    setHistoryStaffId(staffId);
+    setHistoryStaffName(staffName);
+    setShowHistoryChart(true);
+  };
+
+  const openAllHistory = () => {
+    setHistoryStaffId(undefined);
+    setHistoryStaffName("全部客服");
+    setShowHistoryChart(true);
+  };
+
+  // 获取区间标签文字
+  const getRangeLabel = (rule: any) => {
+    const type = rule.commissionType || "revenue";
+    const min = parseFloat(rule.minAmount);
+    const max = rule.maxAmount ? parseFloat(rule.maxAmount) : null;
+    if (type === "profitRate") {
+      return `利润率 ${min}%${max ? ` ~ ${max}%` : "+"}`;
+    }
+    const label = type === "profit" ? "利润" : "营业额";
+    return `${label} ¥${min.toLocaleString()}${max ? ` ~ ¥${max.toLocaleString()}` : "+"}`;
   };
 
   return (
@@ -209,16 +330,26 @@ export default function SalaryReportPage() {
             按月查看客服底薪、营业额、提成及应发工资
           </p>
         </div>
-        {isAdmin && (
+        <div className="flex items-center gap-2">
           <Button
-            onClick={() => setShowRulesDialog(true)}
+            onClick={openAllHistory}
             variant="outline"
-            className="border-emerald-200 text-emerald-700 hover:bg-emerald-50"
+            className="border-blue-200 text-blue-700 hover:bg-blue-50"
           >
-            <Settings className="h-4 w-4 mr-2" />
-            提成制度管理
+            <BarChart3 className="h-4 w-4 mr-2" />
+            历史趋势
           </Button>
-        )}
+          {isAdmin && (
+            <Button
+              onClick={() => setShowRulesDialog(true)}
+              variant="outline"
+              className="border-emerald-200 text-emerald-700 hover:bg-emerald-50"
+            >
+              <Settings className="h-4 w-4 mr-2" />
+              提成制度管理
+            </Button>
+          )}
+        </div>
       </div>
 
       {/* Month Selector */}
@@ -251,9 +382,11 @@ export default function SalaryReportPage() {
             <div className="flex flex-wrap gap-3">
               {activeRules.map((rule: any) => (
                 <div key={rule.id} className="bg-white/80 rounded-lg px-3 py-2 text-sm border border-emerald-100">
+                  <Badge variant="secondary" className={`${COMMISSION_TYPE_COLORS[rule.commissionType || "revenue"]} text-[10px] mr-2`}>
+                    {COMMISSION_TYPE_LABELS[rule.commissionType || "revenue"]}
+                  </Badge>
                   <span className="text-muted-foreground">
-                    营业额 ¥{parseFloat(rule.minAmount).toLocaleString()}
-                    {rule.maxAmount ? ` ~ ¥${parseFloat(rule.maxAmount).toLocaleString()}` : "+"}
+                    {getRangeLabel(rule)}
                   </span>
                   <span className="mx-2 text-emerald-600 font-semibold">
                     {(parseFloat(rule.commissionRate) * 100).toFixed(1)}%
@@ -358,6 +491,7 @@ export default function SalaryReportPage() {
                     <th className="text-right py-3 px-4 font-medium text-muted-foreground">总利润(¥)</th>
                     <th className="text-right py-3 px-4 font-medium text-muted-foreground">提成(¥)</th>
                     <th className="text-right py-3 px-4 font-medium text-emerald-700 bg-emerald-50/50">应发工资(¥)</th>
+                    <th className="text-center py-3 px-4 font-medium text-muted-foreground">操作</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -387,6 +521,17 @@ export default function SalaryReportPage() {
                       <td className="py-3 px-4 text-right bg-emerald-50/50">
                         <span className="text-emerald-700 font-bold text-base">¥{row.totalSalary.toLocaleString()}</span>
                       </td>
+                      <td className="py-3 px-4 text-center">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+                          onClick={() => openStaffHistory(row.staffId, row.staffName)}
+                        >
+                          <BarChart3 className="h-3.5 w-3.5 mr-1" />
+                          历史
+                        </Button>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -402,6 +547,7 @@ export default function SalaryReportPage() {
                       <td className="py-3 px-4 text-right">¥{summary?.totalProfit.toLocaleString()}</td>
                       <td className="py-3 px-4 text-right text-amber-600">¥{summary?.totalCommission.toLocaleString()}</td>
                       <td className="py-3 px-4 text-right bg-emerald-50/50 text-emerald-700 font-bold">¥{summary?.totalSalary.toLocaleString()}</td>
+                      <td className="py-3 px-4"></td>
                     </tr>
                   </tfoot>
                 )}
@@ -417,9 +563,120 @@ export default function SalaryReportPage() {
         </CardContent>
       </Card>
 
-      {/* Commission Rules Management Dialog */}
+      {/* ========== History Chart Dialog ========== */}
+      <Dialog open={showHistoryChart} onOpenChange={setShowHistoryChart}>
+        <DialogContent className="sm:max-w-4xl max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <BarChart3 className="h-5 w-5 text-blue-600" />
+              {historyStaffName} - 历史工资与提成趋势
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="flex items-center gap-3">
+              <Label className="text-sm text-muted-foreground whitespace-nowrap">查看范围:</Label>
+              <Select value={String(historyMonths)} onValueChange={(v) => setHistoryMonths(Number(v))}>
+                <SelectTrigger className="w-32">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="3">最近3个月</SelectItem>
+                  <SelectItem value="6">最近6个月</SelectItem>
+                  <SelectItem value="12">最近12个月</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {historyLoading ? (
+              <div className="py-16 text-center text-muted-foreground">
+                <Loader2 className="h-6 w-6 animate-spin mx-auto mb-2" />
+                加载历史数据中...
+              </div>
+            ) : chartData.length > 0 ? (
+              <div className="space-y-6">
+                {/* 工资构成柱状图 */}
+                <div>
+                  <h3 className="text-sm font-medium text-muted-foreground mb-3">工资构成（底薪 + 提成）</h3>
+                  <ResponsiveContainer width="100%" height={300}>
+                    <BarChart data={chartData} margin={{ top: 5, right: 20, left: 10, bottom: 5 }}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                      <XAxis dataKey="month" tick={{ fontSize: 12 }} />
+                      <YAxis tick={{ fontSize: 12 }} tickFormatter={(v) => `¥${v.toLocaleString()}`} />
+                      <Tooltip
+                        formatter={(value: number, name: string) => [`¥${value.toLocaleString()}`, name]}
+                        contentStyle={{ borderRadius: "8px", border: "1px solid #e5e7eb", fontSize: "13px" }}
+                      />
+                      <Legend />
+                      <Bar dataKey="底薪" stackId="salary" fill="#60a5fa" radius={[0, 0, 0, 0]} />
+                      <Bar dataKey="提成" stackId="salary" fill="#34d399" radius={[4, 4, 0, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+
+                {/* 营业额与利润趋势折线图 */}
+                <div>
+                  <h3 className="text-sm font-medium text-muted-foreground mb-3">营业额与利润趋势</h3>
+                  <ResponsiveContainer width="100%" height={280}>
+                    <LineChart data={chartData} margin={{ top: 5, right: 20, left: 10, bottom: 5 }}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                      <XAxis dataKey="month" tick={{ fontSize: 12 }} />
+                      <YAxis tick={{ fontSize: 12 }} tickFormatter={(v) => `¥${v.toLocaleString()}`} />
+                      <Tooltip
+                        formatter={(value: number, name: string) => [`¥${value.toLocaleString()}`, name]}
+                        contentStyle={{ borderRadius: "8px", border: "1px solid #e5e7eb", fontSize: "13px" }}
+                      />
+                      <Legend />
+                      <Line type="monotone" dataKey="营业额" stroke="#8b5cf6" strokeWidth={2} dot={{ r: 4 }} activeDot={{ r: 6 }} />
+                      <Line type="monotone" dataKey="利润" stroke="#f59e0b" strokeWidth={2} dot={{ r: 4 }} activeDot={{ r: 6 }} />
+                      <Line type="monotone" dataKey="应发工资" stroke="#10b981" strokeWidth={2} dot={{ r: 4 }} activeDot={{ r: 6 }} />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </div>
+
+                {/* 数据明细表 */}
+                <div>
+                  <h3 className="text-sm font-medium text-muted-foreground mb-3">历史数据明细</h3>
+                  <div className="border rounded-lg overflow-hidden">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="border-b bg-muted/30">
+                          <th className="text-left py-2.5 px-3 font-medium text-muted-foreground">月份</th>
+                          <th className="text-right py-2.5 px-3 font-medium text-muted-foreground">底薪(¥)</th>
+                          <th className="text-right py-2.5 px-3 font-medium text-muted-foreground">营业额(¥)</th>
+                          <th className="text-right py-2.5 px-3 font-medium text-muted-foreground">利润(¥)</th>
+                          <th className="text-right py-2.5 px-3 font-medium text-muted-foreground">提成(¥)</th>
+                          <th className="text-right py-2.5 px-3 font-medium text-emerald-700 bg-emerald-50/50">应发工资(¥)</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {chartData.map((row: any, idx: number) => (
+                          <tr key={idx} className="border-b last:border-0 hover:bg-muted/20">
+                            <td className="py-2.5 px-3 font-medium">{row.month}</td>
+                            <td className="py-2.5 px-3 text-right">¥{row.底薪.toLocaleString()}</td>
+                            <td className="py-2.5 px-3 text-right">¥{row.营业额.toLocaleString()}</td>
+                            <td className="py-2.5 px-3 text-right">¥{row.利润.toLocaleString()}</td>
+                            <td className="py-2.5 px-3 text-right text-amber-600">¥{row.提成.toLocaleString()}</td>
+                            <td className="py-2.5 px-3 text-right bg-emerald-50/50 text-emerald-700 font-bold">¥{row.应发工资.toLocaleString()}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="py-16 text-center text-muted-foreground">
+                <BarChart3 className="h-10 w-10 mx-auto mb-3 opacity-40" />
+                <p>暂无历史工资数据</p>
+              </div>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* ========== Commission Rules Management Dialog ========== */}
       <Dialog open={showRulesDialog} onOpenChange={setShowRulesDialog}>
-        <DialogContent className="sm:max-w-2xl max-h-[80vh] overflow-y-auto">
+        <DialogContent className="sm:max-w-3xl max-h-[80vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Settings className="h-5 w-5 text-emerald-600" />
@@ -429,7 +686,7 @@ export default function SalaryReportPage() {
           <div className="space-y-4 py-2">
             <div className="flex items-center justify-between">
               <p className="text-sm text-muted-foreground">
-                设置阶梯提成规则，根据客服月营业额(¥)自动计算提成金额
+                设置提成规则，支持按营业额、利润或利润率三种模式计算提成
               </p>
               <Button
                 size="sm"
@@ -456,48 +713,62 @@ export default function SalaryReportPage() {
                   <thead>
                     <tr className="border-b bg-muted/30">
                       <th className="text-left py-2.5 px-3 font-medium text-muted-foreground">规则名称</th>
-                      <th className="text-right py-2.5 px-3 font-medium text-muted-foreground">营业额下限(¥)</th>
-                      <th className="text-right py-2.5 px-3 font-medium text-muted-foreground">营业额上限(¥)</th>
+                      <th className="text-center py-2.5 px-3 font-medium text-muted-foreground">提成模式</th>
+                      <th className="text-right py-2.5 px-3 font-medium text-muted-foreground">区间下限</th>
+                      <th className="text-right py-2.5 px-3 font-medium text-muted-foreground">区间上限</th>
                       <th className="text-right py-2.5 px-3 font-medium text-muted-foreground">提成比例</th>
                       <th className="text-center py-2.5 px-3 font-medium text-muted-foreground">状态</th>
                       <th className="text-right py-2.5 px-3 font-medium text-muted-foreground">操作</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {rulesData.map((rule: any) => (
-                      <tr key={rule.id} className="border-b last:border-0 hover:bg-muted/20">
-                        <td className="py-2.5 px-3 font-medium">{rule.name}</td>
-                        <td className="py-2.5 px-3 text-right">¥{parseFloat(rule.minAmount).toLocaleString()}</td>
-                        <td className="py-2.5 px-3 text-right">
-                          {rule.maxAmount ? `¥${parseFloat(rule.maxAmount).toLocaleString()}` : <span className="text-muted-foreground">无上限</span>}
-                        </td>
-                        <td className="py-2.5 px-3 text-right">
-                          <Badge variant="secondary" className="bg-emerald-100 text-emerald-700">
-                            {(parseFloat(rule.commissionRate) * 100).toFixed(1)}%
-                          </Badge>
-                        </td>
-                        <td className="py-2.5 px-3 text-center">
-                          <button
-                            onClick={() => toggleRuleActiveMutation.mutate({ id: rule.id, isActive: rule.isActive ? 0 : 1 })}
-                            className="cursor-pointer"
-                          >
-                            <Badge variant={rule.isActive ? "default" : "outline"} className={rule.isActive ? "bg-emerald-600" : ""}>
-                              {rule.isActive ? "启用" : "禁用"}
+                    {rulesData.map((rule: any) => {
+                      const type = rule.commissionType || "revenue";
+                      const isRateMode = type === "profitRate";
+                      return (
+                        <tr key={rule.id} className="border-b last:border-0 hover:bg-muted/20">
+                          <td className="py-2.5 px-3 font-medium">{rule.name}</td>
+                          <td className="py-2.5 px-3 text-center">
+                            <Badge variant="secondary" className={COMMISSION_TYPE_COLORS[type]}>
+                              {COMMISSION_TYPE_LABELS[type]}
                             </Badge>
-                          </button>
-                        </td>
-                        <td className="py-2.5 px-3 text-right">
-                          <div className="flex items-center justify-end gap-1">
-                            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEditRule(rule)}>
-                              <Pencil className="h-3.5 w-3.5" />
-                            </Button>
-                            <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={() => setDeleteRuleId(rule.id)}>
-                              <Trash2 className="h-3.5 w-3.5" />
-                            </Button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
+                          </td>
+                          <td className="py-2.5 px-3 text-right">
+                            {isRateMode ? `${parseFloat(rule.minAmount)}%` : `¥${parseFloat(rule.minAmount).toLocaleString()}`}
+                          </td>
+                          <td className="py-2.5 px-3 text-right">
+                            {rule.maxAmount
+                              ? (isRateMode ? `${parseFloat(rule.maxAmount)}%` : `¥${parseFloat(rule.maxAmount).toLocaleString()}`)
+                              : <span className="text-muted-foreground">无上限</span>}
+                          </td>
+                          <td className="py-2.5 px-3 text-right">
+                            <Badge variant="secondary" className="bg-emerald-100 text-emerald-700">
+                              {(parseFloat(rule.commissionRate) * 100).toFixed(1)}%
+                            </Badge>
+                          </td>
+                          <td className="py-2.5 px-3 text-center">
+                            <button
+                              onClick={() => toggleRuleActiveMutation.mutate({ id: rule.id, isActive: rule.isActive ? 0 : 1 })}
+                              className="cursor-pointer"
+                            >
+                              <Badge variant={rule.isActive ? "default" : "outline"} className={rule.isActive ? "bg-emerald-600" : ""}>
+                                {rule.isActive ? "启用" : "禁用"}
+                              </Badge>
+                            </button>
+                          </td>
+                          <td className="py-2.5 px-3 text-right">
+                            <div className="flex items-center justify-end gap-1">
+                              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEditRule(rule)}>
+                                <Pencil className="h-3.5 w-3.5" />
+                              </Button>
+                              <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={() => setDeleteRuleId(rule.id)}>
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </Button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -505,19 +776,22 @@ export default function SalaryReportPage() {
               <div className="py-8 text-center text-muted-foreground border rounded-lg">
                 <ArrowUpDown className="h-8 w-8 mx-auto mb-2 opacity-40" />
                 <p>暂无提成规则</p>
-                <p className="text-xs mt-1">点击"添加规则"创建阶梯提成方案</p>
+                <p className="text-xs mt-1">点击"添加规则"创建提成方案</p>
               </div>
             )}
 
-            <div className="rounded-lg bg-blue-50 border border-blue-200 p-3 text-sm text-blue-800">
-              <p className="font-medium mb-1">提成计算说明</p>
-              <p>系统按阶梯方式计算提成：客服月营业额(¥)落入哪个区间，该区间内的金额乘以对应比例。例如：0-5000元提成5%，5000-10000元提成8%，则营业额8000元的提成 = 5000 x 5% + 3000 x 8% = 490元。</p>
+            <div className="rounded-lg bg-blue-50 border border-blue-200 p-3 text-sm text-blue-800 space-y-2">
+              <p className="font-medium">提成计算说明</p>
+              <p><strong>按营业额：</strong>阶梯累加，客服月营业额(¥)落入各区间，区间内金额乘以对应比例。</p>
+              <p><strong>按利润：</strong>阶梯累加，客服月利润(¥)落入各区间，区间内金额乘以对应比例。</p>
+              <p><strong>按利润率：</strong>根据利润率(%)落入的区间，用总利润乘以对应比例。例如利润率10%-20%区间提成8%，则利润率15%时提成 = 总利润 x 8%。</p>
+              <p className="text-blue-600">三种模式的提成可以同时设置，最终提成为各模式提成之和。</p>
             </div>
           </div>
         </DialogContent>
       </Dialog>
 
-      {/* Add/Edit Rule Form Dialog */}
+      {/* ========== Add/Edit Rule Form ========== */}
       <Dialog open={showRuleForm} onOpenChange={(open) => { if (!open) { setShowRuleForm(false); setEditingRule(null); } }}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
@@ -532,9 +806,25 @@ export default function SalaryReportPage() {
                 onChange={(e) => setRuleForm(f => ({ ...f, name: e.target.value }))}
               />
             </div>
+            <div className="space-y-2">
+              <Label>提成模式 <span className="text-destructive">*</span></Label>
+              <Select value={ruleForm.commissionType} onValueChange={(v) => setRuleForm(f => ({ ...f, commissionType: v }))}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="revenue">按营业额 - 根据营业额区间阶梯提成</SelectItem>
+                  <SelectItem value="profit">按利润 - 根据利润区间阶梯提成</SelectItem>
+                  <SelectItem value="profitRate">按利润率 - 根据利润率区间提成</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                {COMMISSION_TYPE_DESCRIPTIONS[ruleForm.commissionType]}
+              </p>
+            </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label>营业额下限(¥)</Label>
+                <Label>{ruleForm.commissionType === "profitRate" ? "利润率下限(%)" : ruleForm.commissionType === "profit" ? "利润下限(¥)" : "营业额下限(¥)"}</Label>
                 <Input
                   type="number"
                   placeholder="0"
@@ -543,7 +833,7 @@ export default function SalaryReportPage() {
                 />
               </div>
               <div className="space-y-2">
-                <Label>营业额上限(¥)</Label>
+                <Label>{ruleForm.commissionType === "profitRate" ? "利润率上限(%)" : ruleForm.commissionType === "profit" ? "利润上限(¥)" : "营业额上限(¥)"}</Label>
                 <Input
                   type="number"
                   placeholder="留空表示无上限"

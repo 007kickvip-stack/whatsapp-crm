@@ -439,6 +439,7 @@ export const commissionRules = mysqlTable("commission_rules", {
   minAmount: decimal("minAmount", { precision: 12, scale: 2 }).notNull().default("0"), // 营业额下限（含）
   maxAmount: decimal("maxAmount", { precision: 12, scale: 2 }), // 营业额上限（不含），NULL表示无上限
   commissionRate: decimal("commissionRate", { precision: 8, scale: 4 }).notNull().default("0"), // 提成比例，如 0.05 表示 5%
+  commissionType: varchar("commissionType", { length: 20 }).notNull().default("revenue"), // 提成模式: revenue=按营业额, profit=按利润, profitRate=按利润率
   sortOrder: int("sortOrder").default(0), // 排序顺序
   isActive: int("isActive").default(1).notNull(), // 1=启用, 0=禁用
   createdById: int("createdById"),

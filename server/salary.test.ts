@@ -72,6 +72,78 @@ describe("Commission Rules", () => {
     createdRuleId = result.id;
   });
 
+  it("admin can create a commission rule with commissionType=revenue", async () => {
+    const result = await adminCaller.commissionRules.create({
+      name: "按营业额测试",
+      minAmount: "0",
+      maxAmount: "10000.00",
+      commissionRate: "0.0500",
+      commissionType: "revenue",
+      sortOrder: 10,
+    });
+    expect(result).toBeDefined();
+    expect(result.id).toBeGreaterThan(0);
+    // Verify the type is saved
+    const rules = await adminCaller.commissionRules.list();
+    const found = rules.find((r: any) => r.id === result.id);
+    expect(found?.commissionType).toBe("revenue");
+    // Clean up
+    await adminCaller.commissionRules.delete({ id: result.id });
+  });
+
+  it("admin can create a commission rule with commissionType=profit", async () => {
+    const result = await adminCaller.commissionRules.create({
+      name: "按利润测试",
+      minAmount: "0",
+      maxAmount: "8000.00",
+      commissionRate: "0.0800",
+      commissionType: "profit",
+      sortOrder: 20,
+    });
+    expect(result).toBeDefined();
+    expect(result.id).toBeGreaterThan(0);
+    const rules = await adminCaller.commissionRules.list();
+    const found = rules.find((r: any) => r.id === result.id);
+    expect(found?.commissionType).toBe("profit");
+    await adminCaller.commissionRules.delete({ id: result.id });
+  });
+
+  it("admin can create a commission rule with commissionType=profitRate", async () => {
+    const result = await adminCaller.commissionRules.create({
+      name: "按利润率测试",
+      minAmount: "10",
+      maxAmount: "20",
+      commissionRate: "0.1000",
+      commissionType: "profitRate",
+      sortOrder: 30,
+    });
+    expect(result).toBeDefined();
+    expect(result.id).toBeGreaterThan(0);
+    const rules = await adminCaller.commissionRules.list();
+    const found = rules.find((r: any) => r.id === result.id);
+    expect(found?.commissionType).toBe("profitRate");
+    await adminCaller.commissionRules.delete({ id: result.id });
+  });
+
+  it("admin can update commissionType of a rule", async () => {
+    // Update the first created rule's type
+    const result = await adminCaller.commissionRules.update({
+      id: createdRuleId,
+      commissionType: "profit",
+    });
+    expect(result).toEqual({ success: true });
+
+    const rules = await adminCaller.commissionRules.list();
+    const updated = rules.find((r: any) => r.id === createdRuleId);
+    expect(updated?.commissionType).toBe("profit");
+
+    // Restore to revenue
+    await adminCaller.commissionRules.update({
+      id: createdRuleId,
+      commissionType: "revenue",
+    });
+  });
+
   it("admin can list all commission rules", async () => {
     const rules = await adminCaller.commissionRules.list();
     expect(Array.isArray(rules)).toBe(true);
@@ -159,6 +231,10 @@ describe("Salary Report", () => {
       expect(entry).toHaveProperty("orderCount");
       expect(entry).toHaveProperty("commission");
       expect(entry).toHaveProperty("totalSalary");
+      // New fields for multi-mode commission
+      expect(entry).toHaveProperty("revenueCommission");
+      expect(entry).toHaveProperty("profitCommission");
+      expect(entry).toHaveProperty("profitRateCommission");
     }
   });
 
@@ -183,7 +259,78 @@ describe("Salary Report", () => {
       expect(typeof entry.totalRevenue).toBe("number");
       expect(typeof entry.commission).toBe("number");
       expect(typeof entry.totalSalary).toBe("number");
+      expect(typeof entry.revenueCommission).toBe("number");
+      expect(typeof entry.profitCommission).toBe("number");
+      expect(typeof entry.profitRateCommission).toBe("number");
       expect(entry.totalSalary).toBeGreaterThanOrEqual(0);
+    }
+  });
+});
+
+describe("Salary History", () => {
+  const adminCaller = appRouter.createCaller(createAdminContext());
+  const staffCaller = appRouter.createCaller(createStaffContext(100));
+
+  it("admin can get salary history for all staff", async () => {
+    const history = await adminCaller.salaryReport.history({
+      months: 3,
+    });
+    expect(Array.isArray(history)).toBe(true);
+    // Should have data for up to 3 months
+    if (history.length > 0) {
+      const entry = history[0];
+      expect(entry).toHaveProperty("yearMonth");
+      expect(entry).toHaveProperty("staffId");
+      expect(entry).toHaveProperty("staffName");
+      expect(entry).toHaveProperty("baseSalary");
+      expect(entry).toHaveProperty("totalRevenue");
+      expect(entry).toHaveProperty("commission");
+      expect(entry).toHaveProperty("totalSalary");
+      expect(typeof entry.baseSalary).toBe("number");
+      expect(typeof entry.commission).toBe("number");
+    }
+  });
+
+  it("admin can get salary history for a specific staff", async () => {
+    const history = await adminCaller.salaryReport.history({
+      months: 3,
+      staffId: 1,
+    });
+    expect(Array.isArray(history)).toBe(true);
+    for (const entry of history) {
+      expect(entry.staffId).toBe(1);
+    }
+  });
+
+  it("staff can only see their own salary history", async () => {
+    const history = await staffCaller.salaryReport.history({
+      months: 3,
+    });
+    expect(Array.isArray(history)).toBe(true);
+    for (const entry of history) {
+      expect(entry.staffId).toBe(100);
+    }
+  });
+
+  it("staff cannot see other staff's history even if staffId is provided", async () => {
+    const history = await staffCaller.salaryReport.history({
+      months: 3,
+      staffId: 1, // Try to see admin's history
+    });
+    expect(Array.isArray(history)).toBe(true);
+    // Should still only see their own data (staffId=100)
+    for (const entry of history) {
+      expect(entry.staffId).toBe(100);
+    }
+  });
+
+  it("history returns correct yearMonth format", async () => {
+    const history = await adminCaller.salaryReport.history({
+      months: 6,
+    });
+    expect(Array.isArray(history)).toBe(true);
+    for (const entry of history) {
+      expect(entry.yearMonth).toMatch(/^\d{4}-\d{2}$/);
     }
   });
 });

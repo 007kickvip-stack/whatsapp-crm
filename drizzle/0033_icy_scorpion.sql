@@ -1,0 +1,1 @@
+ALTER TABLE `commission_rules` ADD `commissionType` varchar(20) DEFAULT 'revenue' NOT NULL;

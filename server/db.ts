@@ -3045,7 +3045,7 @@ export async function getActiveCommissionRules() {
   return db.select().from(commissionRules).where(eq(commissionRules.isActive, 1)).orderBy(commissionRules.sortOrder, commissionRules.minAmount);
 }
 
-export async function createCommissionRule(data: { name: string; minAmount: string; maxAmount?: string | null; commissionRate: string; sortOrder?: number; createdById?: number; createdByName?: string }) {
+export async function createCommissionRule(data: { name: string; minAmount: string; maxAmount?: string | null; commissionRate: string; commissionType?: string; sortOrder?: number; createdById?: number; createdByName?: string }) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
   const result = await db.insert(commissionRules).values({
@@ -3053,6 +3053,7 @@ export async function createCommissionRule(data: { name: string; minAmount: stri
     minAmount: data.minAmount,
     maxAmount: data.maxAmount || null,
     commissionRate: data.commissionRate,
+    commissionType: data.commissionType || "revenue",
     sortOrder: data.sortOrder || 0,
     isActive: 1,
     createdById: data.createdById,
@@ -3061,7 +3062,7 @@ export async function createCommissionRule(data: { name: string; minAmount: stri
   return { id: result[0].insertId };
 }
 
-export async function updateCommissionRule(id: number, data: { name?: string; minAmount?: string; maxAmount?: string | null; commissionRate?: string; sortOrder?: number; isActive?: number }) {
+export async function updateCommissionRule(id: number, data: { name?: string; minAmount?: string; maxAmount?: string | null; commissionRate?: string; commissionType?: string; sortOrder?: number; isActive?: number }) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
   const updateData: Record<string, any> = {};
@@ -3069,6 +3070,7 @@ export async function updateCommissionRule(id: number, data: { name?: string; mi
   if (data.minAmount !== undefined) updateData.minAmount = data.minAmount;
   if (data.maxAmount !== undefined) updateData.maxAmount = data.maxAmount;
   if (data.commissionRate !== undefined) updateData.commissionRate = data.commissionRate;
+  if (data.commissionType !== undefined) updateData.commissionType = data.commissionType;
   if (data.sortOrder !== undefined) updateData.sortOrder = data.sortOrder;
   if (data.isActive !== undefined) updateData.isActive = data.isActive;
   await db.update(commissionRules).set(updateData).where(eq(commissionRules.id, id));
@@ -3155,7 +3157,47 @@ export async function getSalaryReport(yearMonth: string) {
     });
   }
 
-  // 5. 计算每个客服的提成和工资
+  // 5. 按提成模式分组规则
+  const revenueRules = rules.filter(r => (r.commissionType || 'revenue') === 'revenue');
+  const profitRules = rules.filter(r => r.commissionType === 'profit');
+  const profitRateRules = rules.filter(r => r.commissionType === 'profitRate');
+
+  // 阶梯提成计算函数
+  function calcStepCommission(amount: number, stepRules: typeof rules) {
+    let commission = 0;
+    for (const rule of stepRules) {
+      const min = parseFloat(rule.minAmount as string) || 0;
+      const max = rule.maxAmount ? parseFloat(rule.maxAmount as string) : Infinity;
+      const rate = parseFloat(rule.commissionRate as string) || 0;
+      if (amount > min) {
+        const applicableAmount = Math.min(amount, max) - min;
+        if (applicableAmount > 0) {
+          commission += applicableAmount * rate;
+        }
+      }
+    }
+    return commission;
+  }
+
+  // 利润率提成计算函数（根据利润率落入的区间，将利润乘以对应比例）
+  function calcProfitRateCommission(totalProfit: number, totalRevenue: number, prRules: typeof rules) {
+    if (totalRevenue <= 0) return 0;
+    const profitRatePercent = (totalProfit / totalRevenue) * 100; // 利润率百分比
+    let commission = 0;
+    for (const rule of prRules) {
+      const min = parseFloat(rule.minAmount as string) || 0;
+      const max = rule.maxAmount ? parseFloat(rule.maxAmount as string) : Infinity;
+      const rate = parseFloat(rule.commissionRate as string) || 0;
+      // 利润率落入该区间时，用总利润乘以提成比例
+      if (profitRatePercent >= min && profitRatePercent < max) {
+        commission = totalProfit * rate;
+        break; // 利润率模式不是阶梯累加，而是落入哪个区间用哪个比例
+      }
+    }
+    return commission;
+  }
+
+  // 6. 计算每个客服的提成和工资
   const report = staffList.map(staff => {
     const revenue = revenueMap.get(staff.id);
     const profit = profitMap.get(staff.id);
@@ -3166,20 +3208,11 @@ export async function getSalaryReport(yearMonth: string) {
     const totalProfit = productProfit + shippingProfit;
     const baseSalary = parseFloat(staff.baseSalary as string) || 0;
 
-    // 计算阶梯提成
-    let commission = 0;
-    for (const rule of rules) {
-      const min = parseFloat(rule.minAmount as string) || 0;
-      const max = rule.maxAmount ? parseFloat(rule.maxAmount as string) : Infinity;
-      const rate = parseFloat(rule.commissionRate as string) || 0;
-
-      if (totalRevenue > min) {
-        const applicableAmount = Math.min(totalRevenue, max) - min;
-        if (applicableAmount > 0) {
-          commission += applicableAmount * rate;
-        }
-      }
-    }
+    // 计算三种模式的提成并累加
+    const revenueCommission = calcStepCommission(totalRevenue, revenueRules);
+    const profitCommission = calcStepCommission(totalProfit, profitRules);
+    const profitRateCommission = calcProfitRateCommission(totalProfit, totalRevenue, profitRateRules);
+    const commission = revenueCommission + profitCommission + profitRateCommission;
 
     const totalSalary = baseSalary + commission;
 
@@ -3193,10 +3226,54 @@ export async function getSalaryReport(yearMonth: string) {
       shippingProfit,
       totalProfit,
       commission: Math.round(commission * 100) / 100,
+      revenueCommission: Math.round(revenueCommission * 100) / 100,
+      profitCommission: Math.round(profitCommission * 100) / 100,
+      profitRateCommission: Math.round(profitRateCommission * 100) / 100,
       totalSalary: Math.round(totalSalary * 100) / 100,
       hireDate: staff.hireDate,
     };
   });
 
   return report;
+}
+
+/**
+ * 获取客服历史工资数据（最近N个月）
+ * 用于图表展示工资和提成变化趋势
+ */
+export async function getSalaryHistory(months: number = 6, staffId?: number) {
+  const results: Array<{
+    yearMonth: string;
+    staffId: number;
+    staffName: string;
+    baseSalary: number;
+    totalRevenue: number;
+    orderCount: number;
+    totalProfit: number;
+    commission: number;
+    totalSalary: number;
+  }> = [];
+
+  const now = new Date();
+  for (let i = months - 1; i >= 0; i--) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    const ym = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+    const report = await getSalaryReport(ym);
+    for (const entry of report) {
+      if (staffId && entry.staffId !== staffId) continue;
+      results.push({
+        yearMonth: ym,
+        staffId: entry.staffId,
+        staffName: entry.staffName,
+        baseSalary: entry.baseSalary,
+        totalRevenue: entry.totalRevenue,
+        orderCount: entry.orderCount,
+        totalProfit: entry.totalProfit,
+        commission: entry.commission,
+        totalSalary: entry.totalSalary,
+      });
+    }
+  }
+
+  return results;
 }
