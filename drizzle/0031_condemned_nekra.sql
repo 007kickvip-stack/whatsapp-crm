@@ -1,0 +1,1 @@
+ALTER TABLE `reshipments` ADD `logisticsCompensation` decimal(12,2) DEFAULT '0';

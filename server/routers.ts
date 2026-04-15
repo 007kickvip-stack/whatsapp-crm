@@ -1685,8 +1685,92 @@ export const appRouter = router({
       if (!order) {
         throw new TRPCError({ code: "NOT_FOUND", message: "订单不存在" });
       }
-      // 获取第一个子项的信息作为默认值
-      const firstItem = order.items?.[0];
+      const today = new Date().toISOString().slice(0, 10);
+      const items = order.items || [];
+      const ids: number[] = [];
+      // 为每个子项创建一条补发记录（保持父子项结构）
+      if (items.length === 0) {
+        // 没有子项时创建一条空补发记录
+        const id = await createReshipment({
+          reshipDate: new Date(today + "T00:00:00"),
+          staffName: order.staffName || ctx.user.name || null,
+          staffId: ctx.user.id,
+          account: order.account || null,
+          customerWhatsapp: order.customerWhatsapp || null,
+          orderNumber: order.orderNumber || null,
+          orderImageUrl: null,
+          size: null,
+          domesticTrackingNo: null,
+          sizeRecommendation: null,
+          contactInfo: null,
+          internationalTrackingNo: null,
+          originalOrderNo: order.orderNumber || null,
+          shipDate: null,
+          quantity: 1,
+          source: null,
+          orderStatus: "已报货，待发货",
+          totalProfit: String(order.totalProfit || "0"),
+          reshipReason: input.reshipReason || null,
+          customerPaidAmount: "0",
+          reshipCost: "0",
+          actualShipping: "0",
+          logisticsCompensation: "0",
+          profitLoss: String(order.totalProfit || "0"),
+          originalOrderId: input.orderId,
+          createdById: ctx.user.id,
+        } as any);
+        ids.push(id);
+      } else {
+        for (const item of items) {
+          const id = await createReshipment({
+            reshipDate: new Date(today + "T00:00:00"),
+            staffName: order.staffName || ctx.user.name || null,
+            staffId: ctx.user.id,
+            account: order.account || null,
+            customerWhatsapp: order.customerWhatsapp || null,
+            orderNumber: item.orderNumber || order.orderNumber || null,
+            orderImageUrl: item.orderImageUrl || null,
+            size: item.size || null,
+            domesticTrackingNo: null,
+            sizeRecommendation: item.sizeRecommendation || null,
+            contactInfo: item.contactInfo || null,
+            internationalTrackingNo: null,
+            originalOrderNo: order.orderNumber || null,
+            shipDate: null,
+            quantity: item.quantity || 1,
+            source: item.source || null,
+            orderStatus: "已报货，待发货",
+            totalProfit: String(order.totalProfit || "0"),
+            reshipReason: input.reshipReason || null,
+            customerPaidAmount: "0",
+            reshipCost: "0",
+            actualShipping: "0",
+            logisticsCompensation: "0",
+            profitLoss: String(order.totalProfit || "0"),
+            originalOrderId: input.orderId,
+            createdById: ctx.user.id,
+          } as any);
+          ids.push(id);
+        }
+      }
+      await logAction(ctx, "create", "reshipment", ids[0], undefined, `从订单#${input.orderId}创建${ids.length}条补发记录`);
+      return { ids, count: ids.length };
+    }),
+
+    // 从单个子项创建补发记录
+    createFromItem: protectedProcedure.input(z.object({
+      orderId: z.number(),
+      itemId: z.number(),
+      reshipReason: z.string().optional(),
+    })).mutation(async ({ input, ctx }) => {
+      const order = await getOrderWithItems(input.orderId);
+      if (!order) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "订单不存在" });
+      }
+      const item = order.items?.find((i: any) => i.id === input.itemId);
+      if (!item) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "子项不存在" });
+      }
       const today = new Date().toISOString().slice(0, 10);
       const id = await createReshipment({
         reshipDate: new Date(today + "T00:00:00"),
@@ -1694,28 +1778,29 @@ export const appRouter = router({
         staffId: ctx.user.id,
         account: order.account || null,
         customerWhatsapp: order.customerWhatsapp || null,
-        orderNumber: null,
-        orderImageUrl: firstItem?.orderImageUrl || null,
-        size: firstItem?.size || null,
+        orderNumber: item.orderNumber || order.orderNumber || null,
+        orderImageUrl: item.orderImageUrl || null,
+        size: item.size || null,
         domesticTrackingNo: null,
-        sizeRecommendation: firstItem?.sizeRecommendation || null,
-        contactInfo: firstItem?.contactInfo || null,
+        sizeRecommendation: item.sizeRecommendation || null,
+        contactInfo: item.contactInfo || null,
         internationalTrackingNo: null,
         originalOrderNo: order.orderNumber || null,
         shipDate: null,
-        quantity: 1,
-        source: firstItem?.source || null,
+        quantity: item.quantity || 1,
+        source: item.source || null,
         orderStatus: "已报货，待发货",
-        totalProfit: "0",
+        totalProfit: String(order.totalProfit || "0"),
         reshipReason: input.reshipReason || null,
         customerPaidAmount: "0",
         reshipCost: "0",
         actualShipping: "0",
-        profitLoss: "0",
+        logisticsCompensation: "0",
+        profitLoss: String(order.totalProfit || "0"),
         originalOrderId: input.orderId,
         createdById: ctx.user.id,
       } as any);
-      await logAction(ctx, "create", "reshipment", id, undefined, `从订单#${input.orderId}创建补发记录`);
+      await logAction(ctx, "create", "reshipment", id, undefined, `从订单#${input.orderId}子项#${input.itemId}创建补发记录`);
       return { id };
     }),
 
@@ -1742,6 +1827,7 @@ export const appRouter = router({
       customerPaidAmount: z.string().optional(),
       reshipCost: z.string().optional(),
       actualShipping: z.string().optional(),
+      logisticsCompensation: z.string().optional(),
       profitLoss: z.string().optional(),
     })).mutation(async ({ input, ctx }) => {
       const { id, ...data } = input;
@@ -1752,12 +1838,16 @@ export const appRouter = router({
       if (data.shipDate !== undefined) {
         updateData.shipDate = data.shipDate ? new Date(data.shipDate + "T00:00:00") : null;
       }
-      // 自动计算盈亏
-      const customerPaid = parseFloat(data.customerPaidAmount || "0") || 0;
-      const cost = parseFloat(data.reshipCost || "0") || 0;
-      const shipping = parseFloat(data.actualShipping || "0") || 0;
-      if (data.customerPaidAmount !== undefined || data.reshipCost !== undefined || data.actualShipping !== undefined) {
-        updateData.profitLoss = String(customerPaid - cost - shipping);
+      // 自动计算盈亏: 原订单总利润 + 客户补的金额 + 物流赔偿金额 - 补发成本 - 补发实际运费
+      if (data.totalProfit !== undefined || data.customerPaidAmount !== undefined || data.reshipCost !== undefined || data.actualShipping !== undefined || data.logisticsCompensation !== undefined) {
+        // 需要获取当前记录的完整数据来计算
+        const current = await getReshipmentById(id);
+        const totalProfit = parseFloat(data.totalProfit ?? String(current?.totalProfit || "0")) || 0;
+        const customerPaid = parseFloat(data.customerPaidAmount ?? String(current?.customerPaidAmount || "0")) || 0;
+        const logComp = parseFloat(data.logisticsCompensation ?? String(current?.logisticsCompensation || "0")) || 0;
+        const cost = parseFloat(data.reshipCost ?? String(current?.reshipCost || "0")) || 0;
+        const shipping = parseFloat(data.actualShipping ?? String(current?.actualShipping || "0")) || 0;
+        updateData.profitLoss = String(totalProfit + customerPaid + logComp - cost - shipping);
       }
       await updateReshipment(id, updateData);
       await logAction(ctx, "update", "reshipment", id, undefined, JSON.stringify(data));

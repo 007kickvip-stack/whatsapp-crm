@@ -397,7 +397,8 @@ export const reshipments = mysqlTable("reshipments", {
   customerPaidAmount: decimal("customerPaidAmount", { precision: 12, scale: 2 }).default("0"), // 客户补的金额
   reshipCost: decimal("reshipCost", { precision: 12, scale: 2 }).default("0"), // 补发成本
   actualShipping: decimal("actualShipping", { precision: 12, scale: 2 }).default("0"), // 实际运费
-  profitLoss: decimal("profitLoss", { precision: 12, scale: 2 }).default("0"), // 盈亏 = 客户补的金额 - 补发成本 - 实际运费
+  logisticsCompensation: decimal("logisticsCompensation", { precision: 12, scale: 2 }).default("0"), // 物流赔偿金额
+  profitLoss: decimal("profitLoss", { precision: 12, scale: 2 }).default("0"), // 盈亏 = 原订单总利润 + 客户补的金额 + 物流赔偿金额 - 补发成本 - 补发实际运费
   originalOrderId: int("originalOrderId"), // 关联原始订单ID
   createdById: int("createdById"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),

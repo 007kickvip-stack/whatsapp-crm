@@ -218,6 +218,13 @@
       "when": 1776251644516,
       "tag": "0030_solid_killraven",
       "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "5",
+      "when": 1776256295515,
+      "tag": "0031_condemned_nekra",
+      "breakpoints": true
     }
   ]
 }

@@ -230,7 +230,7 @@ describe("reshipments", () => {
         orderId: 100,
         reshipReason: "尺码不对",
       });
-      expect(result).toEqual({ id: 1 });
+      expect(result).toEqual({ ids: [1], count: 1 });
       expect(createReshipment).toHaveBeenCalledWith(
         expect.objectContaining({
           originalOrderNo: "ORD-001",

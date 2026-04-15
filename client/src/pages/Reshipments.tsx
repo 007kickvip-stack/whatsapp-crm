@@ -436,20 +436,21 @@ export default function ReshipmentsPage() {
     { key: "orderNumber", label: "订单编号", width: "100px" },
     { key: "orderImageUrl", label: "订单图片", width: "60px" },
     { key: "size", label: "Size", width: "60px" },
-    { key: "domesticTrackingNo", label: "国内单号", width: "110px" },
+    { key: "domesticTrackingNo", label: "补发国内单号", width: "110px" },
     { key: "sizeRecommendation", label: "推荐码数", width: "70px" },
     { key: "contactInfo", label: "联系方式", width: "90px" },
-    { key: "internationalTrackingNo", label: "国际跟踪单号", width: "110px" },
-    { key: "originalOrderNo", label: "原订单号", width: "100px" },
+    { key: "internationalTrackingNo", label: "补发国际跟踪单号", width: "110px" },
+    { key: "originalOrderNo", label: "补发原订单号", width: "100px" },
     { key: "shipDate", label: "发出日期", width: "90px" },
     { key: "quantity", label: "件数", width: "50px" },
     { key: "source", label: "货源", width: "70px" },
     { key: "orderStatus", label: "订单状态", width: "110px" },
-    { key: "totalProfit", label: "总利润", width: "70px" },
+    { key: "totalProfit", label: "原订单总利润", width: "90px" },
     { key: "reshipReason", label: "补发原因", width: "120px" },
     { key: "customerPaidAmount", label: "客户补的金额", width: "90px" },
     { key: "reshipCost", label: "补发成本", width: "70px" },
-    { key: "actualShipping", label: "实际运费", width: "70px" },
+    { key: "actualShipping", label: "补发实际运费", width: "80px" },
+    { key: "logisticsCompensation", label: "物流赔偿金额", width: "90px" },
     { key: "profitLoss", label: "盈亏", width: "70px" },
     { key: "actions", label: "操作", width: "50px" },
   ];
@@ -565,7 +566,7 @@ export default function ReshipmentsPage() {
       {/* Table */}
       <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="w-full text-[11px]" style={{ minWidth: "2200px" }}>
+          <table className="w-full text-[11px]" style={{ minWidth: "2400px" }}>
             <thead>
               <tr className="bg-emerald-50 border-b border-gray-200">
                 {columns.map((col) => (
@@ -788,11 +789,21 @@ export default function ReshipmentsPage() {
                       />
                     </td>
 
-                    {/* 实际运费 */}
+                    {/* 补发实际运费 */}
                     <td className="px-1 py-1 text-center">
                       <EditableCell
                         value={fmtNum(row.actualShipping)}
                         onSave={(v) => saveField(row.id, "actualShipping", v)}
+                        type="number"
+                        className="text-center"
+                      />
+                    </td>
+
+                    {/* 物流赔偿金额 */}
+                    <td className="px-1 py-1 text-center">
+                      <EditableCell
+                        value={fmtNum(row.logisticsCompensation)}
+                        onSave={(v) => saveField(row.id, "logisticsCompensation", v)}
                         type="number"
                         className="text-center"
                       />

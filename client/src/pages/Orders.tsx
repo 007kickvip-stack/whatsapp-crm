@@ -720,7 +720,16 @@ export default function OrdersPage() {
   // Create reshipment from order
   const createReshipmentMutation = trpc.reshipments.createFromOrder.useMutation({
     onSuccess: (result) => {
-      toast.success("补发记录已创建，正在跳转到补发表...");
+      toast.success(`已创建${result.count}条补发记录，正在跳转到补发表...`);
+      setLocation("/reshipments");
+    },
+    onError: (err) => toast.error(err.message),
+  });
+
+  // Create reshipment from single item
+  const createReshipmentFromItemMutation = trpc.reshipments.createFromItem.useMutation({
+    onSuccess: () => {
+      toast.success("子项补发记录已创建，正在跳转到补发表...");
       setLocation("/reshipments");
     },
     onError: (err) => toast.error(err.message),
@@ -1209,7 +1218,20 @@ export default function OrdersPage() {
               </Tooltip>
             </div>
           ) : hasItem ? (
-            <div className="flex items-center justify-center">
+            <div className="flex items-center justify-center gap-0.5">
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-6 w-6 text-orange-500 hover:text-orange-600 opacity-0 group-hover:opacity-100 transition-opacity"
+                    onClick={() => createReshipmentFromItemMutation.mutate({ orderId: row.orderId, itemId: row.itemId! })}
+                  >
+                    <RefreshCw className="h-3 w-3" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>补发此子项</TooltipContent>
+              </Tooltip>
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Button
