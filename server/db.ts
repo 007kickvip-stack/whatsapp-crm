@@ -514,10 +514,11 @@ export async function listOrders(params: {
   logisticsStatus?: string;
   dateFrom?: string;
   dateTo?: string;
+  customerCountry?: string;
 }) {
   const db = await getDb();
   if (!db) return { data: [], total: 0 };
-  const { page = 1, pageSize = 20, search, staffId, staffName, account, customerType, orderNumber, orderStatus, paymentStatus, customerWhatsapp, internationalTrackingNo, logisticsStatus, dateFrom, dateTo } = params;
+  const { page = 1, pageSize = 20, search, staffId, staffName, account, customerType, orderNumber, orderStatus, paymentStatus, customerWhatsapp, internationalTrackingNo, logisticsStatus, dateFrom, dateTo, customerCountry } = params;
   const offset = (page - 1) * pageSize;
   const conditions: SQL[] = [];
   if (search) {
@@ -558,6 +559,9 @@ export async function listOrders(params: {
   }
   if (logisticsStatus) {
     conditions.push(sql`${orders.id} IN (SELECT ${orderItems.orderId} FROM ${orderItems} WHERE ${orderItems.logisticsStatus} = ${logisticsStatus})`);
+  }
+  if (customerCountry) {
+    conditions.push(eq(orders.customerCountry, customerCountry));
   }
   if (dateFrom && dateTo) {
     conditions.push(sql`${orders.orderDate} >= ${dateFrom} AND ${orders.orderDate} <= ${dateTo}`);

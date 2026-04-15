@@ -1,31 +1,121 @@
 import { useState, useRef, useEffect, useMemo } from "react";
 import { ChevronDown, Search, X } from "lucide-react";
 
-// Common countries list - prioritize frequently used countries for this business
-const COUNTRIES = [
-  // Top frequently used (Middle East, South Asia, Southeast Asia)
-  "巴基斯坦", "沙特阿拉伯", "阿联酋", "科威特", "卡塔尔", "巴林", "阿曼",
-  "伊拉克", "约旦", "黎巴嫩", "叙利亚", "也门", "伊朗",
-  "印度", "孟加拉国", "斯里兰卡", "尼泊尔",
-  "马来西亚", "印度尼西亚", "泰国", "越南", "菲律宾", "新加坡", "缅甸", "柬埔寨",
+// Country data: { name, flag emoji }
+// Flag emojis use regional indicator symbols (Unicode standard)
+const COUNTRY_DATA: { name: string; flag: string }[] = [
+  // Middle East (高频业务区)
+  { name: "巴基斯坦", flag: "🇵🇰" },
+  { name: "沙特阿拉伯", flag: "🇸🇦" },
+  { name: "阿联酋", flag: "🇦🇪" },
+  { name: "科威特", flag: "🇰🇼" },
+  { name: "卡塔尔", flag: "🇶🇦" },
+  { name: "巴林", flag: "🇧🇭" },
+  { name: "阿曼", flag: "🇴🇲" },
+  { name: "伊拉克", flag: "🇮🇶" },
+  { name: "约旦", flag: "🇯🇴" },
+  { name: "黎巴嫩", flag: "🇱🇧" },
+  { name: "叙利亚", flag: "🇸🇾" },
+  { name: "也门", flag: "🇾🇪" },
+  { name: "伊朗", flag: "🇮🇷" },
+  // South Asia
+  { name: "印度", flag: "🇮🇳" },
+  { name: "孟加拉国", flag: "🇧🇩" },
+  { name: "斯里兰卡", flag: "🇱🇰" },
+  { name: "尼泊尔", flag: "🇳🇵" },
+  // Southeast Asia
+  { name: "马来西亚", flag: "🇲🇾" },
+  { name: "印度尼西亚", flag: "🇮🇩" },
+  { name: "泰国", flag: "🇹🇭" },
+  { name: "越南", flag: "🇻🇳" },
+  { name: "菲律宾", flag: "🇵🇭" },
+  { name: "新加坡", flag: "🇸🇬" },
+  { name: "缅甸", flag: "🇲🇲" },
+  { name: "柬埔寨", flag: "🇰🇭" },
   // Africa
-  "埃及", "摩洛哥", "突尼斯", "阿尔及利亚", "利比亚", "苏丹",
-  "尼日利亚", "南非", "肯尼亚", "加纳", "坦桑尼亚", "埃塞俄比亚", "乌干达",
+  { name: "埃及", flag: "🇪🇬" },
+  { name: "摩洛哥", flag: "🇲🇦" },
+  { name: "突尼斯", flag: "🇹🇳" },
+  { name: "阿尔及利亚", flag: "🇩🇿" },
+  { name: "利比亚", flag: "🇱🇾" },
+  { name: "苏丹", flag: "🇸🇩" },
+  { name: "尼日利亚", flag: "🇳🇬" },
+  { name: "南非", flag: "🇿🇦" },
+  { name: "肯尼亚", flag: "🇰🇪" },
+  { name: "加纳", flag: "🇬🇭" },
+  { name: "坦桑尼亚", flag: "🇹🇿" },
+  { name: "埃塞俄比亚", flag: "🇪🇹" },
+  { name: "乌干达", flag: "🇺🇬" },
   // Europe
-  "英国", "法国", "德国", "意大利", "西班牙", "葡萄牙", "荷兰", "比利时",
-  "瑞士", "奥地利", "瑞典", "挪威", "丹麦", "芬兰", "波兰", "捷克",
-  "希腊", "土耳其", "俄罗斯", "乌克兰", "罗马尼亚", "匈牙利",
+  { name: "英国", flag: "🇬🇧" },
+  { name: "法国", flag: "🇫🇷" },
+  { name: "德国", flag: "🇩🇪" },
+  { name: "意大利", flag: "🇮🇹" },
+  { name: "西班牙", flag: "🇪🇸" },
+  { name: "葡萄牙", flag: "🇵🇹" },
+  { name: "荷兰", flag: "🇳🇱" },
+  { name: "比利时", flag: "🇧🇪" },
+  { name: "瑞士", flag: "🇨🇭" },
+  { name: "奥地利", flag: "🇦🇹" },
+  { name: "瑞典", flag: "🇸🇪" },
+  { name: "挪威", flag: "🇳🇴" },
+  { name: "丹麦", flag: "🇩🇰" },
+  { name: "芬兰", flag: "🇫🇮" },
+  { name: "波兰", flag: "🇵🇱" },
+  { name: "捷克", flag: "🇨🇿" },
+  { name: "希腊", flag: "🇬🇷" },
+  { name: "土耳其", flag: "🇹🇷" },
+  { name: "俄罗斯", flag: "🇷🇺" },
+  { name: "乌克兰", flag: "🇺🇦" },
+  { name: "罗马尼亚", flag: "🇷🇴" },
+  { name: "匈牙利", flag: "🇭🇺" },
   // Americas
-  "美国", "加拿大", "墨西哥", "巴西", "阿根廷", "智利", "哥伦比亚", "秘鲁",
+  { name: "美国", flag: "🇺🇸" },
+  { name: "加拿大", flag: "🇨🇦" },
+  { name: "墨西哥", flag: "🇲🇽" },
+  { name: "巴西", flag: "🇧🇷" },
+  { name: "阿根廷", flag: "🇦🇷" },
+  { name: "智利", flag: "🇨🇱" },
+  { name: "哥伦比亚", flag: "🇨🇴" },
+  { name: "秘鲁", flag: "🇵🇪" },
   // East Asia & Oceania
-  "中国", "日本", "韩国", "中国台湾", "中国香港", "中国澳门",
-  "澳大利亚", "新西兰",
+  { name: "中国", flag: "🇨🇳" },
+  { name: "日本", flag: "🇯🇵" },
+  { name: "韩国", flag: "🇰🇷" },
+  { name: "中国台湾", flag: "🇨🇳" },
+  { name: "中国香港", flag: "🇭🇰" },
+  { name: "中国澳门", flag: "🇲🇴" },
+  { name: "澳大利亚", flag: "🇦🇺" },
+  { name: "新西兰", flag: "🇳🇿" },
   // Central Asia
-  "哈萨克斯坦", "乌兹别克斯坦", "土库曼斯坦", "吉尔吉斯斯坦", "塔吉克斯坦", "阿富汗",
+  { name: "哈萨克斯坦", flag: "🇰🇿" },
+  { name: "乌兹别克斯坦", flag: "🇺🇿" },
+  { name: "土库曼斯坦", flag: "🇹🇲" },
+  { name: "吉尔吉斯斯坦", flag: "🇰🇬" },
+  { name: "塔吉克斯坦", flag: "🇹🇯" },
+  { name: "阿富汗", flag: "🇦🇫" },
   // Other
-  "以色列", "巴勒斯坦", "格鲁吉亚", "亚美尼亚", "阿塞拜疆",
-  "马尔代夫", "文莱", "老挝", "蒙古",
+  { name: "以色列", flag: "🇮🇱" },
+  { name: "巴勒斯坦", flag: "🇵🇸" },
+  { name: "格鲁吉亚", flag: "🇬🇪" },
+  { name: "亚美尼亚", flag: "🇦🇲" },
+  { name: "阿塞拜疆", flag: "🇦🇿" },
+  { name: "马尔代夫", flag: "🇲🇻" },
+  { name: "文莱", flag: "🇧🇳" },
+  { name: "老挝", flag: "🇱🇦" },
+  { name: "蒙古", flag: "🇲🇳" },
 ];
+
+// Build a lookup map for quick flag retrieval
+const FLAG_MAP = new Map(COUNTRY_DATA.map((c) => [c.name, c.flag]));
+
+/** Get flag emoji for a country name. Returns empty string if not found. */
+export function getCountryFlag(name: string): string {
+  return FLAG_MAP.get(name) || "";
+}
+
+/** Export country names list for external use */
+export const COUNTRY_NAMES = COUNTRY_DATA.map((c) => c.name);
 
 interface CountrySelectProps {
   value: string;
@@ -77,16 +167,18 @@ export default function CountrySelect({
   }, [open]);
 
   const filtered = useMemo(() => {
-    if (!search.trim()) return COUNTRIES;
+    if (!search.trim()) return COUNTRY_DATA;
     const q = search.toLowerCase();
-    return COUNTRIES.filter((c) => c.toLowerCase().includes(q));
+    return COUNTRY_DATA.filter((c) => c.name.toLowerCase().includes(q));
   }, [search]);
 
+  const selectedFlag = value ? getCountryFlag(value) : "";
   const displayText = value || (showAll ? allLabel : placeholder);
 
   if (disabled) {
     return (
       <div className={`flex items-center gap-1 ${compact ? "text-[11px] min-h-[24px] px-1" : "text-sm px-2 py-1"} ${className}`}>
+        {selectedFlag && <span className="shrink-0">{selectedFlag}</span>}
         <span className="truncate">{value || <span className="text-gray-300">-</span>}</span>
       </div>
     );
@@ -111,13 +203,14 @@ export default function CountrySelect({
           ${!value && !showAll ? "text-muted-foreground" : ""}
         `}
       >
+        {selectedFlag && <span className="shrink-0">{selectedFlag}</span>}
         <span className="truncate flex-1 text-left">{displayText}</span>
         <ChevronDown className={`shrink-0 text-muted-foreground transition-transform ${compact ? "w-3 h-3" : "w-3.5 h-3.5"} ${open ? "rotate-180" : ""}`} />
       </button>
 
       {/* Dropdown */}
       {open && (
-        <div className={`absolute z-50 mt-1 w-full min-w-[160px] bg-popover border border-border rounded-md shadow-lg ${compact ? "text-[11px]" : "text-xs"}`}>
+        <div className={`absolute z-50 mt-1 w-full min-w-[180px] bg-popover border border-border rounded-md shadow-lg ${compact ? "text-[11px]" : "text-xs"}`}>
           {/* Search input */}
           <div className="flex items-center gap-1 px-2 py-1.5 border-b border-border">
             <Search className="w-3 h-3 text-muted-foreground shrink-0" />
@@ -151,6 +244,7 @@ export default function CountrySelect({
                   !value ? "bg-accent text-accent-foreground font-medium" : ""
                 }`}
               >
+                <span className="shrink-0">🌍</span>
                 <span>{allLabel}</span>
               </button>
             )}
@@ -168,6 +262,7 @@ export default function CountrySelect({
                   !value ? "bg-accent font-medium" : ""
                 }`}
               >
+                <span className="shrink-0">🏳️</span>
                 <span>{placeholder}</span>
               </button>
             )}
@@ -175,18 +270,19 @@ export default function CountrySelect({
             {/* Country options */}
             {filtered.map((country) => (
               <button
-                key={country}
+                key={country.name}
                 type="button"
                 onClick={() => {
-                  onValueChange(country);
+                  onValueChange(country.name);
                   setOpen(false);
                   setSearch("");
                 }}
                 className={`w-full flex items-center gap-2 px-2 py-1.5 hover:bg-accent/50 transition-colors text-left ${
-                  value === country ? "bg-accent text-accent-foreground font-medium" : ""
+                  value === country.name ? "bg-accent text-accent-foreground font-medium" : ""
                 }`}
               >
-                <span className="truncate">{country}</span>
+                <span className="shrink-0">{country.flag}</span>
+                <span className="truncate">{country.name}</span>
               </button>
             ))}
 

@@ -551,6 +551,7 @@ export default function OrdersPage() {
   const [filterPayment, setFilterPayment] = useState<string>("");
   const [filterIntlTracking, setFilterIntlTracking] = useState("");
   const [filterLogisticsStatus, setFilterLogisticsStatus] = useState<string>("");
+  const [filterCountry, setFilterCountry] = useState<string>("");
   const [filterExpanded, setFilterExpanded] = useState(false);
   const [previewImage, setPreviewImage] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
@@ -594,8 +595,9 @@ export default function OrdersPage() {
       logisticsStatus: filterLogisticsStatus || undefined,
       dateFrom: filterDateFrom || undefined,
       dateTo: filterDateTo || undefined,
+      customerCountry: filterCountry || undefined,
     }),
-    [page, search, filterStaffName, filterAccount, filterWhatsapp, filterCustomerType, filterOrderNumber, filterStatus, filterPayment, filterIntlTracking, filterLogisticsStatus, filterDateFrom, filterDateTo]
+    [page, search, filterStaffName, filterAccount, filterWhatsapp, filterCustomerType, filterOrderNumber, filterStatus, filterPayment, filterIntlTracking, filterLogisticsStatus, filterDateFrom, filterDateTo, filterCountry]
   );
 
   const { data, isLoading } = trpc.orders.list.useQuery(queryInput);
@@ -751,12 +753,13 @@ export default function OrdersPage() {
     setFilterPayment("");
     setFilterIntlTracking("");
     setFilterLogisticsStatus("");
+    setFilterCountry("");
     setSearch("");
     setPage(1);
   };
 
   const hasActiveFilters =
-    filterDateFrom || filterDateTo || filterStaffName || filterAccount || filterWhatsapp || filterCustomerType || filterOrderNumber || filterStatus || filterPayment || filterIntlTracking || filterLogisticsStatus;
+    filterDateFrom || filterDateTo || filterStaffName || filterAccount || filterWhatsapp || filterCustomerType || filterOrderNumber || filterStatus || filterPayment || filterIntlTracking || filterLogisticsStatus || filterCountry;
   const totalPages = Math.ceil((data?.total ?? 0) / 20);
 
   const exportMutation = trpc.export.orders.useMutation();
@@ -1865,6 +1868,17 @@ export default function OrdersPage() {
                   ))}
                 </SelectContent>
               </Select>
+            </div>
+            {/* 国家 */}
+            <div className="space-y-1">
+              <Label className="text-[10px] text-muted-foreground">国家</Label>
+              <CountrySelect
+                value={filterCountry}
+                onValueChange={(v) => { setFilterCountry(v); setPage(1); }}
+                showAll
+                allLabel="全部国家"
+                className="h-8"
+              />
             </div>
           </div>
         </CardContent>

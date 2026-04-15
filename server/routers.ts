@@ -250,6 +250,7 @@ export const appRouter = router({
       logisticsStatus: z.string().optional(),
       dateFrom: z.string().optional(),
       dateTo: z.string().optional(),
+      customerCountry: z.string().optional(),
     })).query(({ input, ctx }) => {
       const isAdmin = ctx.user.role === "admin";
       return listOrders({

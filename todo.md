@@ -582,3 +582,11 @@
 
 ## 订单编号父子项合并居中
 - [x] 订单编号列使用rowSpan合并父项与子项，垂直居中显示
+
+## 国家下拉国旗显示
+- [x] CountrySelect组件中每个国家名前添加对应国旗emoji图标
+- [x] 选中状态和下拉列表中都显示国旗
+
+## 订单筛选栏添加国家筛选
+- [x] 后端：listOrders查询支持customerCountry筛选参数
+- [x] 前端：筛选栏添加国家筛选下拉（使用CountrySelect组件，showAll模式）
