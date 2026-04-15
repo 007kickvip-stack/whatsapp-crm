@@ -446,25 +446,132 @@ describe("Salary Report with High Profit Bonus", () => {
     });
     expect(Array.isArray(report)).toBe(true);
     if (report.length > 0) {
-      const entry = report[0];
+      const entry = report[0] as any;
       expect(entry).toHaveProperty("highProfitBonus");
       expect(entry).toHaveProperty("highProfitOrderCount");
       expect(typeof entry.highProfitBonus).toBe("number");
       expect(typeof entry.highProfitOrderCount).toBe("number");
       expect(entry.highProfitBonus).toBeGreaterThanOrEqual(0);
       expect(entry.highProfitOrderCount).toBeGreaterThanOrEqual(0);
-      // totalSalary should include highProfitBonus
-      expect(entry.totalSalary).toBe(entry.baseSalary + entry.commission + entry.highProfitBonus);
     }
   });
 
-  it("salary report totalSalary formula is correct", async () => {
+  it("salary report includes adjustment fields", async () => {
+    const report = await adminCaller.salaryReport.get({
+      yearMonth: "2026-04",
+    });
+    expect(Array.isArray(report)).toBe(true);
+    if (report.length > 0) {
+      const entry = report[0] as any;
+      expect(entry).toHaveProperty("profitDeduction");
+      expect(entry).toHaveProperty("bonus");
+      expect(entry).toHaveProperty("onlineCommission");
+      expect(entry).toHaveProperty("performanceDeduction");
+      expect(typeof entry.profitDeduction).toBe("number");
+      expect(typeof entry.bonus).toBe("number");
+      expect(typeof entry.onlineCommission).toBe("number");
+      expect(typeof entry.performanceDeduction).toBe("number");
+    }
+  });
+
+  it("salary report totalSalary formula includes adjustments", async () => {
     const report = await adminCaller.salaryReport.get({
       yearMonth: "2026-01",
     });
     expect(Array.isArray(report)).toBe(true);
-    for (const entry of report) {
-      expect(entry.totalSalary).toBe(entry.baseSalary + entry.commission + entry.highProfitBonus);
+    for (const r of report) {
+      const entry = r as any;
+      // totalSalary = baseSalary + commission + highProfitBonus + bonus + onlineCommission - profitDeduction - performanceDeduction
+      const expected = entry.baseSalary + entry.commission + (entry.highProfitBonus || 0)
+        + (entry.bonus || 0) + (entry.onlineCommission || 0)
+        - (entry.profitDeduction || 0) - (entry.performanceDeduction || 0);
+      expect(Math.abs(entry.totalSalary - expected)).toBeLessThan(0.01);
+    }
+  });
+});
+
+describe("Salary Adjustments", () => {
+  const adminCaller = appRouter.createCaller(createAdminContext());
+  const staffCaller = appRouter.createCaller(createStaffContext());
+
+  it("admin can upsert salary adjustment", async () => {
+    const result = await adminCaller.salaryReport.upsertAdjustment({
+      staffId: 1,
+      yearMonth: "2026-03",
+      profitDeduction: "100.00",
+      bonus: "200.00",
+      onlineCommission: "50.00",
+      performanceDeduction: "30.00",
+      remark: "测试调整",
+    });
+    expect(result).toBeDefined();
+    expect(result).toHaveProperty("id");
+  });
+
+  it("admin can update existing salary adjustment", async () => {
+    const result = await adminCaller.salaryReport.upsertAdjustment({
+      staffId: 1,
+      yearMonth: "2026-03",
+      profitDeduction: "150.00",
+      bonus: "250.00",
+      onlineCommission: "80.00",
+      performanceDeduction: "50.00",
+      remark: "更新调整",
+    });
+    expect(result).toBeDefined();
+    // Could return { id, updated: true } or { id }
+    expect(result).toHaveProperty("id");
+  });
+
+  it("staff cannot upsert salary adjustment (should throw FORBIDDEN)", async () => {
+    await expect(
+      staffCaller.salaryReport.upsertAdjustment({
+        staffId: 100,
+        yearMonth: "2026-03",
+        profitDeduction: "10.00",
+      })
+    ).rejects.toThrow();
+  });
+});
+
+describe("Order Completion Status", () => {
+  const adminCaller = appRouter.createCaller(createAdminContext());
+  const staffCaller = appRouter.createCaller(createStaffContext());
+
+  it("admin can update order completion status", async () => {
+    // First get an existing order
+    const ordersResult = await adminCaller.orders.list({ page: 1, pageSize: 1 });
+    const ordersList = Array.isArray(ordersResult) ? ordersResult : (ordersResult as any)?.orders || [];
+    if (ordersList.length > 0) {
+      const orderId = ordersList[0].id;
+      const result = await adminCaller.orderCompletion.update({
+        orderId,
+        completionStatus: "completed",
+      });
+      expect(result).toBeDefined();
+      // Restore
+      await adminCaller.orderCompletion.update({
+        orderId,
+        completionStatus: "pending",
+      });
+    }
+  });
+
+  it("admin can batch update order completion status", async () => {
+    const ordersResult = await adminCaller.orders.list({ page: 1, pageSize: 2 });
+    const ordersList = Array.isArray(ordersResult) ? ordersResult : (ordersResult as any)?.orders || [];
+    if (ordersList.length > 0) {
+      const orderIds = ordersList.map((o: any) => o.id);
+      const result = await adminCaller.orderCompletion.batchUpdate({
+        orderIds,
+        completionStatus: "completed",
+      });
+      expect(result).toBeDefined();
+      // Restore
+      await adminCaller.orderCompletion.batchUpdate({
+        orderIds,
+        completionStatus: "pending",
+      });
     }
   });
 });

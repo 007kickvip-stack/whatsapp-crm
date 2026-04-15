@@ -1,6 +1,6 @@
 import { eq, like, and, sql, desc, or, SQL, inArray, isNotNull } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
-import { InsertUser, users, customers, orders, orderItems, InsertCustomer, InsertOrder, InsertOrderItem, auditLogs, InsertAuditLog, exchangeRates, InsertExchangeRate, profitAlertSettings, InsertProfitAlertSetting, staffMonthlyTargets, InsertStaffMonthlyTarget, dailyData, InsertDailyData, accounts, InsertAccount, dailyReportNotes, InsertDailyReportNote, quotations, quotationItems, InsertQuotation, InsertQuotationItem, paypalIncome, paypalExpense, InsertPaypalIncome, InsertPaypalExpense, reshipments, InsertReshipment, orderPayments, InsertOrderPayment, commissionRules, InsertCommissionRule, bonusRules, InsertBonusRule } from "../drizzle/schema";
+import { InsertUser, users, customers, orders, orderItems, InsertCustomer, InsertOrder, InsertOrderItem, auditLogs, InsertAuditLog, exchangeRates, InsertExchangeRate, profitAlertSettings, InsertProfitAlertSetting, staffMonthlyTargets, InsertStaffMonthlyTarget, dailyData, InsertDailyData, accounts, InsertAccount, dailyReportNotes, InsertDailyReportNote, quotations, quotationItems, InsertQuotation, InsertQuotationItem, paypalIncome, paypalExpense, InsertPaypalIncome, InsertPaypalExpense, reshipments, InsertReshipment, orderPayments, InsertOrderPayment, commissionRules, InsertCommissionRule, bonusRules, InsertBonusRule, salaryAdjustments, InsertSalaryAdjustment } from "../drizzle/schema";
 import { ENV } from './_core/env';
 import { nanoid } from 'nanoid';
 import { createHash, randomBytes } from 'crypto';
@@ -3100,11 +3100,14 @@ export async function getSalaryReport(yearMonth: string) {
   const db = await getDb();
   if (!db) return [];
 
-  // 获取月份的起止日期
-  const startDate = `${yearMonth}-01`;
-  const endDate = yearMonth.split('-')[1] === '12'
-    ? `${parseInt(yearMonth.split('-')[0]) + 1}-01-01`
-    : `${yearMonth.split('-')[0]}-${String(parseInt(yearMonth.split('-')[1]) + 1).padStart(2, '0')}-01`;
+  // 工资结算逻辑：结算N月工资 = N-1月已完成订单的数据
+  // 计算上月的起止日期
+  const [y, m] = yearMonth.split('-').map(Number);
+  const prevMonth = m === 1 ? 12 : m - 1;
+  const prevYear = m === 1 ? y - 1 : y;
+  const prevYearMonth = `${prevYear}-${String(prevMonth).padStart(2, '0')}`;
+  const startDate = `${prevYearMonth}-01`;
+  const endDate = `${yearMonth}-01`; // 上月1号到本月1号
 
   // 1. 获取所有客服（role=user）及其底薪
   const staffList = await db.select({
@@ -3120,7 +3123,14 @@ export async function getSalaryReport(yearMonth: string) {
   // 2.5 获取活跃的高利润单奖励规则
   const activeBonusRules = await db.select().from(bonusRules).where(eq(bonusRules.isActive, 1)).orderBy(bonusRules.profitThreshold);
 
-  // 3. 获取每个客服在该月的营业额（从订单表汇总 totalAmountCny）
+  // 2.6 获取该月的工资调整项
+  const adjustments = await listSalaryAdjustments(yearMonth);
+  const adjustmentMap = new Map<number, typeof adjustments[0]>();
+  for (const adj of adjustments) {
+    adjustmentMap.set(adj.staffId, adj);
+  }
+
+  // 3. 获取每个客服在上月已完成订单的营业额（仅completionStatus='已完成'的订单）
   const revenueResult = await db.execute(sql`
     SELECT staffId, staffName,
       COALESCE(SUM(totalAmountCny), 0) as totalRevenue,
@@ -3128,6 +3138,7 @@ export async function getSalaryReport(yearMonth: string) {
     FROM orders
     WHERE orderDate >= ${startDate} AND orderDate < ${endDate}
       AND staffId IS NOT NULL
+      AND (completionStatus = '已完成' OR completionStatus IS NULL)
     GROUP BY staffId, staffName
   `);
   const revenueRows = (revenueResult as any)[0] || [];
@@ -3140,7 +3151,7 @@ export async function getSalaryReport(yearMonth: string) {
     });
   }
 
-  // 4. 获取每个客服在该月的利润（从订单子项汇总 productProfit + shippingProfit）
+  // 4. 获取每个客服在上月已完成订单的利润
   const profitResult = await db.execute(sql`
     SELECT o.staffId,
       COALESCE(SUM(oi.productProfit), 0) as totalProductProfit,
@@ -3149,10 +3160,11 @@ export async function getSalaryReport(yearMonth: string) {
     JOIN orders o ON oi.orderId = o.id
     WHERE o.orderDate >= ${startDate} AND o.orderDate < ${endDate}
       AND o.staffId IS NOT NULL
+      AND (o.completionStatus = '已完成' OR o.completionStatus IS NULL)
     GROUP BY o.staffId
   `);
 
-  // 4.5 获取每个客服的高利润订单明细（按单笔订单的总利润=productProfit+shippingProfit）
+  // 4.5 获取每个客服的高利润订单明细（仅已完成订单）
   const orderProfitResult = await db.execute(sql`
     SELECT o.staffId, o.id as orderId,
       COALESCE(SUM(oi.productProfit), 0) + COALESCE(SUM(oi.shippingProfit), 0) as orderTotalProfit
@@ -3160,6 +3172,7 @@ export async function getSalaryReport(yearMonth: string) {
     JOIN orders o ON oi.orderId = o.id
     WHERE o.orderDate >= ${startDate} AND o.orderDate < ${endDate}
       AND o.staffId IS NOT NULL
+      AND (o.completionStatus = '已完成' OR o.completionStatus IS NULL)
     GROUP BY o.staffId, o.id
   `);
   const orderProfitRows = (orderProfitResult as any)[0] || [];
@@ -3263,7 +3276,16 @@ export async function getSalaryReport(yearMonth: string) {
     const orderProfits = staffOrderProfits.get(staff.id) || [];
     const { bonusAmount: highProfitBonus, bonusOrderCount: highProfitOrderCount } = calcBonusReward(orderProfits, activeBonusRules);
 
-    const totalSalary = baseSalary + commission + highProfitBonus;
+    // 获取工资调整项
+    const adj = adjustmentMap.get(staff.id);
+    const profitDeduction = adj ? parseFloat(adj.profitDeduction as string) || 0 : 0;
+    const bonusAdj = adj ? parseFloat(adj.bonus as string) || 0 : 0;
+    const onlineCommission = adj ? parseFloat(adj.onlineCommission as string) || 0 : 0;
+    const performanceDeduction = adj ? parseFloat(adj.performanceDeduction as string) || 0 : 0;
+    const adjRemark = adj?.remark || '';
+
+    // 工资公式：上月已完成订单总利润 - 扣除利润 + 基础提成 + 高利润单特别奖励 + 奖金 + 线上订单提成 - 绩效扣款
+    const totalSalary = totalProfit - profitDeduction + commission + highProfitBonus + bonusAdj + onlineCommission - performanceDeduction;
 
     return {
       staffId: staff.id,
@@ -3280,7 +3302,16 @@ export async function getSalaryReport(yearMonth: string) {
       profitRateCommission: Math.round(profitRateCommission * 100) / 100,
       highProfitBonus: Math.round(highProfitBonus * 100) / 100,
       highProfitOrderCount,
+      // 工资调整项
+      profitDeduction: Math.round(profitDeduction * 100) / 100,
+      bonus: Math.round(bonusAdj * 100) / 100,
+      onlineCommission: Math.round(onlineCommission * 100) / 100,
+      performanceDeduction: Math.round(performanceDeduction * 100) / 100,
+      adjustmentRemark: adjRemark,
+      // 总工资
       totalSalary: Math.round(totalSalary * 100) / 100,
+      // 数据来源月份（上月）
+      dataMonth: prevYearMonth,
       hireDate: staff.hireDate,
     };
   });
@@ -3395,4 +3426,81 @@ export async function getBonusRuleById(id: number) {
   if (!db) return null;
   const result = await db.select().from(bonusRules).where(eq(bonusRules.id, id)).limit(1);
   return result[0] || null;
+}
+
+
+// ========== 工资调整项 ==========
+
+export async function getSalaryAdjustment(staffId: number, yearMonth: string) {
+  const db = await getDb();
+  if (!db) return null;
+  const result = await db.select().from(salaryAdjustments)
+    .where(and(eq(salaryAdjustments.staffId, staffId), eq(salaryAdjustments.yearMonth, yearMonth)))
+    .limit(1);
+  return result[0] || null;
+}
+
+export async function listSalaryAdjustments(yearMonth: string) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(salaryAdjustments).where(eq(salaryAdjustments.yearMonth, yearMonth));
+}
+
+export async function upsertSalaryAdjustment(data: {
+  staffId: number;
+  yearMonth: string;
+  profitDeduction?: string;
+  bonus?: string;
+  onlineCommission?: string;
+  performanceDeduction?: string;
+  remark?: string;
+  createdById?: number;
+  createdByName?: string;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+
+  const existing = await getSalaryAdjustment(data.staffId, data.yearMonth);
+  if (existing) {
+    // 更新
+    const updateData: any = {};
+    if (data.profitDeduction !== undefined) updateData.profitDeduction = data.profitDeduction;
+    if (data.bonus !== undefined) updateData.bonus = data.bonus;
+    if (data.onlineCommission !== undefined) updateData.onlineCommission = data.onlineCommission;
+    if (data.performanceDeduction !== undefined) updateData.performanceDeduction = data.performanceDeduction;
+    if (data.remark !== undefined) updateData.remark = data.remark;
+    await db.update(salaryAdjustments).set(updateData).where(eq(salaryAdjustments.id, existing.id));
+    return { id: existing.id, updated: true };
+  } else {
+    // 新建
+    const result = await db.insert(salaryAdjustments).values({
+      staffId: data.staffId,
+      yearMonth: data.yearMonth,
+      profitDeduction: data.profitDeduction || "0",
+      bonus: data.bonus || "0",
+      onlineCommission: data.onlineCommission || "0",
+      performanceDeduction: data.performanceDeduction || "0",
+      remark: data.remark || null,
+      createdById: data.createdById,
+      createdByName: data.createdByName,
+    });
+    return { id: (result as any)[0].insertId, updated: false };
+  }
+}
+
+// ========== 订单完成状态更新 ==========
+
+export async function updateOrderCompletionStatus(orderId: number, completionStatus: string) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  await db.update(orders).set({ completionStatus }).where(eq(orders.id, orderId));
+  return { success: true };
+}
+
+export async function batchUpdateOrderCompletionStatus(orderIds: number[], completionStatus: string) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  if (orderIds.length === 0) return { success: true, count: 0 };
+  await db.update(orders).set({ completionStatus }).where(inArray(orders.id, orderIds));
+  return { success: true, count: orderIds.length };
 }

@@ -92,6 +92,7 @@ export const orders = mysqlTable("orders", {
   totalAmountCny: decimal("totalAmountCny", { precision: 12, scale: 2 }).default("0"),
   totalProfit: decimal("totalProfit", { precision: 12, scale: 2 }).default("0"),
   totalProfitRate: decimal("totalProfitRate", { precision: 8, scale: 6 }).default("0"),
+  completionStatus: varchar("completionStatus", { length: 32 }).default("未完成"), // 订单完成状态：已完成/未完成
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });
@@ -471,3 +472,25 @@ export const bonusRules = mysqlTable("bonus_rules", {
 
 export type BonusRule = typeof bonusRules.$inferSelect;
 export type InsertBonusRule = typeof bonusRules.$inferInsert;
+
+/**
+ * 工资调整项表 - 管理员为客服手动填写的工资调整项
+ * 每个客服每月一条记录，包含扣除利润、奖金、线上订单提成、绩效扣款
+ */
+export const salaryAdjustments = mysqlTable("salary_adjustments", {
+  id: int("id").autoincrement().primaryKey(),
+  staffId: int("staffId").notNull(), // 客服ID
+  yearMonth: varchar("yearMonth", { length: 7 }).notNull(), // 结算月份 YYYY-MM
+  profitDeduction: decimal("profitDeduction", { precision: 12, scale: 2 }).default("0"), // 扣除利润
+  bonus: decimal("bonus", { precision: 12, scale: 2 }).default("0"), // 奖金
+  onlineCommission: decimal("onlineCommission", { precision: 12, scale: 2 }).default("0"), // 线上订单提成
+  performanceDeduction: decimal("performanceDeduction", { precision: 12, scale: 2 }).default("0"), // 绩效扣款
+  remark: text("remark"), // 备注说明
+  createdById: int("createdById"),
+  createdByName: varchar("createdByName", { length: 128 }),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type SalaryAdjustment = typeof salaryAdjustments.$inferSelect;
+export type InsertSalaryAdjustment = typeof salaryAdjustments.$inferInsert;

@@ -746,6 +746,15 @@ export default function OrdersPage() {
     onError: (err) => toast.error(err.message),
   });
 
+  // 订单完成状态更新
+  const completionStatusMutation = trpc.orderCompletion.update.useMutation({
+    onSuccess: () => {
+      toast.success("完成状态已更新");
+      utils.orders.list.invalidate();
+    },
+    onError: (err: any) => toast.error(err.message),
+  });
+
   // Save an order-level field inline
   const saveOrderField = useCallback(
     (orderId: number, field: string, value: string) => {
@@ -911,6 +920,7 @@ export default function OrdersPage() {
     { key: "customerBirthDate", label: "出生日期", width: "100px" },
     { key: "customerEmail", label: "客户邮箱", width: "140px" },
     { key: "wpEntryDate", label: "进入WP日期", width: "110px" },
+    { key: "completionStatus", label: "完成状态", width: "90px" },
   ];
 
   // Build flat rows
@@ -967,6 +977,7 @@ export default function OrdersPage() {
     customerBirthDate: string | null;
     customerEmail: string | null;
     wpEntryDate: string | null;
+    completionStatus: string | null;
   };
 
   // Auto-create initial item for orders that have no items
@@ -1046,6 +1057,7 @@ export default function OrdersPage() {
           customerBirthDate: (order as any).customerBirthDate ? new Date((order as any).customerBirthDate).toISOString().split('T')[0] : null,
           customerEmail: (order as any).customerEmail || null,
           wpEntryDate: (order as any).wpEntryDate ? new Date((order as any).wpEntryDate).toISOString().split('T')[0] : null,
+          completionStatus: (order as any).completionStatus || '未完成',
         });
       } else {
         // When collapsed, only show the first item row
@@ -1104,6 +1116,7 @@ export default function OrdersPage() {
             customerBirthDate: idx === 0 ? ((order as any).customerBirthDate ? new Date((order as any).customerBirthDate).toISOString().split('T')[0] : null) : null,
             customerEmail: idx === 0 ? ((order as any).customerEmail || null) : null,
             wpEntryDate: idx === 0 ? ((order as any).wpEntryDate ? new Date((order as any).wpEntryDate).toISOString().split('T')[0] : null) : null,
+            completionStatus: idx === 0 ? ((order as any).completionStatus || '未完成') : null,
             itemId: item.id,
           });
         });
@@ -1716,6 +1729,15 @@ export default function OrdersPage() {
                 type="date"
                 onSave={(v) => saveOrderField(row.orderId, "wpEntryDate", v)}
                 placeholder="进入WP日期"
+              />
+            </td>
+            {/* 完成状态 */}
+            <td className="py-1 px-1 text-center text-[11px] align-middle" rowSpan={row.visibleItemCount || 1}>
+              <EditableCell
+                value={row.completionStatus || "未完成"}
+                type="select"
+                selectOptions={["已完成", "未完成"]}
+                onSave={(v) => completionStatusMutation.mutate({ orderId: row.orderId, completionStatus: v })}
               />
             </td>
           </>

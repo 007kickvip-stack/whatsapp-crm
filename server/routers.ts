@@ -44,6 +44,8 @@ import {
   getSalaryReport,
   getSalaryHistory,
   listBonusRules, getActiveBonusRules, createBonusRule, updateBonusRule, deleteBonusRule,
+  upsertSalaryAdjustment, listSalaryAdjustments, getSalaryAdjustment,
+  updateOrderCompletionStatus, batchUpdateOrderCompletionStatus,
 } from "./db";
 import type { SQL } from "drizzle-orm";
 import { sdk } from "./_core/sdk";
@@ -1150,6 +1152,57 @@ export const appRouter = router({
       // 客服只能查看自己的历史
       const targetStaffId = ctx.user.role === "admin" ? input.staffId : ctx.user.id;
       return await getSalaryHistory(months, targetStaffId);
+    }),
+
+    // 获取指定月份的工资调整项
+    getAdjustments: protectedProcedure.input(z.object({
+      yearMonth: z.string().regex(/^\d{4}-\d{2}$/),
+    })).query(async ({ input }) => {
+      return await listSalaryAdjustments(input.yearMonth);
+    }),
+
+    // 获取单个客服的工资调整项
+    getAdjustment: protectedProcedure.input(z.object({
+      staffId: z.number(),
+      yearMonth: z.string().regex(/^\d{4}-\d{2}$/),
+    })).query(async ({ input }) => {
+      return await getSalaryAdjustment(input.staffId, input.yearMonth);
+    }),
+
+    // 创建或更新工资调整项（仅管理员）
+    upsertAdjustment: adminProcedure.input(z.object({
+      staffId: z.number(),
+      yearMonth: z.string().regex(/^\d{4}-\d{2}$/),
+      profitDeduction: z.string().optional(),
+      bonus: z.string().optional(),
+      onlineCommission: z.string().optional(),
+      performanceDeduction: z.string().optional(),
+      remark: z.string().optional(),
+    })).mutation(async ({ input, ctx }) => {
+      return await upsertSalaryAdjustment({
+        ...input,
+        createdById: ctx.user.id,
+        createdByName: ctx.user.name || '未知',
+      });
+    }),
+  }),
+
+  // ==================== 订单完成状态 ====================
+  orderCompletion: router({
+    // 更新单个订单完成状态
+    update: adminProcedure.input(z.object({
+      orderId: z.number(),
+      completionStatus: z.string(),
+    })).mutation(async ({ input }) => {
+      return await updateOrderCompletionStatus(input.orderId, input.completionStatus);
+    }),
+
+    // 批量更新订单完成状态
+    batchUpdate: adminProcedure.input(z.object({
+      orderIds: z.array(z.number()),
+      completionStatus: z.string(),
+    })).mutation(async ({ input }) => {
+      return await batchUpdateOrderCompletionStatus(input.orderIds, input.completionStatus);
     }),
   }),
 

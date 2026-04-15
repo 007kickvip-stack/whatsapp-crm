@@ -1,17 +1,23 @@
 import fs from 'fs';
 import mysql from 'mysql2/promise';
 
-const sql = fs.readFileSync('drizzle/0034_slim_blink.sql', 'utf8');
+const sql = fs.readFileSync('drizzle/0035_salty_iron_man.sql', 'utf8');
+const statements = sql.split('--> statement-breakpoint').map(s => s.trim()).filter(Boolean);
 const conn = await mysql.createConnection(process.env.DATABASE_URL);
 try {
-  await conn.execute(sql);
-  console.log('Migration executed successfully');
-} catch (e) {
-  if (e.code === 'ER_TABLE_EXISTS_ERROR') {
-    console.log('Table already exists, skipping');
-  } else {
-    throw e;
+  for (const stmt of statements) {
+    try {
+      await conn.execute(stmt);
+      console.log('Executed:', stmt.substring(0, 60) + '...');
+    } catch (e) {
+      if (e.code === 'ER_TABLE_EXISTS_ERROR' || e.code === 'ER_DUP_FIELDNAME') {
+        console.log('Already exists, skipping:', stmt.substring(0, 60));
+      } else {
+        throw e;
+      }
+    }
   }
+  console.log('Migration completed successfully');
 } finally {
   await conn.end();
 }
