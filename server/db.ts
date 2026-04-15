@@ -2953,68 +2953,62 @@ export async function getOrderPaymentById(id: number) {
 }
 
 /**
- * 自动汇总订单的所有支付记录金额，更新到订单的paymentAmount字段
+ * 自动汇总订单的所有支付记录金额
+ * 注意：paymentAmount和paymentStatus现在由PayPal收支的实际收到金额决定，此函数不再更新这两个字段
+ * 保留此函数仅用于兼容性（如果其他地方调用）
  */
 export async function syncOrderPaymentAmount(orderId: number) {
-  const db = await getDb();
-  if (!db) return;
-  const result = await db.select({
-    total: sql<string>`COALESCE(SUM(${orderPayments.amount}), 0)`
-  }).from(orderPayments).where(eq(orderPayments.orderId, orderId));
-  const totalAmount = result[0]?.total ?? "0";
-  await db.update(orders).set({ paymentAmount: totalAmount }).where(eq(orders.id, orderId));
-  
-  // Also update paymentStatus based on total paid vs total order amount
-  const order = await db.select().from(orders).where(eq(orders.id, orderId)).limit(1);
-  if (order[0]) {
-    const paid = parseFloat(totalAmount);
-    const totalUsd = parseFloat(order[0].totalAmountUsd ?? "0");
-    let paymentStatus = "未付款";
-    if (paid > 0 && paid < totalUsd) {
-      paymentStatus = "已付定金";
-    } else if (paid > 0 && paid >= totalUsd) {
-      paymentStatus = "已付全款";
-    }
-    await db.update(orders).set({ paymentStatus }).where(eq(orders.id, orderId));
-  }
+  // paymentAmount和paymentStatus现在由syncActualReceivedToOrder管理
+  // 此函数不再更新订单表
 }
 
-// ==================== 订单付款状态自动更新 ====================
+// ==================== 订单实际收到金额同步与付款状态自动更新 ====================
 
-// 根据PayPal收支的"是否收到"状态自动更新订单付款状态
-// 逻辑：该订单关联的所有PayPal收入记录全部收到→已付清，部分收到→已付定金，全未收到→未付款
-export async function updateOrderPaymentStatusFromPaypal(orderId: number) {
+/**
+ * 从PayPal收支表累加同一订单的"实际收到($)"，写入订单表的paymentAmount字段
+ * 然后根据实际收到金额与订单总金额(totalAmountUsd)比较，自动更新付款状态
+ * - 实际收到 >= 总金额 → 已收到全款
+ * - 实际收到 > 0 但 < 总金额 → 收到部分
+ * - 实际收到 = 0 → 未收到
+ */
+export async function syncActualReceivedToOrder(orderId: number) {
   const db = await getDb();
   if (!db) return;
   
-  // 查询该订单关联的所有PayPal收入记录的收到状态
+  // 累加该订单关联的所有PayPal收入记录的实际收到金额
   const result = await db.execute(sql`
-    SELECT 
-      COUNT(*) as total,
-      SUM(CASE WHEN isReceived = '是' THEN 1 ELSE 0 END) as receivedCount
+    SELECT COALESCE(SUM(CAST(actualReceived AS DECIMAL(12,2))), 0) as totalActualReceived
     FROM paypal_income 
     WHERE orderId = ${orderId}
   `);
   const rows = (result as any)[0] || [];
-  if (rows.length === 0) return;
+  const totalActualReceived = rows.length > 0 ? parseFloat(String(rows[0].totalActualReceived || "0")) : 0;
   
-  const { total, receivedCount } = rows[0];
-  const totalNum = Number(total);
-  const receivedNum = Number(receivedCount);
+  // 获取订单总金额
+  const orderResult = await db.execute(sql`
+    SELECT totalAmountUsd FROM orders WHERE id = ${orderId}
+  `);
+  const orderRows = (orderResult as any)[0] || [];
+  if (orderRows.length === 0) return;
   
-  if (totalNum === 0) return; // 没有关联的PayPal记录，不更新
+  const totalAmountUsd = parseFloat(String(orderRows[0].totalAmountUsd || "0"));
   
-  let newStatus: string;
-  if (receivedNum === 0) {
-    newStatus = "未付款";
-  } else if (receivedNum >= totalNum) {
-    newStatus = "已付清";
+  // 判断付款状态
+  let paymentStatus: string;
+  if (totalActualReceived <= 0) {
+    paymentStatus = "未收到";
+  } else if (totalActualReceived >= totalAmountUsd && totalAmountUsd > 0) {
+    paymentStatus = "已收到全款";
   } else {
-    newStatus = "已付定金";
+    paymentStatus = "收到部分";
   }
   
+  // 更新订单的paymentAmount和paymentStatus
   await db.execute(sql`
-    UPDATE orders SET paymentStatus = ${newStatus} WHERE id = ${orderId}
+    UPDATE orders SET 
+      paymentAmount = ${totalActualReceived.toFixed(2)},
+      paymentStatus = ${paymentStatus}
+    WHERE id = ${orderId}
   `);
 }
 

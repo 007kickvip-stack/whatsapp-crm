@@ -36,7 +36,7 @@ import {
   getPaypalBalanceSummary, syncOrdersToPaypalIncome,
   syncOrderToPaypalIncome, updatePaypalIncomeFromOrder, deletePaypalIncomeByOrderId,
   syncPaymentToPaypalIncome, updatePaypalIncomeFromPayment, deletePaypalIncomeByPaymentId,
-  updateOrderPaymentStatusFromPaypal, getPaypalIncomeOrderId, repairPaypalIncomeSync,
+  getPaypalIncomeOrderId, repairPaypalIncomeSync, syncActualReceivedToOrder,
   createReshipment, updateReshipment, deleteReshipment, getReshipmentById, listReshipments, getReshipmentsByOriginalOrderId,
   createOrderPayment, updateOrderPayment, deleteOrderPayment, getOrderPaymentsByOrderId, getOrderPaymentById,
 } from "./db";
@@ -1513,11 +1513,11 @@ export const appRouter = router({
         updateData.incomeDate = data.incomeDate ? new Date(data.incomeDate + "T00:00:00") : null;
       }
       await updatePaypalIncome(id, updateData);
-      // 当“是否收到”状态变更时，自动更新关联订单的付款状态
-      if (data.isReceived !== undefined) {
+      // 当"实际收到"金额变更时，自动累加同步到订单表并更新付款状态
+      if (data.actualReceived !== undefined) {
         const relatedOrderId = await getPaypalIncomeOrderId(id);
         if (relatedOrderId) {
-          await updateOrderPaymentStatusFromPaypal(relatedOrderId);
+          await syncActualReceivedToOrder(relatedOrderId);
         }
       }
       await logAction(ctx, "update", "paypalIncome", id, undefined, JSON.stringify(data));
@@ -1525,11 +1525,11 @@ export const appRouter = router({
     }),
 
     delete: protectedProcedure.input(z.object({ id: z.number() })).mutation(async ({ input, ctx }) => {
-      // 先查询orderId，删除后更新订单状态
+      // 先查询orderId，删除后重新累加实际收到金额
       const relatedOrderId = await getPaypalIncomeOrderId(input.id);
       await deletePaypalIncome(input.id);
       if (relatedOrderId) {
-        await updateOrderPaymentStatusFromPaypal(relatedOrderId);
+        await syncActualReceivedToOrder(relatedOrderId);
       }
       await logAction(ctx, "delete", "paypalIncome", input.id);
       return { success: true };

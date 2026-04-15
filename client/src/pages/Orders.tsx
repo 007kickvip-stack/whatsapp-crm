@@ -94,7 +94,7 @@ const emptyOrderForm: OrderForm = {
   customerName: "",
   orderNumber: "",
   orderStatus: "已报货，待发货",
-  paymentStatus: "未付款",
+  paymentStatus: "未收到",
   remarks: "",
 };
 
@@ -109,7 +109,7 @@ const ORDER_STATUSES = [
   "顾客已收货",
   "已退款",
 ];
-const PAYMENT_STATUSES = ["未付款", "待付款", "已付款", "部分付款"];
+const PAYMENT_STATUSES = ["未收到", "收到部分", "已收到全款"];
 
 const ORDER_CATEGORIES = ["服饰", "鞋子", "配饰", "包包", "电子产品", "其他"];
 
@@ -151,10 +151,9 @@ function customerTypeColor(type: string | null): string {
 
 function paymentColor(status: string | null): string {
   switch (status) {
-    case "已付款": return "bg-emerald-100 text-emerald-800 border-emerald-300";
-    case "待付款": return "bg-amber-100 text-amber-800 border-amber-300";
-    case "部分付款": return "bg-blue-100 text-blue-800 border-blue-300";
-    case "未付款": return "bg-red-100 text-red-800 border-red-300";
+    case "已收到全款": return "bg-emerald-100 text-emerald-800 border-emerald-300";
+    case "收到部分": return "bg-blue-100 text-blue-800 border-blue-300";
+    case "未收到": return "bg-red-100 text-red-800 border-red-300";
     default: return "bg-gray-100 text-gray-700 border-gray-200";
   }
 }
@@ -782,7 +781,7 @@ export default function OrdersPage() {
       customerName: order.customerName || "",
       orderNumber: order.orderNumber || "",
       orderStatus: order.orderStatus || "待处理",
-      paymentStatus: order.paymentStatus || "未付款",
+      paymentStatus: order.paymentStatus || "未收到",
       remarks: order.remarks || "",
     });
     setDialogOpen(true);
@@ -892,7 +891,7 @@ export default function OrdersPage() {
     { key: "totalProfit", label: "总利润", width: "80px" },
     { key: "profitRate", label: "利润率", width: "70px" },
     { key: "paymentScreenshot", label: "付款截图", width: "80px" },
-    { key: "paymentAmountDisplay", label: "付款金额($)", width: "100px" },
+    { key: "paymentAmountDisplay", label: "实际收到($)", width: "100px" },
     { key: "receivingAccount", label: "收款账户", width: "120px" },
     { key: "remarks", label: "备注", width: "120px" },
     { key: "paymentStatus", label: "付款状态", width: "80px" },
@@ -1628,7 +1627,7 @@ export default function OrdersPage() {
         {row.isFirstRow && (
           <td className="py-1 px-1 text-center text-[11px] align-middle" rowSpan={row.visibleItemCount || 1}>
             <EditableCell
-              value={row.paymentStatus || "未付款"}
+              value={row.paymentStatus || "未收到"}
               type="select"
               selectOptions={PAYMENT_STATUSES}
               selectColorFn={paymentColor}

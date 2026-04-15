@@ -646,3 +646,12 @@
 - [x] 前端：PayPal收支表在日期后添加订单编号列
 - [x] 前端：添加“修复同步”按钮（蓝色，修复已有记录缺失数据）
 - [x] 测试验证（192条测试全部通过）
+
+## 订单付款状态改为根据实际收到金额自动判断
+- [x] 后端：移除旧的PayPal"是否收到"→订单付款状态自动更新逻辑（updateOrderPaymentStatusFromPaypal→syncActualReceivedToOrder）
+- [x] 后端：添加新的同步逻辑：PayPal收支"实际收到($)"变更时，累加同一订单所有PayPal收入的实际收到金额，写入订单表paymentAmount
+- [x] 后端：根据实际收到($)与订单总金额(totalAmountUsd)比较，自动更新付款状态（>=总金额→已收到全款，>0但<总金额→收到部分，=0→未收到）
+- [x] 后端：syncOrderPaymentAmount不再更新paymentAmount和paymentStatus（由syncActualReceivedToOrder统一管理）
+- [x] 前端：订单表"付款金额($)"列标题改为"实际收到($)"
+- [x] 前端：付款状态选项改为：未收到/收到部分/已收到全款（带颜色标签）
+- [x] 测试验证（192条测试全部通过）
