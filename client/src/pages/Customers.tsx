@@ -80,7 +80,7 @@ const columns = [
   { key: "customerName", label: "客户名字", width: "w-[100px]", editable: true, type: "text" },
   { key: "whatsapp", label: "客户WhatsApp", width: "w-[140px]", editable: true, type: "text" },
   { key: "customerEmail", label: "客户邮箱", width: "w-[160px]", editable: true, type: "text" },
-  { key: "contactInfo", label: "联系方式", width: "w-[120px]", editable: true, type: "text" },
+  { key: "contactInfo", label: "联系方式", width: "w-[120px] max-w-[120px]", editable: true, type: "text" },
   { key: "country", label: "国家", width: "w-[80px]", editable: true, type: "text" },
   { key: "totalOrderCount", label: "累计订单数", width: "w-[90px]", editable: false, type: "number" },
   { key: "totalSpentUsd", label: "累计消费($)", width: "w-[100px]", editable: false, type: "money" },
@@ -648,6 +648,25 @@ export default function CustomersPage() {
             <span key={item} className="inline-block px-1 py-0 rounded text-[10px] bg-blue-100 text-blue-800 border border-blue-200">{item}</span>
           )) : <span className="text-muted-foreground/40 text-xs">-</span>}
         </span>
+      );
+    }
+
+    // 联系方式列截断显示+悬浮提示
+    if (col.key === "contactInfo" && cellValue) {
+      return (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <span
+              className="text-xs cursor-pointer hover:bg-muted/50 block w-full min-h-[20px] px-0.5 rounded truncate max-w-[110px] overflow-hidden text-ellipsis whitespace-nowrap"
+              onClick={() => startEdit(customer.id, col.key, cellValue)}
+            >
+              {cellValue}
+            </span>
+          </TooltipTrigger>
+          <TooltipContent side="top" className="max-w-[300px] whitespace-pre-wrap text-xs">
+            {cellValue}
+          </TooltipContent>
+        </Tooltip>
       );
     }
 
