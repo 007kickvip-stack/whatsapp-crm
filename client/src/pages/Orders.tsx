@@ -67,6 +67,7 @@ import ExcelImportDialog from "@/components/ExcelImportDialog";
 import TrackingDialog from "@/components/TrackingDialog";
 import TrackingHoverCard from "@/components/TrackingHoverCard";
 import AccountSelect from "@/components/AccountSelect";
+import CountrySelect from "@/components/CountrySelect";
 import BulkAddItemsDialog from "@/components/BulkAddItemsDialog";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -1220,24 +1221,17 @@ export default function OrdersPage() {
           </td>
         )}
 
-        {/* 6. 订单编号 - item level editable */}
-        <td className="py-1 px-1 border-r border-gray-100 whitespace-nowrap text-center text-[11px]">
-          {hasItem ? (
-            <EditableCell
-              value={row.orderNumber}
-              onSave={(v) => saveItemField(row.itemId!, row.orderId, "orderNumber", v)}
-              className="font-medium text-primary"
-              placeholder="订单编号"
-            />
-          ) : (
+        {/* 6. 订单编号 - rowSpan合并居中 */}
+        {row.isFirstRow && (
+          <td className="py-1 px-1 border-r border-gray-100 whitespace-nowrap text-center text-[11px] align-middle" rowSpan={row.visibleItemCount || 1}>
             <button
               onClick={() => setLocation(`/orders/${row.orderId}`)}
               className="text-primary hover:underline text-center font-medium text-[11px]"
             >
               {row.orderNumber}
             </button>
-          )}
-        </td>
+          </td>
+        )}
 
         {/* 7. 订单图片 - item level with upload, paste, delete */}
         <td className="py-1 px-1 border-r border-gray-100 text-center">
@@ -1607,11 +1601,11 @@ export default function OrdersPage() {
               />
             </td>
             <td className="py-1 px-1 text-center text-[11px] align-middle" rowSpan={row.visibleItemCount || 1}>
-              <EditableCell
+              <CountrySelect
                 value={row.customerCountry || ""}
-                type="text"
-                onSave={(v) => saveOrderField(row.orderId, "customerCountry", v)}
+                onValueChange={(v) => saveOrderField(row.orderId, "customerCountry", v)}
                 placeholder="国家"
+                compact
               />
             </td>
             <td className="py-1 px-1 text-center text-[11px] align-middle" rowSpan={row.visibleItemCount || 1}>
