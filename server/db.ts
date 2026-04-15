@@ -2512,6 +2512,7 @@ export async function syncOrderToPaypalIncome(orderId: number, userId: number) {
     isReceived: "否",
     receivingAccount: row.receivingAccount || null,
     staffName: row.staffName || null,
+    paymentType: null,
     remarks: `自动同步自订单#${row.id}`,
     orderId: orderId,
     paymentId: null,
@@ -2590,6 +2591,7 @@ export async function syncPaymentToPaypalIncome(paymentId: number, orderId: numb
     isReceived: "否",
     receivingAccount: row.receivingAccount || null,
     staffName: row.staffName || null,
+    paymentType: row.paymentType || null,
     remarks: `自动同步自订单#${orderId} (${row.paymentType})`,
     orderId: orderId,
     paymentId: paymentId,
@@ -2618,7 +2620,8 @@ export async function updatePaypalIncomeFromPayment(paymentId: number) {
       paymentAmount = ${row.amount ? String(row.amount) : "0"},
       paymentScreenshotUrl = ${row.screenshotUrl || null},
       incomeDate = ${row.paymentDate || null},
-      receivingAccount = ${row.receivingAccount || null}
+      receivingAccount = ${row.receivingAccount || null},
+      paymentType = ${row.paymentType || null}
     WHERE paymentId = ${paymentId}
   `);
 }
@@ -2688,6 +2691,7 @@ export async function syncOrdersToPaypalIncome(userId: number) {
       isReceived: "否",
       receivingAccount: row.receivingAccount || null,
       staffName: row.staffName || null,
+      paymentType: row.paymentType || null,
       remarks: `自动同步自订单#${row.orderId} (${row.paymentType})`,
       orderId: row.orderId,
       paymentId: row.paymentId,
@@ -2727,6 +2731,7 @@ export async function syncOrdersToPaypalIncome(userId: number) {
       isReceived: "否",
       receivingAccount: row.receivingAccount || null,
       staffName: row.staffName || null,
+      paymentType: null,
       remarks: `自动同步自订单#${row.id}`,
       orderId: row.id,
       paymentId: null,
@@ -2903,4 +2908,52 @@ export async function syncOrderPaymentAmount(orderId: number) {
     }
     await db.update(orders).set({ paymentStatus }).where(eq(orders.id, orderId));
   }
+}
+
+// ==================== 订单付款状态自动更新 ====================
+
+// 根据PayPal收支的"是否收到"状态自动更新订单付款状态
+// 逻辑：该订单关联的所有PayPal收入记录全部收到→已付清，部分收到→已付定金，全未收到→未付款
+export async function updateOrderPaymentStatusFromPaypal(orderId: number) {
+  const db = await getDb();
+  if (!db) return;
+  
+  // 查询该订单关联的所有PayPal收入记录的收到状态
+  const result = await db.execute(sql`
+    SELECT 
+      COUNT(*) as total,
+      SUM(CASE WHEN isReceived = '是' THEN 1 ELSE 0 END) as receivedCount
+    FROM paypal_income 
+    WHERE orderId = ${orderId}
+  `);
+  const rows = (result as any)[0] || [];
+  if (rows.length === 0) return;
+  
+  const { total, receivedCount } = rows[0];
+  const totalNum = Number(total);
+  const receivedNum = Number(receivedCount);
+  
+  if (totalNum === 0) return; // 没有关联的PayPal记录，不更新
+  
+  let newStatus: string;
+  if (receivedNum === 0) {
+    newStatus = "未付款";
+  } else if (receivedNum >= totalNum) {
+    newStatus = "已付清";
+  } else {
+    newStatus = "已付定金";
+  }
+  
+  await db.execute(sql`
+    UPDATE orders SET paymentStatus = ${newStatus} WHERE id = ${orderId}
+  `);
+}
+
+// 获取PayPal收入记录关联的orderId
+export async function getPaypalIncomeOrderId(paypalIncomeId: number): Promise<number | null> {
+  const db = await getDb();
+  if (!db) return null;
+  const result = await db.execute(sql`SELECT orderId FROM paypal_income WHERE id = ${paypalIncomeId} AND orderId IS NOT NULL LIMIT 1`);
+  const rows = (result as any)[0] || [];
+  return rows.length > 0 ? rows[0].orderId : null;
 }

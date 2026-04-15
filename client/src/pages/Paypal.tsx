@@ -228,6 +228,82 @@ function ReceivingAccountSelect({
 // ============================================================
 // Is Received Select Dropdown
 // ============================================================
+const PAYMENT_TYPE_OPTIONS = ["定金", "尾款", "全款", "补款"];
+
+const PAYMENT_TYPE_COLORS: Record<string, string> = {
+  "定金": "text-blue-700 bg-blue-50 border-blue-200",
+  "尾款": "text-purple-700 bg-purple-50 border-purple-200",
+  "全款": "text-emerald-700 bg-emerald-50 border-emerald-200",
+  "补款": "text-orange-700 bg-orange-50 border-orange-200",
+};
+
+function PaymentTypeSelect({
+  value,
+  onValueChange,
+}: {
+  value: string;
+  onValueChange: (v: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (
+        containerRef.current &&
+        !containerRef.current.contains(e.target as Node)
+      ) {
+        setOpen(false);
+      }
+    }
+    if (open) {
+      document.addEventListener("mousedown", handleClick);
+      return () => document.removeEventListener("mousedown", handleClick);
+    }
+  }, [open]);
+
+  const colorClass = PAYMENT_TYPE_COLORS[value] || "text-muted-foreground";
+
+  return (
+    <div ref={containerRef} className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen(!open)}
+        className={`w-full flex items-center gap-1 border border-gray-200 rounded px-1.5 py-0.5 text-[11px] hover:bg-gray-50 focus:ring-1 focus:ring-emerald-400 transition-colors text-left
+          ${open ? "ring-1 ring-emerald-400" : ""}
+          ${value ? colorClass : "text-muted-foreground"}
+        `}
+      >
+        <span className="truncate flex-1">{value || "-"}</span>
+        <ChevronDown
+          className={`shrink-0 text-muted-foreground transition-transform w-3 h-3 ${
+            open ? "rotate-180" : ""
+          }`}
+        />
+      </button>
+      {open && (
+        <div className="absolute z-50 mt-1 w-full min-w-[80px] bg-popover border border-border rounded-md shadow-lg text-[11px]">
+          {PAYMENT_TYPE_OPTIONS.map((opt) => (
+            <button
+              key={opt}
+              type="button"
+              onClick={() => {
+                onValueChange(opt);
+                setOpen(false);
+              }}
+              className={`w-full px-2 py-1.5 hover:bg-accent/50 text-left ${
+                value === opt ? "bg-accent text-accent-foreground font-medium" : ""
+              }`}
+            >
+              <span className={PAYMENT_TYPE_COLORS[opt] || ""}>{opt}</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function IsReceivedSelect({
   value,
   onValueChange,
@@ -722,6 +798,7 @@ function IncomeTable({
               <th className="px-2 py-2 text-center font-medium w-[90px]">客户名字</th>
               <th className="px-2 py-2 text-center font-medium w-[120px]">客户WhatsApp</th>
               <th className="px-2 py-2 text-center font-medium w-[60px]">付款截图</th>
+              <th className="px-2 py-2 text-center font-medium w-[70px]">支付类型</th>
               <th className="px-2 py-2 text-center font-medium w-[90px]">付款金额($)</th>
               <th className="px-2 py-2 text-center font-medium w-[100px]">实际收到($)</th>
               <th className="px-2 py-2 text-center font-medium w-[80px]">是否收到</th>
@@ -793,6 +870,14 @@ function IncomeTable({
                       url={row.paymentScreenshotUrl}
                       onUpload={(url) =>
                         handleUpdate(row.id, "paymentScreenshotUrl", url)
+                      }
+                    />
+                  </td>
+                  <td className="px-2 py-1.5 text-center">
+                    <PaymentTypeSelect
+                      value={row.paymentType || ""}
+                      onValueChange={(v) =>
+                        handleUpdate(row.id, "paymentType", v)
                       }
                     />
                   </td>

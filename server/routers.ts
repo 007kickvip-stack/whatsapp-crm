@@ -36,6 +36,7 @@ import {
   getPaypalBalanceSummary, syncOrdersToPaypalIncome,
   syncOrderToPaypalIncome, updatePaypalIncomeFromOrder, deletePaypalIncomeByOrderId,
   syncPaymentToPaypalIncome, updatePaypalIncomeFromPayment, deletePaypalIncomeByPaymentId,
+  updateOrderPaymentStatusFromPaypal, getPaypalIncomeOrderId,
   createReshipment, updateReshipment, deleteReshipment, getReshipmentById, listReshipments, getReshipmentsByOriginalOrderId,
   createOrderPayment, updateOrderPayment, deleteOrderPayment, getOrderPaymentsByOrderId, getOrderPaymentById,
 } from "./db";
@@ -1477,6 +1478,7 @@ export const appRouter = router({
       receivingAccount: z.string().optional(),
       customerName: z.string().optional(),
       staffName: z.string().optional(),
+      paymentType: z.string().optional(),
       remarks: z.string().optional(),
     })).mutation(async ({ input, ctx }) => {
       const id = await createPaypalIncome({
@@ -1500,6 +1502,7 @@ export const appRouter = router({
       receivingAccount: z.string().optional(),
       customerName: z.string().optional(),
       staffName: z.string().optional(),
+      paymentType: z.string().optional(),
       remarks: z.string().optional(),
     })).mutation(async ({ input, ctx }) => {
       const { id, ...data } = input;
@@ -1508,12 +1511,24 @@ export const appRouter = router({
         updateData.incomeDate = data.incomeDate ? new Date(data.incomeDate + "T00:00:00") : null;
       }
       await updatePaypalIncome(id, updateData);
+      // 当“是否收到”状态变更时，自动更新关联订单的付款状态
+      if (data.isReceived !== undefined) {
+        const relatedOrderId = await getPaypalIncomeOrderId(id);
+        if (relatedOrderId) {
+          await updateOrderPaymentStatusFromPaypal(relatedOrderId);
+        }
+      }
       await logAction(ctx, "update", "paypalIncome", id, undefined, JSON.stringify(data));
       return { success: true };
     }),
 
     delete: protectedProcedure.input(z.object({ id: z.number() })).mutation(async ({ input, ctx }) => {
+      // 先查询orderId，删除后更新订单状态
+      const relatedOrderId = await getPaypalIncomeOrderId(input.id);
       await deletePaypalIncome(input.id);
+      if (relatedOrderId) {
+        await updateOrderPaymentStatusFromPaypal(relatedOrderId);
+      }
       await logAction(ctx, "delete", "paypalIncome", input.id);
       return { success: true };
     }),
