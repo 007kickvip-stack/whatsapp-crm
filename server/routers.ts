@@ -5,7 +5,7 @@ import { publicProcedure, protectedProcedure, adminProcedure, router } from "./_
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import {
-  listUsers, updateUserRole, deleteUser, restoreUser, getUserById, createUser,
+  listUsers, updateUserRole, deleteUser, hardDeleteUser, restoreUser, getUserById, createUser,
   getUserByUsername, verifyPassword, updateUserPassword, updateUserUsername, updateUserHireDate,
   createCustomer, updateCustomer, deleteCustomer, getCustomerById, getCustomerByWhatsapp, listCustomers, syncCustomerStats, syncCustomerFromOrder, getCustomerOrderHistory, getCustomerOrderList,
   createOrder, updateOrder, deleteOrder, getOrderById, getOrderWithItems, listOrders,
@@ -126,6 +126,17 @@ export const appRouter = router({
     delete: adminProcedure.input(z.object({ userId: z.number() })).mutation(({ input }) => deleteUser(input.userId)),
 
     restore: adminProcedure.input(z.object({ userId: z.number() })).mutation(({ input }) => restoreUser(input.userId)),
+
+    hardDelete: adminProcedure.input(z.object({ userId: z.number() })).mutation(async ({ input, ctx }) => {
+      // Only allow hard delete of disabled users (not self)
+      if (input.userId === ctx.user.id) {
+        throw new TRPCError({ code: 'BAD_REQUEST', message: '不能删除自己的账号' });
+      }
+      const target = await getUserById(input.userId);
+      if (!target) throw new TRPCError({ code: 'NOT_FOUND', message: '用户不存在' });
+      if (!target.deletedAt) throw new TRPCError({ code: 'BAD_REQUEST', message: '只能删除已禁用的用户' });
+      await hardDeleteUser(input.userId);
+    }),
 
     create: adminProcedure.input(z.object({
       name: z.string().min(1),

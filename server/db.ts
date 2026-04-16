@@ -114,6 +114,13 @@ export async function deleteUser(userId: number) {
   }).where(eq(users.id, userId));
 }
 
+export async function hardDeleteUser(userId: number) {
+  const db = await getDb();
+  if (!db) return;
+  // Permanently delete user from database
+  await db.delete(users).where(eq(users.id, userId));
+}
+
 export async function restoreUser(userId: number) {
   const db = await getDb();
   if (!db) return;

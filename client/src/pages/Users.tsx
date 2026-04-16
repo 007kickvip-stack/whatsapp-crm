@@ -58,6 +58,7 @@ export default function UsersPage() {
   const [page, setPage] = useState(1);
   const [disableId, setDisableId] = useState<number | null>(null);
   const [restoreId, setRestoreId] = useState<number | null>(null);
+  const [deleteId, setDeleteId] = useState<number | null>(null);
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [showPasswordDialog, setShowPasswordDialog] = useState(false);
   const [showSalaryDialog, setShowSalaryDialog] = useState(false);
@@ -125,6 +126,15 @@ export default function UsersPage() {
       toast.success("用户已恢复，可重新登录");
       utils.users.list.invalidate();
       setRestoreId(null);
+    },
+    onError: (err) => toast.error(err.message),
+  });
+
+  const hardDeleteMutation = trpc.users.hardDelete.useMutation({
+    onSuccess: () => {
+      toast.success("用户已彻底删除");
+      utils.users.list.invalidate();
+      setDeleteId(null);
     },
     onError: (err) => toast.error(err.message),
   });
@@ -446,15 +456,26 @@ export default function UsersPage() {
                                 <KeyRound className="h-3.5 w-3.5" />
                               </Button>
                               {isDisabled ? (
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  className="h-8 w-8 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50"
-                                  title="恢复用户"
-                                  onClick={() => setRestoreId(u.id)}
-                                >
-                                  <RotateCcw className="h-3.5 w-3.5" />
-                                </Button>
+                                <>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-8 w-8 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50"
+                                    title="恢复用户"
+                                    onClick={() => setRestoreId(u.id)}
+                                  >
+                                    <RotateCcw className="h-3.5 w-3.5" />
+                                  </Button>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-8 w-8 text-destructive hover:text-destructive hover:bg-red-50"
+                                    title="彻底删除"
+                                    onClick={() => setDeleteId(u.id)}
+                                  >
+                                    <Trash2 className="h-3.5 w-3.5" />
+                                  </Button>
+                                </>
                               ) : (
                                 <Button
                                   variant="ghost"
@@ -876,6 +897,29 @@ export default function UsersPage() {
               className="bg-emerald-600 text-white hover:bg-emerald-700"
             >
               确认恢复
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Hard Delete Confirmation */}
+      <AlertDialog open={deleteId !== null} onOpenChange={() => setDeleteId(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>❗ 彻底删除用户</AlertDialogTitle>
+            <AlertDialogDescription className="space-y-2">
+              <p>此操作将永久删除该用户账号，<strong className="text-destructive">不可恢复</strong>。</p>
+              <p>该用户关联的订单、客户等业务数据仍会保留在系统中，但将不再显示对应的客服名称。</p>
+              <p>建议仅在确认不再需要该账号时执行此操作。</p>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>取消</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => deleteId && hardDeleteMutation.mutate({ userId: deleteId })}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              确认删除
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

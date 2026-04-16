@@ -63,6 +63,9 @@ import {
   DollarSign,
   CheckCircle2,
   XCircle,
+  Rows3,
+  Columns3,
+  Settings2,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useLocation } from "wouter";
@@ -643,6 +646,39 @@ export default function OrdersPage() {
     },
     onError: (err) => toast.error("批量删除失败: " + err.message),
   });
+  // Row density: compact vs comfortable
+  const [rowDensity, setRowDensity] = useState<'compact' | 'comfortable'>(() => {
+    try { return (localStorage.getItem('orders-row-density') as 'compact' | 'comfortable') || 'compact'; } catch { return 'compact'; }
+  });
+  const toggleDensity = useCallback(() => {
+    setRowDensity(prev => {
+      const next = prev === 'compact' ? 'comfortable' : 'compact';
+      try { localStorage.setItem('orders-row-density', next); } catch {}
+      return next;
+    });
+  }, []);
+
+  // Column visibility
+  const [hiddenColumns, setHiddenColumns] = useState<Set<string>>(() => {
+    try {
+      const saved = localStorage.getItem('orders-hidden-columns');
+      return saved ? new Set(JSON.parse(saved)) : new Set<string>();
+    } catch { return new Set<string>(); }
+  });
+  const toggleColumn = useCallback((key: string) => {
+    setHiddenColumns(prev => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key); else next.add(key);
+      try { localStorage.setItem('orders-hidden-columns', JSON.stringify(Array.from(next))); } catch {}
+      return next;
+    });
+  }, []);
+  const showAllColumns = useCallback(() => {
+    setHiddenColumns(new Set());
+    try { localStorage.removeItem('orders-hidden-columns'); } catch {}
+  }, []);
+  const [columnPickerOpen, setColumnPickerOpen] = useState(false);
+
   // Collapse/expand state: set of collapsed order IDs
   const [collapsedOrders, setCollapsedOrders] = useState<Set<number>>(new Set());
 
@@ -967,6 +1003,13 @@ export default function OrdersPage() {
     { key: "completionStatus", label: "完成状态", width: "90px" },
   ];
 
+  // Filtered columns based on visibility
+  const visibleColumns = useMemo(() => columns.filter(col => !hiddenColumns.has(col.key)), [hiddenColumns]);
+
+  // Density class helpers
+  const densityPy = rowDensity === 'compact' ? 'py-1' : 'py-2.5';
+  const densityText = rowDensity === 'compact' ? 'text-[11px]' : 'text-xs';
+
   // Build flat rows
   type FlatRow = {
     orderId: number;
@@ -1169,12 +1212,16 @@ export default function OrdersPage() {
     return rows;
   }, [data, collapsedOrders]);
 
+  // Column visibility helper
+  const isColVisible = useCallback((key: string) => !hiddenColumns.has(key), [hiddenColumns]);
+
   // Render a single table row
   const renderRow = (row: FlatRow, rowIdx: number) => {
     const isOrderBoundary = row.isFirstRow;
     const cellBorderTop = isOrderBoundary ? "border-t-2 border-t-emerald-200" : "border-t border-t-gray-100";
     const bgClass = isOrderBoundary ? "bg-white" : "bg-gray-50/50";
     const hasItem = !!row.itemId;
+    const dp = densityPy;
 
     return (
       <tr
@@ -1185,7 +1232,7 @@ export default function OrdersPage() {
         {/* Checkbox column */}
         {row.isFirstRow && (
           <td
-            className={`py-1 px-1 text-center border-r border-gray-100 sticky left-0 bg-inherit z-[5] ${cellBorderTop}`}
+            className={`${dp} px-1 text-center border-r border-gray-100 sticky left-0 bg-inherit z-[5] ${cellBorderTop}`}
             rowSpan={row.visibleItemCount}
           >
             <Checkbox
@@ -1194,7 +1241,7 @@ export default function OrdersPage() {
             />
           </td>
         )}
-        <td className={`py-1 px-1 text-center border-r border-gray-100 sticky left-[36px] bg-inherit z-[5] ${cellBorderTop}`}>
+        <td className={`${dp} px-1 text-center border-r border-gray-100 sticky left-[36px] bg-inherit z-[5] ${cellBorderTop}`}>
           {row.isFirstRow ? (
             <div className="flex items-center justify-center gap-0.5">
               {/* Collapse/expand toggle for multi-item orders */}
@@ -1347,42 +1394,42 @@ export default function OrdersPage() {
           ) : null}
         </td>
 
-        {/* 1-4: 日期、客服名字、账号、客户WhatsApp - 使用 rowSpan 合并单元格并垂直居中 */}
+        {/* 1-4: 日期、客服名字、账号、客户WhatsApp */}
         {row.isFirstRow && (
           <>
-            <td className={`py-1 px-1 border-r border-gray-100 whitespace-nowrap text-center text-[11px] align-middle ${cellBorderTop}`} rowSpan={row.visibleItemCount || 1}>
+            {isColVisible('date') && <td className={`${dp} px-1 border-r border-gray-100 whitespace-nowrap text-center text-[11px] align-middle ${cellBorderTop}`} rowSpan={row.visibleItemCount || 1}>
               <EditableCell
                 value={row.orderDate || ""}
                 type="date"
                 onSave={(v) => saveOrderField(row.orderId, "orderDate", v)}
                 className="font-medium text-gray-700"
               />
-            </td>
-            <td className={`py-1 px-1 border-r border-gray-100 whitespace-nowrap text-center text-[11px] align-middle ${cellBorderTop}`} rowSpan={row.visibleItemCount || 1}>
+            </td>}
+            {isColVisible('staffName') && <td className={`${dp} px-1 border-r border-gray-100 whitespace-nowrap text-center text-[11px] align-middle ${cellBorderTop}`} rowSpan={row.visibleItemCount || 1}>
               {row.staffName || ""}
-            </td>
-            <td className={`py-1 px-1 border-r border-gray-100 whitespace-nowrap text-center text-[11px] align-middle ${cellBorderTop}`} rowSpan={row.visibleItemCount || 1}>
+            </td>}
+            {isColVisible('account') && <td className={`${dp} px-1 border-r border-gray-100 whitespace-nowrap text-center text-[11px] align-middle ${cellBorderTop}`} rowSpan={row.visibleItemCount || 1}>
               <AccountSelect
                 value={row.account || ""}
                 onValueChange={(v) => saveOrderField(row.orderId, "account", v)}
                 placeholder="账号"
                 compact
               />
-            </td>
-            <td className={`py-1 px-1 border-r border-gray-100 whitespace-nowrap text-center text-[11px] align-middle ${cellBorderTop}`} rowSpan={row.visibleItemCount || 1}>
+            </td>}
+            {isColVisible('whatsapp') && <td className={`${dp} px-1 border-r border-gray-100 whitespace-nowrap text-center text-[11px] align-middle ${cellBorderTop}`} rowSpan={row.visibleItemCount || 1}>
               <EditableCell
                 value={row.customerWhatsapp}
                 onSave={(v) => saveOrderField(row.orderId, "customerWhatsapp", v)}
                 className="font-medium text-emerald-700"
                 placeholder="WhatsApp"
               />
-            </td>
+            </td>}
           </>
         )}
 
-        {/* 5. 客户属性 - order level, rowSpan合并 */}
-        {row.isFirstRow && (
-          <td className={`py-1 px-1 border-r border-gray-100 whitespace-nowrap text-center text-[11px] align-middle ${cellBorderTop}`} rowSpan={row.visibleItemCount || 1}>
+        {/* 5. 客户属性 */}
+        {row.isFirstRow && isColVisible('customerType') && (
+          <td className={`${dp} px-1 border-r border-gray-100 whitespace-nowrap text-center text-[11px] align-middle ${cellBorderTop}`} rowSpan={row.visibleItemCount || 1}>
             <EditableCell
               value={row.customerType || "新零售"}
               type="select"
@@ -1393,9 +1440,9 @@ export default function OrdersPage() {
           </td>
         )}
 
-        {/* 6. 订单编号 - rowSpan合并居中 */}
-        {row.isFirstRow && (
-          <td className={`py-1 px-1 border-r border-gray-100 whitespace-nowrap text-center text-[11px] align-middle ${cellBorderTop}`} rowSpan={row.visibleItemCount || 1}>
+        {/* 6. 订单编号 */}
+        {row.isFirstRow && isColVisible('orderNumber') && (
+          <td className={`${dp} px-1 border-r border-gray-100 whitespace-nowrap text-center text-[11px] align-middle ${cellBorderTop}`} rowSpan={row.visibleItemCount || 1}>
             <button
               onClick={() => setLocation(`/orders/${row.orderId}`)}
               className="text-primary hover:underline text-center font-medium text-[11px]"
@@ -1405,8 +1452,8 @@ export default function OrdersPage() {
           </td>
         )}
 
-        {/* 7. 订单图片 - item level with upload, paste, delete */}
-        <td className={`py-1 px-1 border-r border-gray-100 text-center ${cellBorderTop}`}>
+        {/* 7. 订单图片 */}
+        {isColVisible('orderImage') && <td className={`${dp} px-1 border-r border-gray-100 text-center ${cellBorderTop}`}>
           {hasItem ? (
             <ImageUploadCell
               imageUrl={row.orderImageUrl}
@@ -1416,10 +1463,10 @@ export default function OrdersPage() {
               uploadMutation={uploadMutation}
             />
           ) : null}
-        </td>
+        </td>}
 
-        {/* 8. Size - item level editable */}
-        <td className={`py-1 px-1 border-r border-gray-100 whitespace-nowrap text-center text-[11px] ${cellBorderTop}`}>
+        {/* 8. Size */}
+        {isColVisible('size') && <td className={`${dp} px-1 border-r border-gray-100 whitespace-nowrap text-center text-[11px] ${cellBorderTop}`}>
           {hasItem ? (
             <EditableCell
               value={row.size || ""}
@@ -1428,10 +1475,10 @@ export default function OrdersPage() {
               className="font-medium"
             />
           ) : null}
-        </td>
+        </td>}
 
         {/* 9. 国内单号 */}
-        <td className={`py-1 px-1 border-r border-gray-100 whitespace-nowrap text-center text-[11px] ${cellBorderTop}`}>
+        {isColVisible('domesticTracking') && <td className={`${dp} px-1 border-r border-gray-100 whitespace-nowrap text-center text-[11px] ${cellBorderTop}`}>
           {hasItem ? (
             <div className="flex flex-col gap-0.5">
               <div className="flex items-center gap-0.5">
@@ -1469,10 +1516,10 @@ export default function OrdersPage() {
               )}
             </div>
           ) : null}
-        </td>
+        </td>}
 
         {/* 10. 推荐码数 */}
-        <td className={`py-1 px-1 border-r border-gray-100 whitespace-nowrap text-center text-[11px] ${cellBorderTop}`}>
+        {isColVisible('sizeRec') && <td className={`${dp} px-1 border-r border-gray-100 whitespace-nowrap text-center text-[11px] ${cellBorderTop}`}>
           {hasItem ? (
             <EditableCell
               value={row.sizeRecommendation || ""}
@@ -1480,11 +1527,11 @@ export default function OrdersPage() {
               placeholder="推荐码数"
             />
           ) : null}
-        </td>
+        </td>}
 
-        {/* 11. 联系方式 - 使用 rowSpan 合并单元格并垂直居中 */}
-        {row.isFirstRow && (
-          <td className={`py-1 px-1 border-r border-gray-100 text-center text-[11px] max-w-[200px] align-middle ${cellBorderTop}`} rowSpan={row.visibleItemCount || 1}>
+        {/* 11. 联系方式 */}
+        {row.isFirstRow && isColVisible('contactInfo') && (
+          <td className={`${dp} px-1 border-r border-gray-100 text-center text-[11px] max-w-[200px] align-middle ${cellBorderTop}`} rowSpan={row.visibleItemCount || 1}>
             {hasItem ? (
               <EditableCell
                 value={row.contactInfo || ""}
@@ -1497,7 +1544,7 @@ export default function OrdersPage() {
         )}
 
         {/* 12. 国际跟踪单号 */}
-        <td className={`py-1 px-1 border-r border-gray-100 whitespace-nowrap text-center text-[11px] ${cellBorderTop}`}>
+        {isColVisible('intlTracking') && <td className={`${dp} px-1 border-r border-gray-100 whitespace-nowrap text-center text-[11px] ${cellBorderTop}`}>
           {hasItem ? (
             <div className="flex items-center gap-0.5">
               <EditableCell
@@ -1520,10 +1567,10 @@ export default function OrdersPage() {
               )}
             </div>
           ) : null}
-        </td>
+        </td>}
 
         {/* 12.5. 原订单号 */}
-        <td className={`py-1 px-1 border-r border-gray-100 whitespace-nowrap text-center text-[11px] ${cellBorderTop}`}>
+        {isColVisible('originalOrderNo') && <td className={`${dp} px-1 border-r border-gray-100 whitespace-nowrap text-center text-[11px] ${cellBorderTop}`}>
           {hasItem ? (
             <EditableCell
               value={row.originalOrderNo || ""}
@@ -1531,10 +1578,10 @@ export default function OrdersPage() {
               placeholder="原订单号"
             />
           ) : null}
-        </td>
+        </td>}
 
         {/* 13. 发出日期 */}
-        <td className={`py-1 px-1 border-r border-gray-100 whitespace-nowrap text-center text-[11px] ${cellBorderTop}`}>
+        {isColVisible('shipDate') && <td className={`${dp} px-1 border-r border-gray-100 whitespace-nowrap text-center text-[11px] ${cellBorderTop}`}>
           {hasItem ? (
             <EditableCell
               value={row.shipDate || ""}
@@ -1543,10 +1590,10 @@ export default function OrdersPage() {
               placeholder="日期"
             />
           ) : null}
-        </td>
+        </td>}
 
         {/* 14. 件数 */}
-        <td className={`py-1 px-1 border-r border-gray-100 text-center text-[11px] ${cellBorderTop}`}>
+        {isColVisible('quantity') && <td className={`${dp} px-1 border-r border-gray-100 text-center text-[11px] ${cellBorderTop}`}>
           {hasItem ? (
             <EditableCell
               value={row.quantity || ""}
@@ -1555,10 +1602,10 @@ export default function OrdersPage() {
               placeholder="0"
             />
           ) : null}
-        </td>
+        </td>}
 
         {/* 15. 货源 */}
-        <td className={`py-1 px-1 border-r border-gray-100 whitespace-nowrap text-center text-[11px] ${cellBorderTop}`}>
+        {isColVisible('source') && <td className={`${dp} px-1 border-r border-gray-100 whitespace-nowrap text-center text-[11px] ${cellBorderTop}`}>
           {hasItem ? (
             <EditableCell
               value={row.source || ""}
@@ -1566,10 +1613,10 @@ export default function OrdersPage() {
               placeholder="货源"
             />
           ) : null}
-        </td>
+        </td>}
 
         {/* 16. 订单状态 */}
-        <td className={`py-1 px-1 border-r border-gray-100 text-center text-[11px] ${cellBorderTop}`}>
+        {isColVisible('orderStatus') && <td className={`${dp} px-1 border-r border-gray-100 text-center text-[11px] ${cellBorderTop}`}>
           {hasItem ? (
             <EditableCell
               value={row.itemStatus || row.orderStatus || "已报货，待发货"}
@@ -1585,12 +1632,11 @@ export default function OrdersPage() {
               selectOptions={ORDER_STATUSES}
               selectColorFn={statusColor}
               onSave={(v) => saveOrderField(row.orderId, "orderStatus", v)}
-            />
-          ) : null}
-        </td>
+            />          ) : null}
+        </td>}
 
-        {/* 17. 总金额$ - editable */}
-        <td className={`py-1 px-1 border-r border-gray-100 text-center font-mono whitespace-nowrap text-[11px] ${cellBorderTop}`}>
+        {/* 17. 总金额$ */}
+        {isColVisible('amountUsd') && <td className={`${dp} px-1 border-r border-gray-100 text-center font-mono whitespace-nowrap text-[11px] ${cellBorderTop}`}>
           {hasItem ? (
             <EditableCell
               value={row.amountUsd || ""}
@@ -1601,15 +1647,15 @@ export default function OrdersPage() {
           ) : (
             fmtNum(row.amountUsd) ? `$${fmtNum(row.amountUsd)}` : ""
           )}
-        </td>
+        </td>}
 
-        {/* 18. 总金额¥ - auto: 总金额$ × 汇率 */}
-        <td className={`py-1 px-1 border-r border-gray-100 text-center font-mono whitespace-nowrap text-[11px] bg-gray-50/50 ${cellBorderTop}`}>
+        {/* 18. 总金额¥ */}
+        {isColVisible('amountCny') && <td className={`${dp} px-1 border-r border-gray-100 text-center font-mono whitespace-nowrap text-[11px] bg-gray-50/50 ${cellBorderTop}`}>
           {fmtNum(row.amountCny) ? `¥${fmtNum(row.amountCny)}` : ""}
-        </td>
+        </td>}
 
-        {/* 19. 售价 - editable */}
-        <td className={`py-1 px-1 border-r border-gray-100 text-center font-mono whitespace-nowrap text-[11px] ${cellBorderTop}`}>
+        {/* 19. 售价 */}
+        {isColVisible('sellingPrice') && <td className={`${dp} px-1 border-r border-gray-100 text-center font-mono whitespace-nowrap text-[11px] ${cellBorderTop}`}>
           {hasItem ? (
             <EditableCell
               value={row.sellingPrice || ""}
@@ -1618,10 +1664,10 @@ export default function OrdersPage() {
               placeholder="0"
             />
           ) : null}
-        </td>
+        </td>}
 
-        {/* 20. 产品成本 - editable */}
-        <td className={`py-1 px-1 border-r border-gray-100 text-center font-mono whitespace-nowrap text-[11px] ${cellBorderTop}`}>
+        {/* 20. 产品成本 */}
+        {isColVisible('productCost') && <td className={`${dp} px-1 border-r border-gray-100 text-center font-mono whitespace-nowrap text-[11px] ${cellBorderTop}`}>
           {hasItem ? (
             <EditableCell
               value={row.productCost || ""}
@@ -1630,25 +1676,25 @@ export default function OrdersPage() {
               placeholder="0"
             />
           ) : null}
-        </td>
+        </td>}
 
-        {/* 21. 产品毛利润 - auto: 售价 - 产品成本 */}
-        <td className={`py-1 px-1 border-r border-gray-100 text-center font-mono whitespace-nowrap text-[11px] bg-gray-50/50 ${profitColor(row.productProfit)} ${cellBorderTop}`}>
+        {/* 21. 产品毛利润 */}
+        {isColVisible('productProfit') && <td className={`${dp} px-1 border-r border-gray-100 text-center font-mono whitespace-nowrap text-[11px] bg-gray-50/50 ${profitColor(row.productProfit)} ${cellBorderTop}`}>
           {fmtNum(row.productProfit)}
-        </td>
+        </td>}
 
-        {/* 22. 产品毛利率 - auto: 产品毛利润 ÷ 售价 */}
-        <td className={`py-1 px-1 border-r border-gray-100 text-center font-mono whitespace-nowrap text-[11px] bg-gray-50/50 ${profitColor(row.productProfitRate)} ${cellBorderTop}`}>
+        {/* 22. 产品毛利率 */}
+        {isColVisible('productProfitRate') && <td className={`${dp} px-1 border-r border-gray-100 text-center font-mono whitespace-nowrap text-[11px] bg-gray-50/50 ${profitColor(row.productProfitRate)} ${cellBorderTop}`}>
           {fmtPct(row.productProfitRate)}
-        </td>
+        </td>}
 
-        {/* 23. 收取运费(¥) - auto: 总金额¥ - 售价 */}
-        <td className={`py-1 px-1 border-r border-gray-100 text-center font-mono whitespace-nowrap text-[11px] bg-gray-50/50 ${cellBorderTop}`}>
+        {/* 23. 收取运费(¥) */}
+        {isColVisible('shippingCharged') && <td className={`${dp} px-1 border-r border-gray-100 text-center font-mono whitespace-nowrap text-[11px] bg-gray-50/50 ${cellBorderTop}`}>
           {fmtNum(row.shippingCharged)}
-        </td>
+        </td>}
 
-        {/* 24. 实际运费 - editable */}
-        <td className={`py-1 px-1 border-r border-gray-100 text-center font-mono whitespace-nowrap text-[11px] ${cellBorderTop}`}>
+        {/* 24. 实际运费 */}
+        {isColVisible('shippingActual') && <td className={`${dp} px-1 border-r border-gray-100 text-center font-mono whitespace-nowrap text-[11px] ${cellBorderTop}`}>
           {hasItem ? (
             <EditableCell
               value={row.shippingActual || ""}
@@ -1657,31 +1703,31 @@ export default function OrdersPage() {
               placeholder="0"
             />
           ) : null}
-        </td>
+        </td>}
 
-        {/* 25. 运费利润 - auto: 收取运费 - 实际运费 */}
-        <td className={`py-1 px-1 border-r border-gray-100 text-center font-mono whitespace-nowrap text-[11px] bg-gray-50/50 ${profitColor(row.shippingProfit)} ${cellBorderTop}`}>
+        {/* 25. 运费利润 */}
+        {isColVisible('shippingProfit') && <td className={`${dp} px-1 border-r border-gray-100 text-center font-mono whitespace-nowrap text-[11px] bg-gray-50/50 ${profitColor(row.shippingProfit)} ${cellBorderTop}`}>
           {fmtNum(row.shippingProfit)}
-        </td>
+        </td>}
 
-        {/* 26. 运费利润率 - auto: 运费利润 ÷ 收取运费 */}
-        <td className={`py-1 px-1 border-r border-gray-100 text-center font-mono whitespace-nowrap text-[11px] bg-gray-50/50 ${profitColor(row.shippingProfitRate)} ${cellBorderTop}`}>
+        {/* 26. 运费利润率 */}
+        {isColVisible('shippingProfitRate') && <td className={`${dp} px-1 border-r border-gray-100 text-center font-mono whitespace-nowrap text-[11px] bg-gray-50/50 ${profitColor(row.shippingProfitRate)} ${cellBorderTop}`}>
           {fmtPct(row.shippingProfitRate)}
-        </td>
+        </td>}
 
-        {/* 27. 总利润 - auto: 产品毛利润 + 运费利润 */}
-        <td className={`py-1 px-1 border-r border-gray-100 text-center font-mono whitespace-nowrap text-[11px] font-medium bg-gray-50/50 ${profitColor(row.totalProfit)} ${cellBorderTop}`}>
+        {/* 27. 总利润 */}
+        {isColVisible('totalProfit') && <td className={`${dp} px-1 border-r border-gray-100 text-center font-mono whitespace-nowrap text-[11px] font-medium bg-gray-50/50 ${profitColor(row.totalProfit)} ${cellBorderTop}`}>
           {fmtNum(row.totalProfit)}
-        </td>
+        </td>}
 
-        {/* 28. 利润率 - auto: 总利润 ÷ 总金额¥ */}
-        <td className={`py-1 px-1 border-r border-gray-100 text-center font-mono whitespace-nowrap text-[11px] bg-gray-50/50 ${profitColor(row.profitRate)} ${cellBorderTop}`}>
+        {/* 28. 利润率 */}
+        {isColVisible('profitRate') && <td className={`${dp} px-1 border-r border-gray-100 text-center font-mono whitespace-nowrap text-[11px] bg-gray-50/50 ${profitColor(row.profitRate)} ${cellBorderTop}`}>
           {fmtPct(row.profitRate)}
-        </td>
+        </td>}
 
-        {/* 29. 付款截图 - rowSpan合并居中 */}
-        {row.isFirstRow && (
-          <td className={`py-1 px-1 border-r border-gray-100 text-center align-middle ${cellBorderTop}`} rowSpan={row.visibleItemCount || 1}>
+        {/* 29. 付款截图 */}
+        {row.isFirstRow && isColVisible('paymentScreenshot') && (
+          <td className={`${dp} px-1 border-r border-gray-100 text-center align-middle ${cellBorderTop}`} rowSpan={row.visibleItemCount || 1}>
             <button
               className="w-full h-full flex items-center justify-center cursor-pointer hover:bg-gray-50 rounded transition-colors p-0.5"
               onClick={() => {
@@ -1697,9 +1743,9 @@ export default function OrdersPage() {
           </td>
         )}
 
-        {/* 29.5. 付款金额($) - rowSpan合并居中 */}
-        {row.isFirstRow && (
-          <td className={`py-1 px-1 border-r border-gray-100 text-center text-[11px] align-middle ${cellBorderTop}`} rowSpan={row.visibleItemCount || 1}>
+        {/* 29.5. 付款金额($) */}
+        {row.isFirstRow && isColVisible('paymentAmountDisplay') && (
+          <td className={`${dp} px-1 border-r border-gray-100 text-center text-[11px] align-middle ${cellBorderTop}`} rowSpan={row.visibleItemCount || 1}>
             <button
               className="w-full text-center cursor-pointer hover:bg-gray-50 rounded px-1 py-0.5 transition-colors"
               onClick={() => {
@@ -1717,15 +1763,15 @@ export default function OrdersPage() {
           </td>
         )}
 
-        {/* 29.6. 收款账户 - rowSpan合并居中，从支付记录聚合多项显示 */}
-        {row.isFirstRow && (
-          <td className={`py-1 px-1 border-r border-gray-100 text-center text-[11px] align-middle ${cellBorderTop}`} rowSpan={row.visibleItemCount || 1}>
+        {/* 29.6. 收款账户 */}
+        {row.isFirstRow && isColVisible('receivingAccount') && (
+          <td className={`${dp} px-1 border-r border-gray-100 text-center text-[11px] align-middle ${cellBorderTop}`} rowSpan={row.visibleItemCount || 1}>
             <ReceivingAccountsDisplay orderId={row.orderId} fallbackAccount={row.receivingAccount} />
           </td>
         )}
 
         {/* 30. 备注 */}
-        <td className={`py-1 px-1 border-r border-gray-100 text-center text-[11px] max-w-[120px] ${cellBorderTop}`}>
+        {isColVisible('remarks') && <td className={`${dp} px-1 border-r border-gray-100 text-center text-[11px] max-w-[120px] ${cellBorderTop}`}>
           {hasItem ? (
             <EditableCell
               value={row.remarks || ""}
@@ -1741,11 +1787,11 @@ export default function OrdersPage() {
               placeholder="备注"
             />
           ) : null}
-        </td>
+        </td>}
 
-        {/* 31. 付款状态 - rowSpan合并居中 */}
-        {row.isFirstRow && (
-          <td className={`py-1 px-1 border-r border-gray-100 text-center text-[11px] align-middle ${cellBorderTop}`} rowSpan={row.visibleItemCount || 1}>
+        {/* 31. 付款状态 */}
+        {row.isFirstRow && isColVisible('paymentStatus') && (
+          <td className={`${dp} px-1 border-r border-gray-100 text-center text-[11px] align-middle ${cellBorderTop}`} rowSpan={row.visibleItemCount || 1}>
             <EditableCell
               value={row.paymentStatus || "未收到"}
               type="select"
@@ -1756,35 +1802,34 @@ export default function OrdersPage() {
           </td>
         )}
 
-        {/* 客户名字、国家、客户分层、订购类目、出生日期、客户邮箱 - rowSpan合并 */}
+        {/* 客户信息列 + 完成状态 */}
         {row.isFirstRow && (
           <>
-            <td className={`py-1 px-1 border-r border-gray-100 text-center text-[11px] align-middle ${cellBorderTop}`} rowSpan={row.visibleItemCount || 1}>
+            {isColVisible('customerName') && <td className={`${dp} px-1 border-r border-gray-100 text-center text-[11px] align-middle ${cellBorderTop}`} rowSpan={row.visibleItemCount || 1}>
               <EditableCell
                 value={row.customerName || ""}
                 type="text"
                 onSave={(v) => saveOrderField(row.orderId, "customerName", v)}
                 placeholder="客户名字"
               />
-            </td>
-            <td className={`py-1 px-1 border-r border-gray-100 text-center text-[11px] align-middle ${cellBorderTop}`} rowSpan={row.visibleItemCount || 1}>
+            </td>}
+            {isColVisible('customerCountry') && <td className={`${dp} px-1 border-r border-gray-100 text-center text-[11px] align-middle ${cellBorderTop}`} rowSpan={row.visibleItemCount || 1}>
               <CountrySelect
                 value={row.customerCountry || ""}
                 onValueChange={(v) => saveOrderField(row.orderId, "customerCountry", v)}
                 placeholder="国家"
                 compact
               />
-            </td>
-            <td className={`py-1 px-1 border-r border-gray-100 text-center text-[11px] align-middle ${cellBorderTop}`} rowSpan={row.visibleItemCount || 1}>
+            </td>}
+            {isColVisible('customerTier') && <td className={`${dp} px-1 border-r border-gray-100 text-center text-[11px] align-middle ${cellBorderTop}`} rowSpan={row.visibleItemCount || 1}>
               <EditableCell
                 value={row.customerTier || ""}
                 type="select"
                 selectOptions={["低质量", "中等质量", "高质量", "批发商-低质量", "批发商-高质量", "经销商-低质量", "经销商-高质量"]}
                 onSave={(v) => saveOrderField(row.orderId, "customerTier", v)}
               />
-            </td>
-
-            <td className={`py-1 px-1 border-r border-gray-100 text-center text-[11px] align-middle ${cellBorderTop}`} rowSpan={row.visibleItemCount || 1}>
+            </td>}
+            {isColVisible('orderCategory') && <td className={`${dp} px-1 border-r border-gray-100 text-center text-[11px] align-middle ${cellBorderTop}`} rowSpan={row.visibleItemCount || 1}>
               <EditableCell
                 value={row.orderCategory || ""}
                 type="multiSelect"
@@ -1792,39 +1837,38 @@ export default function OrdersPage() {
                 onSave={(v) => saveOrderField(row.orderId, "orderCategory", v)}
                 placeholder="订购类目"
               />
-            </td>
-            <td className={`py-1 px-1 border-r border-gray-100 text-center text-[11px] align-middle ${cellBorderTop}`} rowSpan={row.visibleItemCount || 1}>
+            </td>}
+            {isColVisible('customerBirthDate') && <td className={`${dp} px-1 border-r border-gray-100 text-center text-[11px] align-middle ${cellBorderTop}`} rowSpan={row.visibleItemCount || 1}>
               <EditableCell
                 value={row.customerBirthDate || ""}
                 type="date"
                 onSave={(v) => saveOrderField(row.orderId, "customerBirthDate", v)}
               />
-            </td>
-            <td className={`py-1 px-1 border-r border-gray-100 text-center text-[11px] align-middle ${cellBorderTop}`} rowSpan={row.visibleItemCount || 1}>
+            </td>}
+            {isColVisible('customerEmail') && <td className={`${dp} px-1 border-r border-gray-100 text-center text-[11px] align-middle ${cellBorderTop}`} rowSpan={row.visibleItemCount || 1}>
               <EditableCell
                 value={row.customerEmail || ""}
                 type="text"
                 onSave={(v) => saveOrderField(row.orderId, "customerEmail", v)}
                 placeholder="客户邮箱"
               />
-            </td>
-            <td className={`py-1 px-1 border-r border-gray-100 text-center text-[11px] align-middle ${cellBorderTop}`} rowSpan={row.visibleItemCount || 1}>
+            </td>}
+            {isColVisible('wpEntryDate') && <td className={`${dp} px-1 border-r border-gray-100 text-center text-[11px] align-middle ${cellBorderTop}`} rowSpan={row.visibleItemCount || 1}>
               <EditableCell
                 value={row.wpEntryDate || ""}
                 type="date"
                 onSave={(v) => saveOrderField(row.orderId, "wpEntryDate", v)}
                 placeholder="进入WP日期"
               />
-            </td>
-            {/* 完成状态 */}
-            <td className={`py-1 px-1 border-r border-gray-100 text-center text-[11px] align-middle ${cellBorderTop}`} rowSpan={row.visibleItemCount || 1}>
+            </td>}
+            {isColVisible('completionStatus') && <td className={`${dp} px-1 border-r border-gray-100 text-center text-[11px] align-middle ${cellBorderTop}`} rowSpan={row.visibleItemCount || 1}>
               <EditableCell
                 value={row.completionStatus || "未完成"}
                 type="select"
                 selectOptions={["已完成", "未完成"]}
                 onSave={(v) => completionStatusMutation.mutate({ orderId: row.orderId, completionStatus: v })}
               />
-            </td>
+            </td>}
           </>
         )}
       </tr>
@@ -1842,6 +1886,54 @@ export default function OrdersPage() {
           </p>
         </div>
         <div className="flex gap-2">
+          {/* Row density toggle */}
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={toggleDensity}
+                className="h-9 w-9"
+              >
+                <Rows3 className="h-4 w-4" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>{rowDensity === 'compact' ? '切换为舒适模式' : '切换为紧凑模式'}</TooltipContent>
+          </Tooltip>
+          {/* Column visibility picker */}
+          <Popover open={columnPickerOpen} onOpenChange={setColumnPickerOpen}>
+            <PopoverTrigger asChild>
+              <Button variant="outline" size="icon" className="h-9 w-9 relative">
+                <Settings2 className="h-4 w-4" />
+                {hiddenColumns.size > 0 && (
+                  <span className="absolute -top-1 -right-1 h-4 w-4 rounded-full bg-emerald-600 text-white text-[10px] flex items-center justify-center">
+                    {hiddenColumns.size}
+                  </span>
+                )}
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-64 max-h-80 overflow-y-auto p-3" align="end">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-sm font-medium">列显示设置</span>
+                {hiddenColumns.size > 0 && (
+                  <Button variant="ghost" size="sm" onClick={showAllColumns} className="h-6 text-xs px-2">
+                    全部显示
+                  </Button>
+                )}
+              </div>
+              <div className="space-y-1">
+                {columns.map(col => (
+                  <label key={col.key} className="flex items-center gap-2 py-1 px-1 rounded hover:bg-muted/50 cursor-pointer text-sm">
+                    <Checkbox
+                      checked={!hiddenColumns.has(col.key)}
+                      onCheckedChange={() => toggleColumn(col.key)}
+                    />
+                    {col.label}
+                  </label>
+                ))}
+              </div>
+            </PopoverContent>
+          </Popover>
           <Button
             variant="outline"
             onClick={handleExport}
@@ -2166,7 +2258,7 @@ export default function OrdersPage() {
                           </Tooltip>
                         </div>
                       </th>
-                      {columns.map((col) => (
+                      {visibleColumns.map((col) => (
                         <th
                           key={col.key}
                           className="py-2 px-2 text-center font-medium border-r border-emerald-500 whitespace-nowrap"
