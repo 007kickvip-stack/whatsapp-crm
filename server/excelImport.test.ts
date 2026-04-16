@@ -413,3 +413,244 @@ describe("Excel Import - Auto Create Mode", () => {
     expect(db.createOrder).toHaveBeenCalledTimes(1);
   });
 });
+
+describe("Excel Import - Image Column Support", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("preview should handle orderImageUrl mapping in custom mapping", async () => {
+    const { registerExcelImportRoute } = await import("./excelImport");
+    const { mockApp, routes } = createMockApp();
+    registerExcelImportRoute(mockApp);
+
+    const previewHandler = routes["/api/excel-preview"];
+
+    (XLSX.read as any).mockReturnValue({
+      SheetNames: ["Sheet1"],
+      Sheets: { Sheet1: {} },
+    });
+    (XLSX.utils.sheet_to_json as any).mockReturnValue([
+      ["订单编号", "订单图片", "Size"],
+      ["ORD001", "", "42"],
+    ]);
+
+    (db.findOrderItemsByOrderNumbers as any).mockResolvedValue([]);
+    (db.findOrderItemsByOriginalOrderNos as any).mockResolvedValue([]);
+
+    const req = createMockReq({
+      body: {
+        customMapping: ["orderNumber", "orderImageUrl", "size"],
+      },
+    });
+    const res = createMockRes();
+
+    await previewHandler(req, res);
+
+    expect(res._json.success).toBe(true);
+    expect(res._json.rows[0].orderNumber).toBe("ORD001");
+    expect(res._json.rows[0].size).toBe("42");
+  });
+
+  it("preview should handle paymentScreenshotUrl mapping", async () => {
+    const { registerExcelImportRoute } = await import("./excelImport");
+    const { mockApp, routes } = createMockApp();
+    registerExcelImportRoute(mockApp);
+
+    const previewHandler = routes["/api/excel-preview"];
+
+    (XLSX.read as any).mockReturnValue({
+      SheetNames: ["Sheet1"],
+      Sheets: { Sheet1: {} },
+    });
+    (XLSX.utils.sheet_to_json as any).mockReturnValue([
+      ["订单编号", "付款截图", "客户WhatsApp"],
+      ["ORD001", "https://example.com/img.jpg", "+1234567890"],
+    ]);
+
+    (db.findOrderItemsByOrderNumbers as any).mockResolvedValue([]);
+    (db.findOrderItemsByOriginalOrderNos as any).mockResolvedValue([]);
+
+    const req = createMockReq({
+      body: {
+        customMapping: ["orderNumber", "paymentScreenshotUrl", "customerWhatsapp"],
+      },
+    });
+    const res = createMockRes();
+
+    await previewHandler(req, res);
+
+    expect(res._json.success).toBe(true);
+    expect(res._json.rows[0].paymentScreenshotUrl).toBe("https://example.com/img.jpg");
+    expect(res._json.canAutoCreate).toBe(true);
+  });
+
+  it("headers endpoint should auto-map 订单图片 column", async () => {
+    const { registerExcelImportRoute } = await import("./excelImport");
+    const { mockApp, routes } = createMockApp();
+    registerExcelImportRoute(mockApp);
+
+    const headersHandler = routes["/api/excel-headers"];
+
+    (XLSX.read as any).mockReturnValue({
+      SheetNames: ["Sheet1"],
+      Sheets: { Sheet1: {} },
+    });
+    (XLSX.utils.sheet_to_json as any).mockReturnValue([
+      ["订单编号", "订单图片", "付款截图", "Size"],
+      ["ORD001", "", "", "42"],
+    ]);
+
+    const req = createMockReq();
+    const res = createMockRes();
+
+    await headersHandler(req, res);
+
+    expect(res._json.success).toBe(true);
+    expect(res._json.autoMapping).toContain("orderImageUrl");
+    expect(res._json.autoMapping).toContain("paymentScreenshotUrl");
+  });
+
+  it("import should include image URL fields in updatable fields", async () => {
+    const { registerExcelImportRoute } = await import("./excelImport");
+    const { mockApp, routes } = createMockApp();
+    registerExcelImportRoute(mockApp);
+
+    const importHandler = routes["/api/excel-import"];
+
+    (XLSX.read as any).mockReturnValue({
+      SheetNames: ["Sheet1"],
+      Sheets: { Sheet1: {} },
+    });
+    (XLSX.utils.sheet_to_json as any).mockReturnValue([
+      ["订单编号", "订单图片"],
+      ["ORD001", "https://cdn.example.com/order1.jpg"],
+    ]);
+
+    // Mock existing item match
+    (db.findOrderItemsByOrderNumbers as any).mockResolvedValue([
+      { item: { id: 10, orderId: 5, orderNumber: "ORD001" } },
+    ]);
+    (db.findOrderItemsByOriginalOrderNos as any).mockResolvedValue([]);
+
+    const req = createMockReq({
+      body: {
+        customMapping: JSON.stringify(["orderNumber", "orderImageUrl"]),
+      },
+    });
+    const res = createMockRes();
+
+    await importHandler(req, res);
+
+    expect(res._json.success).toBe(true);
+    expect(res._json.updated).toBe(1);
+    expect(db.updateOrderItem).toHaveBeenCalledWith(10, expect.objectContaining({
+      orderImageUrl: "https://cdn.example.com/order1.jpg",
+    }));
+  });
+
+  it("should clean DISPIMG formula values from image cells", async () => {
+    const { registerExcelImportRoute } = await import("./excelImport");
+    const { mockApp, routes } = createMockApp();
+    registerExcelImportRoute(mockApp);
+
+    const headersHandler = routes["/api/excel-headers"];
+
+    (XLSX.read as any).mockReturnValue({
+      SheetNames: ["Sheet1"],
+      Sheets: { Sheet1: {} },
+    });
+    (XLSX.utils.sheet_to_json as any).mockReturnValue([
+      ["订单编号", "订单图片"],
+      ["ORD001", '=DISPIMG("ID_xxx",1)'],
+    ]);
+
+    const req = createMockReq();
+    const res = createMockRes();
+
+    await headersHandler(req, res);
+
+    expect(res._json.success).toBe(true);
+    // DISPIMG formula should be cleaned to empty string
+    expect(res._json.sampleData[0][1]).toBe("");
+  });
+});
+
+describe("Excel Import - Simplified Flow Validation", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("should register all 3 endpoints", async () => {
+    const { registerExcelImportRoute } = await import("./excelImport");
+    const { mockApp, routes } = createMockApp();
+    registerExcelImportRoute(mockApp);
+
+    expect(routes["/api/excel-headers"]).toBeDefined();
+    expect(routes["/api/excel-preview"]).toBeDefined();
+    expect(routes["/api/excel-import"]).toBeDefined();
+  });
+
+  it("headers endpoint should return totalRows for display", async () => {
+    const { registerExcelImportRoute } = await import("./excelImport");
+    const { mockApp, routes } = createMockApp();
+    registerExcelImportRoute(mockApp);
+
+    const headersHandler = routes["/api/excel-headers"];
+
+    (XLSX.read as any).mockReturnValue({
+      SheetNames: ["Sheet1"],
+      Sheets: { Sheet1: {} },
+    });
+    (XLSX.utils.sheet_to_json as any).mockReturnValue([
+      ["订单编号", "Size"],
+      ["ORD001", "42"],
+      ["ORD002", "43"],
+      ["ORD003", "44"],
+      ["ORD004", "45"],
+      ["ORD005", "46"],
+    ]);
+
+    const req = createMockReq();
+    const res = createMockRes();
+
+    await headersHandler(req, res);
+
+    expect(res._json.success).toBe(true);
+    expect(res._json.totalRows).toBe(5); // 5 data rows (excluding header)
+    expect(res._json.sampleData).toHaveLength(3); // max 3 sample rows
+  });
+
+  it("preview should return mapping info for display", async () => {
+    const { registerExcelImportRoute } = await import("./excelImport");
+    const { mockApp, routes } = createMockApp();
+    registerExcelImportRoute(mockApp);
+
+    const previewHandler = routes["/api/excel-preview"];
+
+    (XLSX.read as any).mockReturnValue({
+      SheetNames: ["Sheet1"],
+      Sheets: { Sheet1: {} },
+    });
+    (XLSX.utils.sheet_to_json as any).mockReturnValue([
+      ["订单编号", "Size", "国内单号"],
+      ["ORD001", "42", "SF123"],
+    ]);
+
+    (db.findOrderItemsByOrderNumbers as any).mockResolvedValue([]);
+    (db.findOrderItemsByOriginalOrderNos as any).mockResolvedValue([]);
+
+    const req = createMockReq();
+    const res = createMockRes();
+
+    await previewHandler(req, res);
+
+    expect(res._json.success).toBe(true);
+    // Should return mapping array for UI display
+    expect(res._json.mapping).toBeDefined();
+    expect(Array.isArray(res._json.mapping)).toBe(true);
+    expect(res._json.mapping.length).toBe(3);
+    expect(res._json.mapping[0]).toHaveProperty("header");
+    expect(res._json.mapping[0]).toHaveProperty("field");
+  });
+});
