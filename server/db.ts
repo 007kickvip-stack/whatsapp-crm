@@ -1,4 +1,4 @@
-import { eq, like, and, sql, desc, or, SQL, inArray, isNotNull } from "drizzle-orm";
+import { eq, like, and, sql, desc, or, SQL, inArray, isNotNull, isNull } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import { InsertUser, users, customers, orders, orderItems, InsertCustomer, InsertOrder, InsertOrderItem, auditLogs, InsertAuditLog, exchangeRates, InsertExchangeRate, profitAlertSettings, InsertProfitAlertSetting, staffMonthlyTargets, InsertStaffMonthlyTarget, dailyData, InsertDailyData, accounts, InsertAccount, dailyReportNotes, InsertDailyReportNote, quotations, quotationItems, InsertQuotation, InsertQuotationItem, paypalIncome, paypalExpense, InsertPaypalIncome, InsertPaypalExpense, reshipments, InsertReshipment, orderPayments, InsertOrderPayment, commissionRules, InsertCommissionRule, bonusRules, InsertBonusRule, salaryAdjustments, InsertSalaryAdjustment, socialInsuranceCosts, InsertSocialInsuranceCost, annualTargets, InsertAnnualTarget } from "../drizzle/schema";
 import { ENV } from './_core/env';
@@ -31,6 +31,12 @@ export async function upsertUser(user: InsertUser): Promise<void> {
     return;
   }
   try {
+    // Check if user was soft-deleted; if so, do not re-create
+    const existing = await db.select({ deletedAt: users.deletedAt }).from(users).where(eq(users.openId, user.openId)).limit(1);
+    if (existing.length > 0 && existing[0].deletedAt !== null) {
+      console.warn(`[Database] User ${user.openId} was deleted, skipping upsert`);
+      return;
+    }
     const values: InsertUser = { openId: user.openId };
     const updateSet: Record<string, unknown> = {};
     const textFields = ["name", "email", "loginMethod"] as const;
@@ -70,7 +76,9 @@ export async function upsertUser(user: InsertUser): Promise<void> {
 export async function getUserByOpenId(openId: string) {
   const db = await getDb();
   if (!db) return undefined;
-  const result = await db.select().from(users).where(eq(users.openId, openId)).limit(1);
+  const result = await db.select().from(users).where(
+    and(eq(users.openId, openId), isNull(users.deletedAt))
+  ).limit(1);
   return result.length > 0 ? result[0] : undefined;
 }
 
@@ -78,9 +86,10 @@ export async function listUsers(page: number = 1, pageSize: number = 20) {
   const db = await getDb();
   if (!db) return { data: [], total: 0 };
   const offset = (page - 1) * pageSize;
+  const notDeleted = isNull(users.deletedAt);
   const [data, countResult] = await Promise.all([
-    db.select().from(users).orderBy(desc(users.createdAt)).limit(pageSize).offset(offset),
-    db.select({ count: sql<number>`count(*)` }).from(users),
+    db.select().from(users).where(notDeleted).orderBy(desc(users.createdAt)).limit(pageSize).offset(offset),
+    db.select({ count: sql<number>`count(*)` }).from(users).where(notDeleted),
   ]);
   return { data, total: countResult[0]?.count ?? 0 };
 }
@@ -94,7 +103,11 @@ export async function updateUserRole(userId: number, role: "user" | "admin") {
 export async function deleteUser(userId: number) {
   const db = await getDb();
   if (!db) return;
-  await db.delete(users).where(eq(users.id, userId));
+  // Soft delete: mark as deleted and invalidate sessions
+  await db.update(users).set({
+    deletedAt: new Date(),
+    sessionInvalidatedAt: new Date(),
+  }).where(eq(users.id, userId));
 }
 
 export async function getUserById(userId: number) {
@@ -150,7 +163,11 @@ export async function updateUserPassword(userId: number, password: string) {
   const db = await getDb();
   if (!db) return;
   const hashedPassword = hashPassword(password);
-  await db.update(users).set({ password: hashedPassword }).where(eq(users.id, userId));
+  // Update password and invalidate all existing sessions
+  await db.update(users).set({
+    password: hashedPassword,
+    sessionInvalidatedAt: new Date(),
+  }).where(eq(users.id, userId));
 }
 
 export async function updateUserHireDate(userId: number, hireDate: string | null) {
@@ -1506,6 +1523,7 @@ export async function getStaffList() {
     FROM users u
     WHERE u.role IN ('user', 'admin')
       AND u.name IS NOT NULL AND u.name != ''
+      AND u.deletedAt IS NULL
     ORDER BY u.name ASC
   `);
   return ((result as any)[0] || []).map((r: any) => ({

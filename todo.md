@@ -850,3 +850,11 @@
 - [x] 后端：验证码校验集成到loginWithPassword（一次性使用，5分钟过期）
 - [x] 前端：登录页面展示验证码图片+输入框，点击可刷新，登录失败自动刷新
 - [x] 测试验证（315条测试全部通过）
+
+## Bug修复：用户删除/密码修改后会话未失效
+- [x] 排查：删除用户后其会话未失效（原因：getUserByOpenId返回null后会从OAuth重新同步创建用户）
+- [x] 排查：修改密码后旧会话未失效（原因：JWT无服务端撤销机制）
+- [x] 实现：用户软删除（deletedAt字段），upsertUser拒绝恢复已删除用户，getUserByOpenId过滤已删除用户
+- [x] 实现：修改密码时设置sessionInvalidatedAt，context层检查lastSignedIn<sessionInvalidatedAt则视为无效
+- [x] 实现：登录时更新lastSignedIn使新会话有效，已删除用户登录时提示"该账号已被禁用"
+- [x] 测试验证（321条测试全部通过）

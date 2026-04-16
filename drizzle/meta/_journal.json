@@ -274,6 +274,13 @@
       "when": 1776337702470,
       "tag": "0038_tough_lilandra",
       "breakpoints": true
+    },
+    {
+      "idx": 39,
+      "version": "5",
+      "when": 1776353149247,
+      "tag": "0039_flaky_risque",
+      "breakpoints": true
     }
   ]
 }

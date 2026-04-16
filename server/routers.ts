@@ -50,6 +50,7 @@ import {
   getReshipmentProfitLoss, getSalaryTotalForPeriod, getSocialInsuranceTotalForPeriod,
   listAnnualTargets, upsertAnnualTarget, deleteAnnualTarget, getAnnualTargetProgress,
   recalculateAllItemProfitRates,
+  upsertUser,
 } from "./db";
 import type { SQL } from "drizzle-orm";
 import { sdk } from "./_core/sdk";
@@ -86,6 +87,10 @@ export const appRouter = router({
       if (!user || !user.password) {
         throw new TRPCError({ code: "UNAUTHORIZED", message: "用户名或密码错误" });
       }
+      // Check if user is soft-deleted
+      if (user.deletedAt) {
+        throw new TRPCError({ code: "UNAUTHORIZED", message: "该账号已被禁用" });
+      }
       const valid = verifyPassword(input.password, user.password);
       if (!valid) {
         throw new TRPCError({ code: "UNAUTHORIZED", message: "用户名或密码错误" });
@@ -97,6 +102,8 @@ export const appRouter = router({
       });
       const cookieOptions = getSessionCookieOptions(ctx.req);
       ctx.res.cookie(COOKIE_NAME, sessionToken, { ...cookieOptions, maxAge: ONE_YEAR_MS });
+      // Update lastSignedIn to mark session as valid (after potential password change)
+      await upsertUser({ openId: user.openId, lastSignedIn: new Date() });
       return { success: true, user: { id: user.id, name: user.name, role: user.role } };
     }),
   }),

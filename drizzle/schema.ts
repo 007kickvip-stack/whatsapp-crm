@@ -19,6 +19,8 @@ export const users = mysqlTable("users", {
   probationBaseSalary: decimal("probationBaseSalary", { precision: 12, scale: 2 }).default("0"), // 试用期底薪
   regularBaseSalary: decimal("regularBaseSalary", { precision: 12, scale: 2 }).default("0"), // 正式底薪
   regularDate: date("regularDate"), // 转正日期
+  deletedAt: timestamp("deletedAt"), // 软删除时间
+  sessionInvalidatedAt: timestamp("sessionInvalidatedAt"), // 会话失效时间（修改密码时更新）
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
   lastSignedIn: timestamp("lastSignedIn").defaultNow().notNull(),
