@@ -1,7 +1,7 @@
 import fs from 'fs';
 import mysql from 'mysql2/promise';
 
-const sql = fs.readFileSync('drizzle/0035_salty_iron_man.sql', 'utf8');
+const sql = fs.readFileSync('drizzle/0037_slim_mindworm.sql', 'utf8');
 const statements = sql.split('--> statement-breakpoint').map(s => s.trim()).filter(Boolean);
 const conn = await mysql.createConnection(process.env.DATABASE_URL);
 try {

@@ -511,3 +511,24 @@ export const socialInsuranceCosts = mysqlTable("social_insurance_costs", {
 });
 export type SocialInsuranceCost = typeof socialInsuranceCosts.$inferSelect;
 export type InsertSocialInsuranceCost = typeof socialInsuranceCosts.$inferInsert;
+
+
+/**
+ * 年度目标表 - 支持团队目标和个人目标
+ * type: "team" = 团队年度目标（全公司共用一条）, "individual" = 个人年度目标
+ */
+export const annualTargets = mysqlTable("annual_targets", {
+  id: int("id").autoincrement().primaryKey(),
+  year: int("year").notNull(), // 年份，如 2026
+  type: varchar("type", { length: 20 }).notNull(), // "team" | "individual"
+  staffId: int("staffId"), // 个人目标时填写，团队目标为 null
+  staffName: varchar("staffName", { length: 128 }), // 个人目标时填写
+  profitTarget: decimal("profitTarget", { precision: 14, scale: 2 }).notNull().default("0"),
+  revenueTarget: decimal("revenueTarget", { precision: 14, scale: 2 }).notNull().default("0"),
+  setById: int("setById").notNull(),
+  setByName: varchar("setByName", { length: 128 }),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+export type AnnualTarget = typeof annualTargets.$inferSelect;
+export type InsertAnnualTarget = typeof annualTargets.$inferInsert;

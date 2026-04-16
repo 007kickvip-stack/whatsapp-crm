@@ -48,6 +48,7 @@ import {
   updateOrderCompletionStatus, batchUpdateOrderCompletionStatus,
   getSocialInsuranceCost, upsertSocialInsuranceCost, listSocialInsuranceCosts,
   getReshipmentProfitLoss, getSalaryTotalForPeriod, getSocialInsuranceTotalForPeriod,
+  listAnnualTargets, upsertAnnualTarget, deleteAnnualTarget, getAnnualTargetProgress,
 } from "./db";
 import type { SQL } from "drizzle-orm";
 import { sdk } from "./_core/sdk";
@@ -1109,6 +1110,63 @@ export const appRouter = router({
     // 客服列表仅管理员可见
     staffList: adminProcedure.query(async () => {
       return await getStaffList();
+    }),
+  }),
+
+  // ==================== 年度目标管理 ====================
+  annualTargets: router({
+    list: protectedProcedure.input(z.object({
+      year: z.number().int().min(2020).max(2100),
+    })).query(async ({ input, ctx }) => {
+      const allTargets = await listAnnualTargets(input.year);
+      if (ctx.user.role === "admin") return allTargets;
+      // 客服只能看到团队目标和自己的个人目标
+      return allTargets.filter(t => t.type === "team" || t.staffId === ctx.user.id);
+    }),
+
+    upsert: adminProcedure.input(z.object({
+      year: z.number().int().min(2020).max(2100),
+      type: z.enum(["team", "individual"]),
+      staffId: z.number().optional(),
+      staffName: z.string().optional(),
+      profitTarget: z.number().min(0),
+      revenueTarget: z.number().min(0),
+    })).mutation(async ({ input, ctx }) => {
+      if (input.type === "individual" && !input.staffId) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "个人目标必须指定客服" });
+      }
+      const result = await upsertAnnualTarget({
+        year: input.year,
+        type: input.type,
+        staffId: input.staffId ?? null,
+        staffName: input.staffName ?? null,
+        profitTarget: input.profitTarget.toFixed(2),
+        revenueTarget: input.revenueTarget.toFixed(2),
+        setById: ctx.user.id,
+        setByName: ctx.user.name || "未知",
+      });
+      await logAction(ctx, "upsert", "annualTarget", result.id, `${input.type} ${input.year}${input.staffName ? " " + input.staffName : ""}`, JSON.stringify(input));
+      return result;
+    }),
+
+    delete: adminProcedure.input(z.object({
+      id: z.number(),
+    })).mutation(async ({ input, ctx }) => {
+      await deleteAnnualTarget(input.id);
+      await logAction(ctx, "delete", "annualTarget", input.id);
+      return { success: true };
+    }),
+
+    progress: protectedProcedure.input(z.object({
+      year: z.number().int().min(2020).max(2100),
+    })).query(async ({ input, ctx }) => {
+      const result = await getAnnualTargetProgress(input.year);
+      if (ctx.user.role === "admin") return result;
+      // 客服：团队目标可见，个人只看自己的
+      return {
+        team: result.team,
+        individuals: result.individuals.filter(i => i.staffId === ctx.user.id),
+      };
     }),
   }),
 

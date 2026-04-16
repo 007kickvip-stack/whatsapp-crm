@@ -96,6 +96,10 @@ vi.mock("./db", () => ({
   getReshipmentProfitLoss: vi.fn().mockResolvedValue({ totalProfitLoss: "-500.00", count: 3 }),
   getSalaryTotalForPeriod: vi.fn().mockResolvedValue({ totalSalary: 15000, months: ["2026-04"] }),
   getSocialInsuranceTotalForPeriod: vi.fn().mockResolvedValue({ totalAmount: "3000.00" }),
+  listAnnualTargets: vi.fn().mockResolvedValue([]),
+  upsertAnnualTarget: vi.fn().mockResolvedValue({ id: 1, updated: false }),
+  deleteAnnualTarget: vi.fn().mockResolvedValue(undefined),
+  getAnnualTargetProgress: vi.fn().mockResolvedValue({ team: null, individuals: [] }),
 }));
 
 vi.mock("./storage", () => ({
@@ -1033,6 +1037,129 @@ describe("staffTargets", () => {
     const caller = appRouter.createCaller(ctx);
     await expect(caller.staffTargets.list({ yearMonth: "2026/04" })).rejects.toThrow();
     await expect(caller.staffTargets.list({ yearMonth: "bad" })).rejects.toThrow();
+  });
+});
+
+// ==================== Annual Targets Tests ====================
+describe("annualTargets", () => {
+  it("admin can list annual targets", async () => {
+    const ctx = createAdminContext();
+    const caller = appRouter.createCaller(ctx);
+    const result = await caller.annualTargets.list({ year: 2026 });
+    expect(result).toBeDefined();
+    expect(Array.isArray(result)).toBe(true);
+  });
+
+  it("admin can upsert team annual target", async () => {
+    const ctx = createAdminContext();
+    const caller = appRouter.createCaller(ctx);
+    const result = await caller.annualTargets.upsert({
+      year: 2026,
+      type: "team",
+      profitTarget: 100000,
+      revenueTarget: 500000,
+    });
+    expect(result).toBeDefined();
+    expect(result.id).toBe(1);
+  });
+
+  it("admin can upsert individual annual target", async () => {
+    const ctx = createAdminContext();
+    const caller = appRouter.createCaller(ctx);
+    const result = await caller.annualTargets.upsert({
+      year: 2026,
+      type: "individual",
+      staffId: 2,
+      staffName: "Staff A",
+      profitTarget: 30000,
+      revenueTarget: 150000,
+    });
+    expect(result).toBeDefined();
+    expect(result.id).toBe(1);
+  });
+
+  it("individual target requires staffId", async () => {
+    const ctx = createAdminContext();
+    const caller = appRouter.createCaller(ctx);
+    await expect(caller.annualTargets.upsert({
+      year: 2026,
+      type: "individual",
+      profitTarget: 30000,
+      revenueTarget: 150000,
+    })).rejects.toThrow();
+  });
+
+  it("admin can delete annual target", async () => {
+    const ctx = createAdminContext();
+    const caller = appRouter.createCaller(ctx);
+    const result = await caller.annualTargets.delete({ id: 1 });
+    expect(result.success).toBe(true);
+  });
+
+  it("admin can get annual target progress", async () => {
+    const ctx = createAdminContext();
+    const caller = appRouter.createCaller(ctx);
+    const result = await caller.annualTargets.progress({ year: 2026 });
+    expect(result).toBeDefined();
+    expect(result).toHaveProperty("team");
+    expect(result).toHaveProperty("individuals");
+  });
+
+  it("staff can list annual targets (filtered to team + own)", async () => {
+    const { listAnnualTargets } = await import("./db");
+    (listAnnualTargets as any).mockResolvedValueOnce([
+      { id: 1, year: 2026, type: "team", staffId: null, staffName: null, profitTarget: "100000", revenueTarget: "500000" },
+      { id: 2, year: 2026, type: "individual", staffId: 2, staffName: "Staff User", profitTarget: "30000", revenueTarget: "150000" },
+      { id: 3, year: 2026, type: "individual", staffId: 99, staffName: "Other Staff", profitTarget: "30000", revenueTarget: "150000" },
+    ]);
+    const ctx = createStaffContext();
+    const caller = appRouter.createCaller(ctx);
+    const result = await caller.annualTargets.list({ year: 2026 });
+    // Should see team + own, not other staff
+    expect(result.length).toBe(2);
+    expect(result.some((t: any) => t.type === "team")).toBe(true);
+    expect(result.some((t: any) => t.staffId === 99)).toBe(false);
+  });
+
+  it("staff cannot upsert annual targets", async () => {
+    const ctx = createStaffContext();
+    const caller = appRouter.createCaller(ctx);
+    await expect(caller.annualTargets.upsert({
+      year: 2026,
+      type: "team",
+      profitTarget: 100000,
+      revenueTarget: 500000,
+    })).rejects.toThrow();
+  });
+
+  it("staff cannot delete annual targets", async () => {
+    const ctx = createStaffContext();
+    const caller = appRouter.createCaller(ctx);
+    await expect(caller.annualTargets.delete({ id: 1 })).rejects.toThrow();
+  });
+
+  it("staff progress shows team + own individuals only", async () => {
+    const { getAnnualTargetProgress } = await import("./db");
+    (getAnnualTargetProgress as any).mockResolvedValueOnce({
+      team: { targetId: 1, year: 2026, profitTarget: "100000", revenueTarget: "500000", actualProfit: "50000", actualRevenue: "250000", orderCount: 100, profitProgress: 0.5, revenueProgress: 0.5, profitGap: "50000", revenueGap: "250000" },
+      individuals: [
+        { targetId: 2, staffId: 2, staffName: "Staff User", year: 2026, profitTarget: "30000", revenueTarget: "150000", actualProfit: "15000", actualRevenue: "75000", orderCount: 30, profitProgress: 0.5, revenueProgress: 0.5, profitGap: "15000", revenueGap: "75000" },
+        { targetId: 3, staffId: 99, staffName: "Other Staff", year: 2026, profitTarget: "30000", revenueTarget: "150000", actualProfit: "10000", actualRevenue: "50000", orderCount: 20, profitProgress: 0.33, revenueProgress: 0.33, profitGap: "20000", revenueGap: "100000" },
+      ],
+    });
+    const ctx = createStaffContext();
+    const caller = appRouter.createCaller(ctx);
+    const result = await caller.annualTargets.progress({ year: 2026 });
+    expect(result.team).toBeDefined();
+    expect(result.individuals.length).toBe(1);
+    expect(result.individuals[0].staffId).toBe(2);
+  });
+
+  it("rejects invalid year", async () => {
+    const ctx = createAdminContext();
+    const caller = appRouter.createCaller(ctx);
+    await expect(caller.annualTargets.list({ year: 2019 })).rejects.toThrow();
+    await expect(caller.annualTargets.list({ year: 2101 })).rejects.toThrow();
   });
 });
 

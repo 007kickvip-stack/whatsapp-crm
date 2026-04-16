@@ -1,6 +1,6 @@
 import { eq, like, and, sql, desc, or, SQL, inArray, isNotNull } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
-import { InsertUser, users, customers, orders, orderItems, InsertCustomer, InsertOrder, InsertOrderItem, auditLogs, InsertAuditLog, exchangeRates, InsertExchangeRate, profitAlertSettings, InsertProfitAlertSetting, staffMonthlyTargets, InsertStaffMonthlyTarget, dailyData, InsertDailyData, accounts, InsertAccount, dailyReportNotes, InsertDailyReportNote, quotations, quotationItems, InsertQuotation, InsertQuotationItem, paypalIncome, paypalExpense, InsertPaypalIncome, InsertPaypalExpense, reshipments, InsertReshipment, orderPayments, InsertOrderPayment, commissionRules, InsertCommissionRule, bonusRules, InsertBonusRule, salaryAdjustments, InsertSalaryAdjustment, socialInsuranceCosts, InsertSocialInsuranceCost } from "../drizzle/schema";
+import { InsertUser, users, customers, orders, orderItems, InsertCustomer, InsertOrder, InsertOrderItem, auditLogs, InsertAuditLog, exchangeRates, InsertExchangeRate, profitAlertSettings, InsertProfitAlertSetting, staffMonthlyTargets, InsertStaffMonthlyTarget, dailyData, InsertDailyData, accounts, InsertAccount, dailyReportNotes, InsertDailyReportNote, quotations, quotationItems, InsertQuotation, InsertQuotationItem, paypalIncome, paypalExpense, InsertPaypalIncome, InsertPaypalExpense, reshipments, InsertReshipment, orderPayments, InsertOrderPayment, commissionRules, InsertCommissionRule, bonusRules, InsertBonusRule, salaryAdjustments, InsertSalaryAdjustment, socialInsuranceCosts, InsertSocialInsuranceCost, annualTargets, InsertAnnualTarget } from "../drizzle/schema";
 import { ENV } from './_core/env';
 import { nanoid } from 'nanoid';
 import { createHash, randomBytes } from 'crypto';
@@ -3631,4 +3631,178 @@ export async function getSocialInsuranceTotalForPeriod(params: { startDate?: str
   );
   
   return result[0] ?? { totalAmount: "0" };
+}
+
+
+// ==================== Annual Targets ====================
+
+export async function listAnnualTargets(year: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return await db.select().from(annualTargets).where(eq(annualTargets.year, year)).orderBy(annualTargets.type, annualTargets.staffName);
+}
+
+export async function getAnnualTarget(id: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const rows = await db.select().from(annualTargets).where(eq(annualTargets.id, id));
+  return rows[0] ?? null;
+}
+
+export async function upsertAnnualTarget(data: {
+  year: number;
+  type: string;
+  staffId?: number | null;
+  staffName?: string | null;
+  profitTarget: string;
+  revenueTarget: string;
+  setById: number;
+  setByName: string;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  // Check for existing target
+  let conditions: SQL[] = [
+    eq(annualTargets.year, data.year),
+    eq(annualTargets.type, data.type),
+  ];
+  if (data.type === "individual" && data.staffId) {
+    conditions.push(eq(annualTargets.staffId, data.staffId));
+  } else if (data.type === "team") {
+    // Team target: only one per year
+  }
+
+  const existing = await db.select().from(annualTargets).where(and(...conditions));
+
+  if (existing.length > 0 && (data.type === "team" || (data.type === "individual" && data.staffId))) {
+    const target = data.type === "team" ? existing[0] : existing.find(e => e.staffId === data.staffId);
+    if (target) {
+      await db.update(annualTargets).set({
+        profitTarget: data.profitTarget,
+        revenueTarget: data.revenueTarget,
+        setById: data.setById,
+        setByName: data.setByName,
+      }).where(eq(annualTargets.id, target.id));
+      return { id: target.id, updated: true };
+    }
+  }
+
+  const result = await db.insert(annualTargets).values({
+    year: data.year,
+    type: data.type,
+    staffId: data.staffId ?? null,
+    staffName: data.staffName ?? null,
+    profitTarget: data.profitTarget,
+    revenueTarget: data.revenueTarget,
+    setById: data.setById,
+    setByName: data.setByName,
+  });
+  return { id: Number(result[0].insertId), updated: false };
+}
+
+export async function deleteAnnualTarget(id: number) {
+  const db = await getDb();
+  if (!db) return;
+  await db.delete(annualTargets).where(eq(annualTargets.id, id));
+}
+
+export async function getAnnualTargetProgress(year: number) {
+  const db = await getDb();
+  if (!db) return { team: null, individuals: [] };
+
+  // Get all targets for this year
+  const targets = await listAnnualTargets(year);
+  const teamTarget = targets.find(t => t.type === "team");
+  const individualTargets = targets.filter(t => t.type === "individual");
+
+  const startDate = `${year}-01-01`;
+  const endDate = `${year}-12-31`;
+
+  // Get actual performance for the whole year
+  const result = await db.execute(sql`
+    SELECT
+      o.staffId,
+      o.staffName,
+      COUNT(o.id) as orderCount,
+      COALESCE(SUM(o.totalAmountCny), 0) as actualRevenue,
+      COALESCE((
+        SELECT SUM(i.productProfit)
+        FROM order_items i
+        INNER JOIN orders o2 ON i.orderId = o2.id
+        WHERE o2.orderDate >= ${startDate} AND o2.orderDate <= ${endDate}
+          AND o2.staffId = o.staffId
+      ), 0) as actualProfit
+    FROM orders o
+    WHERE o.orderDate >= ${startDate} AND o.orderDate <= ${endDate}
+      AND o.staffId IS NOT NULL
+    GROUP BY o.staffId, o.staffName
+  `);
+
+  const actualMap = new Map<number, { staffName: string; orderCount: number; actualRevenue: string; actualProfit: string }>();
+  let totalRevenue = 0;
+  let totalProfit = 0;
+  let totalOrders = 0;
+
+  for (const r of (result as any)[0] || []) {
+    const rev = parseFloat(String(r.actualRevenue || "0"));
+    const prof = parseFloat(String(r.actualProfit || "0"));
+    const cnt = Number(r.orderCount || 0);
+    actualMap.set(Number(r.staffId), {
+      staffName: String(r.staffName),
+      orderCount: cnt,
+      actualRevenue: String(r.actualRevenue || "0"),
+      actualProfit: String(r.actualProfit || "0"),
+    });
+    totalRevenue += rev;
+    totalProfit += prof;
+    totalOrders += cnt;
+  }
+
+  // Build team progress
+  let teamProgress = null;
+  if (teamTarget) {
+    const profitTarget = parseFloat(String(teamTarget.profitTarget));
+    const revenueTarget = parseFloat(String(teamTarget.revenueTarget));
+    teamProgress = {
+      targetId: teamTarget.id,
+      year: teamTarget.year,
+      profitTarget: String(teamTarget.profitTarget),
+      revenueTarget: String(teamTarget.revenueTarget),
+      actualProfit: totalProfit.toFixed(2),
+      actualRevenue: totalRevenue.toFixed(2),
+      orderCount: totalOrders,
+      profitProgress: profitTarget > 0 ? Math.round(totalProfit / profitTarget * 10000) / 10000 : 0,
+      revenueProgress: revenueTarget > 0 ? Math.round(totalRevenue / revenueTarget * 10000) / 10000 : 0,
+      profitGap: (profitTarget - totalProfit).toFixed(2),
+      revenueGap: (revenueTarget - totalRevenue).toFixed(2),
+    };
+  }
+
+  // Build individual progress
+  const individuals = individualTargets.map(t => {
+    const actual = actualMap.get(t.staffId!) || { staffName: t.staffName || "", orderCount: 0, actualRevenue: "0", actualProfit: "0" };
+    const profitTarget = parseFloat(String(t.profitTarget));
+    const revenueTarget = parseFloat(String(t.revenueTarget));
+    const actualProfit = parseFloat(actual.actualProfit);
+    const actualRevenue = parseFloat(actual.actualRevenue);
+
+    return {
+      targetId: t.id,
+      staffId: t.staffId,
+      staffName: t.staffName || actual.staffName,
+      year: t.year,
+      profitTarget: String(t.profitTarget),
+      revenueTarget: String(t.revenueTarget),
+      actualProfit: actual.actualProfit,
+      actualRevenue: actual.actualRevenue,
+      orderCount: actual.orderCount,
+      profitProgress: profitTarget > 0 ? Math.round(actualProfit / profitTarget * 10000) / 10000 : 0,
+      revenueProgress: revenueTarget > 0 ? Math.round(actualRevenue / revenueTarget * 10000) / 10000 : 0,
+      profitGap: (profitTarget - actualProfit).toFixed(2),
+      revenueGap: (revenueTarget - actualRevenue).toFixed(2),
+    };
+  });
+
+  return { team: teamProgress, individuals };
 }
