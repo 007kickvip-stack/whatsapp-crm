@@ -740,6 +740,61 @@ export async function recalculateOrderTotals(orderId: number) {
   }).where(eq(orders.id, orderId));
 }
 
+// Recalculate profit rates for ALL order items (batch fix)
+export async function recalculateAllItemProfitRates() {
+  const db = await getDb();
+  if (!db) return { updated: 0 };
+  
+  // Get all order items
+  const allItems = await db.select().from(orderItems);
+  let updated = 0;
+  
+  for (const item of allItems) {
+    const sellingPrice = Number(item.sellingPrice) || 0;
+    const productCost = Number(item.productCost) || 0;
+    const productProfit = sellingPrice - productCost;
+    const productProfitRate = sellingPrice > 0 ? productProfit / sellingPrice : 0;
+    
+    const shippingCharged = Number(item.shippingCharged) || 0;
+    const shippingActual = Number(item.shippingActual) || 0;
+    const shippingProfit = shippingCharged - shippingActual;
+    const shippingProfitRate = shippingCharged > 0 ? shippingProfit / shippingCharged : 0;
+    
+    const totalProfit = productProfit + shippingProfit;
+    const amountCny = Number(item.amountCny) || 0;
+    const profitRate = amountCny > 0 ? totalProfit / amountCny : 0;
+    
+    // Only update if values changed
+    const oldProfitRate = Number(item.profitRate) || 0;
+    const oldProductProfit = Number(item.productProfit) || 0;
+    const oldShippingProfit = Number(item.shippingProfit) || 0;
+    const oldTotalProfit = Number(item.totalProfit) || 0;
+    
+    if (Math.abs(profitRate - oldProfitRate) > 0.000001 ||
+        Math.abs(productProfit - oldProductProfit) > 0.01 ||
+        Math.abs(shippingProfit - oldShippingProfit) > 0.01 ||
+        Math.abs(totalProfit - oldTotalProfit) > 0.01) {
+      await db.update(orderItems).set({
+        productProfit: productProfit.toFixed(2),
+        productProfitRate: productProfitRate.toFixed(6),
+        shippingProfit: shippingProfit.toFixed(2),
+        shippingProfitRate: shippingProfitRate.toFixed(6),
+        totalProfit: totalProfit.toFixed(2),
+        profitRate: profitRate.toFixed(6),
+      }).where(eq(orderItems.id, item.id));
+      updated++;
+    }
+  }
+  
+  // Also recalculate all order totals
+  const allOrders = await db.select({ id: orders.id }).from(orders);
+  for (const order of allOrders) {
+    await recalculateOrderTotals(order.id);
+  }
+  
+  return { updated, totalItems: allItems.length, totalOrders: allOrders.length };
+}
+
 // ==================== Statistics Helpers ====================
 
 export async function getOrderStats(staffId?: number) {

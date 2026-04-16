@@ -100,6 +100,7 @@ vi.mock("./db", () => ({
   upsertAnnualTarget: vi.fn().mockResolvedValue({ id: 1, updated: false }),
   deleteAnnualTarget: vi.fn().mockResolvedValue(undefined),
   getAnnualTargetProgress: vi.fn().mockResolvedValue({ team: null, individuals: [] }),
+  recalculateAllItemProfitRates: vi.fn().mockResolvedValue({ updated: 5, totalItems: 20, totalOrders: 10 }),
 }));
 
 vi.mock("./storage", () => ({
@@ -1524,5 +1525,34 @@ describe("users.updateHireDate", () => {
     });
     expect(result.success).toBe(true);
     expect(updateUserHireDate).toHaveBeenCalledWith(5, null);
+  });
+});
+
+describe("orders.recalculateAllProfitRates", () => {
+  it("admin can recalculate all profit rates", async () => {
+    const { recalculateAllItemProfitRates, createAuditLog } = await import("./db");
+    const ctx = createAdminContext();
+    const caller = appRouter.createCaller(ctx);
+    const result = await caller.orders.recalculateAllProfitRates();
+    expect(result.updated).toBe(5);
+    expect(result.totalItems).toBe(20);
+    expect(result.totalOrders).toBe(10);
+    expect(recalculateAllItemProfitRates).toHaveBeenCalled();
+    expect(createAuditLog).toHaveBeenCalledWith(expect.objectContaining({
+      action: "update",
+      targetType: "order",
+    }));
+  });
+
+  it("non-admin cannot recalculate profit rates", async () => {
+    const ctx = createStaffContext();
+    const caller = appRouter.createCaller(ctx);
+    await expect(caller.orders.recalculateAllProfitRates()).rejects.toThrow();
+  });
+
+  it("unauthenticated user cannot recalculate profit rates", async () => {
+    const ctx = createUnauthContext();
+    const caller = appRouter.createCaller(ctx);
+    await expect(caller.orders.recalculateAllProfitRates()).rejects.toThrow();
   });
 });

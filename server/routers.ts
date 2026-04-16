@@ -49,6 +49,7 @@ import {
   getSocialInsuranceCost, upsertSocialInsuranceCost, listSocialInsuranceCosts,
   getReshipmentProfitLoss, getSalaryTotalForPeriod, getSocialInsuranceTotalForPeriod,
   listAnnualTargets, upsertAnnualTarget, deleteAnnualTarget, getAnnualTargetProgress,
+  recalculateAllItemProfitRates,
 } from "./db";
 import type { SQL } from "drizzle-orm";
 import { sdk } from "./_core/sdk";
@@ -557,6 +558,20 @@ export const appRouter = router({
 
       await logAction(ctx, "import", "order", undefined, `批量导入 ${results.length} 个订单`, JSON.stringify({ count: results.length, orderNumbers: results.map(r => r.orderNumber) }));
       return { success: true, imported: results.length, orders: results };
+    }),
+
+    recalculateAllProfitRates: adminProcedure.mutation(async ({ ctx }) => {
+      const result = await recalculateAllItemProfitRates();
+      await createAuditLog({
+        userId: ctx.user.id,
+        userName: ctx.user.name || "未知",
+        userRole: ctx.user.role,
+        action: "update",
+        targetType: "order",
+        targetName: `批量重算利润率: 更新${result.updated}条子项`,
+        details: JSON.stringify(result),
+      });
+      return result;
     }),
   }),
 
