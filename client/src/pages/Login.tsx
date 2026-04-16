@@ -1,16 +1,36 @@
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { MessageSquare, Loader2, User, Lock, ArrowRight } from "lucide-react";
+import { MessageSquare, Loader2, User, Lock, ArrowRight, RefreshCw, ShieldCheck } from "lucide-react";
 import { toast } from "sonner";
 import { getLoginUrl } from "@/const";
 
 export default function LoginPage() {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [captchaCode, setCaptchaCode] = useState("");
+  const [captchaToken, setCaptchaToken] = useState("");
+
+  // Fetch captcha
+  const captchaQuery = trpc.auth.getCaptcha.useQuery(undefined, {
+    refetchOnWindowFocus: false,
+    staleTime: Infinity,
+    gcTime: Infinity,
+  });
+
+  // When captcha data loads, store the token
+  const currentToken = captchaQuery.data?.token;
+  if (currentToken && currentToken !== captchaToken) {
+    setCaptchaToken(currentToken);
+  }
+
+  const refreshCaptcha = useCallback(() => {
+    setCaptchaCode("");
+    captchaQuery.refetch();
+  }, [captchaQuery]);
 
   const loginMutation = trpc.auth.loginWithPassword.useMutation({
     onSuccess: () => {
@@ -19,6 +39,8 @@ export default function LoginPage() {
     },
     onError: (err) => {
       toast.error(err.message || "登录失败");
+      // Refresh captcha after failed attempt
+      refreshCaptcha();
     },
   });
 
@@ -28,7 +50,20 @@ export default function LoginPage() {
       toast.error("请输入用户名和密码");
       return;
     }
-    loginMutation.mutate({ username: username.trim(), password });
+    if (!captchaCode.trim()) {
+      toast.error("请输入验证码");
+      return;
+    }
+    if (!captchaToken) {
+      toast.error("验证码加载失败，请刷新");
+      return;
+    }
+    loginMutation.mutate({
+      username: username.trim(),
+      password,
+      captchaToken,
+      captchaCode: captchaCode.trim(),
+    });
   };
 
   return (
@@ -79,6 +114,45 @@ export default function LoginPage() {
                     className="pl-10 h-11"
                     autoComplete="current-password"
                   />
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="captcha" className="text-sm font-medium">验证码</Label>
+                <div className="flex gap-3 items-center">
+                  <div className="relative flex-1">
+                    <ShieldCheck className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                    <Input
+                      id="captcha"
+                      type="text"
+                      placeholder="请输入验证码"
+                      value={captchaCode}
+                      onChange={(e) => setCaptchaCode(e.target.value.toUpperCase())}
+                      className="pl-10 h-11 uppercase tracking-widest"
+                      maxLength={4}
+                      autoComplete="off"
+                    />
+                  </div>
+                  <div
+                    className="h-11 w-[140px] rounded-md border border-input bg-background cursor-pointer flex items-center justify-center overflow-hidden hover:border-emerald-400 transition-colors group relative shrink-0"
+                    onClick={refreshCaptcha}
+                    title="点击刷新验证码"
+                  >
+                    {captchaQuery.isLoading || captchaQuery.isFetching ? (
+                      <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                    ) : captchaQuery.data?.svg ? (
+                      <>
+                        <div
+                          dangerouslySetInnerHTML={{ __html: captchaQuery.data.svg }}
+                          className="w-full h-full flex items-center justify-center [&>svg]:w-full [&>svg]:h-full"
+                        />
+                        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/5 transition-colors flex items-center justify-center">
+                          <RefreshCw className="h-4 w-4 text-emerald-600 opacity-0 group-hover:opacity-100 transition-opacity" />
+                        </div>
+                      </>
+                    ) : (
+                      <span className="text-xs text-muted-foreground">加载失败，点击重试</span>
+                    )}
+                  </div>
                 </div>
               </div>
               <Button

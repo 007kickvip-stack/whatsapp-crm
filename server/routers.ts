@@ -57,6 +57,7 @@ import { ONE_YEAR_MS } from "@shared/const";
 import { storagePut } from "./storage";
 import { nanoid } from "nanoid";
 import { subscribeTrackingNo, getCallbackUrl } from "./trackingProxy";
+import { generateCaptcha, verifyCaptcha } from "./captcha";
 
 export const appRouter = router({
   system: systemRouter,
@@ -67,10 +68,20 @@ export const appRouter = router({
       ctx.res.clearCookie(COOKIE_NAME, { ...cookieOptions, maxAge: -1 });
       return { success: true } as const;
     }),
+    getCaptcha: publicProcedure.query(() => {
+      const { token, svg } = generateCaptcha();
+      return { token, svg };
+    }),
     loginWithPassword: publicProcedure.input(z.object({
       username: z.string().min(1),
       password: z.string().min(1),
+      captchaToken: z.string().min(1),
+      captchaCode: z.string().min(1),
     })).mutation(async ({ input, ctx }) => {
+      // Verify captcha first
+      if (!verifyCaptcha(input.captchaToken, input.captchaCode)) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "验证码错误或已过期" });
+      }
       const user = await getUserByUsername(input.username);
       if (!user || !user.password) {
         throw new TRPCError({ code: "UNAUTHORIZED", message: "用户名或密码错误" });
