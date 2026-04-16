@@ -729,7 +729,7 @@ export default function ExcelImportDialog({ open, onOpenChange, onSuccess }: Exc
             )}
 
             {/* Preview table */}
-            <ScrollArea className="flex-1 border rounded-lg min-h-0">
+            <div className="flex-1 border rounded-lg min-h-0 overflow-auto">
               <div className="min-w-[900px]">
                 <Table>
                   <TableHeader>
@@ -808,7 +808,7 @@ export default function ExcelImportDialog({ open, onOpenChange, onSuccess }: Exc
                   仅显示前 100 行，共 {previewRows.length} 行
                 </p>
               )}
-            </ScrollArea>
+            </div>
           </div>
         )}
 
