@@ -1172,20 +1172,20 @@ export default function OrdersPage() {
   // Render a single table row
   const renderRow = (row: FlatRow, rowIdx: number) => {
     const isOrderBoundary = row.isFirstRow;
-    const borderTop = isOrderBoundary ? "border-t-2 border-t-emerald-200" : "border-t border-t-gray-100";
+    const cellBorderTop = isOrderBoundary ? "border-t-2 border-t-emerald-200" : "border-t border-t-gray-100";
     const bgClass = isOrderBoundary ? "bg-white" : "bg-gray-50/50";
     const hasItem = !!row.itemId;
 
     return (
       <tr
         key={`${row.orderId}-${row.itemId || "main"}-${rowIdx}`}
-        className={`${borderTop} ${bgClass} hover:bg-emerald-50/40 transition-colors group`}
+        className={`${bgClass} hover:bg-emerald-50/40 transition-colors group`}
       >
         {/* Action buttons */}
         {/* Checkbox column */}
         {row.isFirstRow && (
           <td
-            className="py-1 px-1 text-center border-r border-gray-100 sticky left-0 bg-inherit z-[5]"
+            className={`py-1 px-1 text-center border-r border-gray-100 sticky left-0 bg-inherit z-[5] ${cellBorderTop}`}
             rowSpan={row.visibleItemCount}
           >
             <Checkbox
@@ -1194,7 +1194,7 @@ export default function OrdersPage() {
             />
           </td>
         )}
-        <td className="py-1 px-1 text-center border-r border-gray-100 sticky left-[36px] bg-inherit z-[5]">
+        <td className={`py-1 px-1 text-center border-r border-gray-100 sticky left-[36px] bg-inherit z-[5] ${cellBorderTop}`}>
           {row.isFirstRow ? (
             <div className="flex items-center justify-center gap-0.5">
               {/* Collapse/expand toggle for multi-item orders */}
@@ -1350,7 +1350,7 @@ export default function OrdersPage() {
         {/* 1-4: 日期、客服名字、账号、客户WhatsApp - 使用 rowSpan 合并单元格并垂直居中 */}
         {row.isFirstRow && (
           <>
-            <td className="py-1 px-1 border-r border-gray-100 whitespace-nowrap text-center text-[11px] align-middle" rowSpan={row.visibleItemCount || 1}>
+            <td className={`py-1 px-1 border-r border-gray-100 whitespace-nowrap text-center text-[11px] align-middle ${cellBorderTop}`} rowSpan={row.visibleItemCount || 1}>
               <EditableCell
                 value={row.orderDate || ""}
                 type="date"
@@ -1358,10 +1358,10 @@ export default function OrdersPage() {
                 className="font-medium text-gray-700"
               />
             </td>
-            <td className="py-1 px-1 border-r border-gray-100 whitespace-nowrap text-center text-[11px] align-middle" rowSpan={row.visibleItemCount || 1}>
+            <td className={`py-1 px-1 border-r border-gray-100 whitespace-nowrap text-center text-[11px] align-middle ${cellBorderTop}`} rowSpan={row.visibleItemCount || 1}>
               {row.staffName || ""}
             </td>
-            <td className="py-1 px-1 border-r border-gray-100 whitespace-nowrap text-center text-[11px] align-middle" rowSpan={row.visibleItemCount || 1}>
+            <td className={`py-1 px-1 border-r border-gray-100 whitespace-nowrap text-center text-[11px] align-middle ${cellBorderTop}`} rowSpan={row.visibleItemCount || 1}>
               <AccountSelect
                 value={row.account || ""}
                 onValueChange={(v) => saveOrderField(row.orderId, "account", v)}
@@ -1369,7 +1369,7 @@ export default function OrdersPage() {
                 compact
               />
             </td>
-            <td className="py-1 px-1 border-r border-gray-100 whitespace-nowrap text-center text-[11px] align-middle" rowSpan={row.visibleItemCount || 1}>
+            <td className={`py-1 px-1 border-r border-gray-100 whitespace-nowrap text-center text-[11px] align-middle ${cellBorderTop}`} rowSpan={row.visibleItemCount || 1}>
               <EditableCell
                 value={row.customerWhatsapp}
                 onSave={(v) => saveOrderField(row.orderId, "customerWhatsapp", v)}
@@ -1382,7 +1382,7 @@ export default function OrdersPage() {
 
         {/* 5. 客户属性 - order level, rowSpan合并 */}
         {row.isFirstRow && (
-          <td className="py-1 px-1 border-r border-gray-100 whitespace-nowrap text-center text-[11px] align-middle" rowSpan={row.visibleItemCount || 1}>
+          <td className={`py-1 px-1 border-r border-gray-100 whitespace-nowrap text-center text-[11px] align-middle ${cellBorderTop}`} rowSpan={row.visibleItemCount || 1}>
             <EditableCell
               value={row.customerType || "新零售"}
               type="select"
@@ -1395,7 +1395,7 @@ export default function OrdersPage() {
 
         {/* 6. 订单编号 - rowSpan合并居中 */}
         {row.isFirstRow && (
-          <td className="py-1 px-1 border-r border-gray-100 whitespace-nowrap text-center text-[11px] align-middle" rowSpan={row.visibleItemCount || 1}>
+          <td className={`py-1 px-1 border-r border-gray-100 whitespace-nowrap text-center text-[11px] align-middle ${cellBorderTop}`} rowSpan={row.visibleItemCount || 1}>
             <button
               onClick={() => setLocation(`/orders/${row.orderId}`)}
               className="text-primary hover:underline text-center font-medium text-[11px]"
@@ -1406,7 +1406,7 @@ export default function OrdersPage() {
         )}
 
         {/* 7. 订单图片 - item level with upload, paste, delete */}
-        <td className="py-1 px-1 border-r border-gray-100 text-center">
+        <td className={`py-1 px-1 border-r border-gray-100 text-center ${cellBorderTop}`}>
           {hasItem ? (
             <ImageUploadCell
               imageUrl={row.orderImageUrl}
@@ -1419,7 +1419,7 @@ export default function OrdersPage() {
         </td>
 
         {/* 8. Size - item level editable */}
-        <td className="py-1 px-1 border-r border-gray-100 whitespace-nowrap text-center text-[11px]">
+        <td className={`py-1 px-1 border-r border-gray-100 whitespace-nowrap text-center text-[11px] ${cellBorderTop}`}>
           {hasItem ? (
             <EditableCell
               value={row.size || ""}
@@ -1431,7 +1431,7 @@ export default function OrdersPage() {
         </td>
 
         {/* 9. 国内单号 */}
-        <td className="py-1 px-1 border-r border-gray-100 whitespace-nowrap text-center text-[11px]">
+        <td className={`py-1 px-1 border-r border-gray-100 whitespace-nowrap text-center text-[11px] ${cellBorderTop}`}>
           {hasItem ? (
             <div className="flex flex-col gap-0.5">
               <div className="flex items-center gap-0.5">
@@ -1472,7 +1472,7 @@ export default function OrdersPage() {
         </td>
 
         {/* 10. 推荐码数 */}
-        <td className="py-1 px-1 border-r border-gray-100 whitespace-nowrap text-center text-[11px]">
+        <td className={`py-1 px-1 border-r border-gray-100 whitespace-nowrap text-center text-[11px] ${cellBorderTop}`}>
           {hasItem ? (
             <EditableCell
               value={row.sizeRecommendation || ""}
@@ -1484,7 +1484,7 @@ export default function OrdersPage() {
 
         {/* 11. 联系方式 - 使用 rowSpan 合并单元格并垂直居中 */}
         {row.isFirstRow && (
-          <td className="py-1 px-1 border-r border-gray-100 text-center text-[11px] max-w-[200px] align-middle" rowSpan={row.visibleItemCount || 1}>
+          <td className={`py-1 px-1 border-r border-gray-100 text-center text-[11px] max-w-[200px] align-middle ${cellBorderTop}`} rowSpan={row.visibleItemCount || 1}>
             {hasItem ? (
               <EditableCell
                 value={row.contactInfo || ""}
@@ -1497,7 +1497,7 @@ export default function OrdersPage() {
         )}
 
         {/* 12. 国际跟踪单号 */}
-        <td className="py-1 px-1 border-r border-gray-100 whitespace-nowrap text-center text-[11px]">
+        <td className={`py-1 px-1 border-r border-gray-100 whitespace-nowrap text-center text-[11px] ${cellBorderTop}`}>
           {hasItem ? (
             <div className="flex items-center gap-0.5">
               <EditableCell
@@ -1523,7 +1523,7 @@ export default function OrdersPage() {
         </td>
 
         {/* 12.5. 原订单号 */}
-        <td className="py-1 px-1 border-r border-gray-100 whitespace-nowrap text-center text-[11px]">
+        <td className={`py-1 px-1 border-r border-gray-100 whitespace-nowrap text-center text-[11px] ${cellBorderTop}`}>
           {hasItem ? (
             <EditableCell
               value={row.originalOrderNo || ""}
@@ -1534,7 +1534,7 @@ export default function OrdersPage() {
         </td>
 
         {/* 13. 发出日期 */}
-        <td className="py-1 px-1 border-r border-gray-100 whitespace-nowrap text-center text-[11px]">
+        <td className={`py-1 px-1 border-r border-gray-100 whitespace-nowrap text-center text-[11px] ${cellBorderTop}`}>
           {hasItem ? (
             <EditableCell
               value={row.shipDate || ""}
@@ -1546,7 +1546,7 @@ export default function OrdersPage() {
         </td>
 
         {/* 14. 件数 */}
-        <td className="py-1 px-1 border-r border-gray-100 text-center text-[11px]">
+        <td className={`py-1 px-1 border-r border-gray-100 text-center text-[11px] ${cellBorderTop}`}>
           {hasItem ? (
             <EditableCell
               value={row.quantity || ""}
@@ -1558,7 +1558,7 @@ export default function OrdersPage() {
         </td>
 
         {/* 15. 货源 */}
-        <td className="py-1 px-1 border-r border-gray-100 whitespace-nowrap text-center text-[11px]">
+        <td className={`py-1 px-1 border-r border-gray-100 whitespace-nowrap text-center text-[11px] ${cellBorderTop}`}>
           {hasItem ? (
             <EditableCell
               value={row.source || ""}
@@ -1569,7 +1569,7 @@ export default function OrdersPage() {
         </td>
 
         {/* 16. 订单状态 */}
-        <td className="py-1 px-1 border-r border-gray-100 text-center text-[11px]">
+        <td className={`py-1 px-1 border-r border-gray-100 text-center text-[11px] ${cellBorderTop}`}>
           {hasItem ? (
             <EditableCell
               value={row.itemStatus || row.orderStatus || "已报货，待发货"}
@@ -1590,7 +1590,7 @@ export default function OrdersPage() {
         </td>
 
         {/* 17. 总金额$ - editable */}
-        <td className="py-1 px-1 border-r border-gray-100 text-center font-mono whitespace-nowrap text-[11px]">
+        <td className={`py-1 px-1 border-r border-gray-100 text-center font-mono whitespace-nowrap text-[11px] ${cellBorderTop}`}>
           {hasItem ? (
             <EditableCell
               value={row.amountUsd || ""}
@@ -1604,12 +1604,12 @@ export default function OrdersPage() {
         </td>
 
         {/* 18. 总金额¥ - auto: 总金额$ × 汇率 */}
-        <td className="py-1 px-1 border-r border-gray-100 text-center font-mono whitespace-nowrap text-[11px] bg-gray-50/50">
+        <td className={`py-1 px-1 border-r border-gray-100 text-center font-mono whitespace-nowrap text-[11px] bg-gray-50/50 ${cellBorderTop}`}>
           {fmtNum(row.amountCny) ? `¥${fmtNum(row.amountCny)}` : ""}
         </td>
 
         {/* 19. 售价 - editable */}
-        <td className="py-1 px-1 border-r border-gray-100 text-center font-mono whitespace-nowrap text-[11px]">
+        <td className={`py-1 px-1 border-r border-gray-100 text-center font-mono whitespace-nowrap text-[11px] ${cellBorderTop}`}>
           {hasItem ? (
             <EditableCell
               value={row.sellingPrice || ""}
@@ -1621,7 +1621,7 @@ export default function OrdersPage() {
         </td>
 
         {/* 20. 产品成本 - editable */}
-        <td className="py-1 px-1 border-r border-gray-100 text-center font-mono whitespace-nowrap text-[11px]">
+        <td className={`py-1 px-1 border-r border-gray-100 text-center font-mono whitespace-nowrap text-[11px] ${cellBorderTop}`}>
           {hasItem ? (
             <EditableCell
               value={row.productCost || ""}
@@ -1633,22 +1633,22 @@ export default function OrdersPage() {
         </td>
 
         {/* 21. 产品毛利润 - auto: 售价 - 产品成本 */}
-        <td className={`py-1 px-1 border-r border-gray-100 text-center font-mono whitespace-nowrap text-[11px] bg-gray-50/50 ${profitColor(row.productProfit)}`}>
+        <td className={`py-1 px-1 border-r border-gray-100 text-center font-mono whitespace-nowrap text-[11px] bg-gray-50/50 ${profitColor(row.productProfit)} ${cellBorderTop}`}>
           {fmtNum(row.productProfit)}
         </td>
 
         {/* 22. 产品毛利率 - auto: 产品毛利润 ÷ 售价 */}
-        <td className={`py-1 px-1 border-r border-gray-100 text-center font-mono whitespace-nowrap text-[11px] bg-gray-50/50 ${profitColor(row.productProfitRate)}`}>
+        <td className={`py-1 px-1 border-r border-gray-100 text-center font-mono whitespace-nowrap text-[11px] bg-gray-50/50 ${profitColor(row.productProfitRate)} ${cellBorderTop}`}>
           {fmtPct(row.productProfitRate)}
         </td>
 
         {/* 23. 收取运费(¥) - auto: 总金额¥ - 售价 */}
-        <td className="py-1 px-1 border-r border-gray-100 text-center font-mono whitespace-nowrap text-[11px] bg-gray-50/50">
+        <td className={`py-1 px-1 border-r border-gray-100 text-center font-mono whitespace-nowrap text-[11px] bg-gray-50/50 ${cellBorderTop}`}>
           {fmtNum(row.shippingCharged)}
         </td>
 
         {/* 24. 实际运费 - editable */}
-        <td className="py-1 px-1 border-r border-gray-100 text-center font-mono whitespace-nowrap text-[11px]">
+        <td className={`py-1 px-1 border-r border-gray-100 text-center font-mono whitespace-nowrap text-[11px] ${cellBorderTop}`}>
           {hasItem ? (
             <EditableCell
               value={row.shippingActual || ""}
@@ -1660,28 +1660,28 @@ export default function OrdersPage() {
         </td>
 
         {/* 25. 运费利润 - auto: 收取运费 - 实际运费 */}
-        <td className={`py-1 px-1 border-r border-gray-100 text-center font-mono whitespace-nowrap text-[11px] bg-gray-50/50 ${profitColor(row.shippingProfit)}`}>
+        <td className={`py-1 px-1 border-r border-gray-100 text-center font-mono whitespace-nowrap text-[11px] bg-gray-50/50 ${profitColor(row.shippingProfit)} ${cellBorderTop}`}>
           {fmtNum(row.shippingProfit)}
         </td>
 
         {/* 26. 运费利润率 - auto: 运费利润 ÷ 收取运费 */}
-        <td className={`py-1 px-1 border-r border-gray-100 text-center font-mono whitespace-nowrap text-[11px] bg-gray-50/50 ${profitColor(row.shippingProfitRate)}`}>
+        <td className={`py-1 px-1 border-r border-gray-100 text-center font-mono whitespace-nowrap text-[11px] bg-gray-50/50 ${profitColor(row.shippingProfitRate)} ${cellBorderTop}`}>
           {fmtPct(row.shippingProfitRate)}
         </td>
 
         {/* 27. 总利润 - auto: 产品毛利润 + 运费利润 */}
-        <td className={`py-1 px-1 border-r border-gray-100 text-center font-mono whitespace-nowrap text-[11px] font-medium bg-gray-50/50 ${profitColor(row.totalProfit)}`}>
+        <td className={`py-1 px-1 border-r border-gray-100 text-center font-mono whitespace-nowrap text-[11px] font-medium bg-gray-50/50 ${profitColor(row.totalProfit)} ${cellBorderTop}`}>
           {fmtNum(row.totalProfit)}
         </td>
 
         {/* 28. 利润率 - auto: 总利润 ÷ 总金额¥ */}
-        <td className={`py-1 px-1 border-r border-gray-100 text-center font-mono whitespace-nowrap text-[11px] bg-gray-50/50 ${profitColor(row.profitRate)}`}>
+        <td className={`py-1 px-1 border-r border-gray-100 text-center font-mono whitespace-nowrap text-[11px] bg-gray-50/50 ${profitColor(row.profitRate)} ${cellBorderTop}`}>
           {fmtPct(row.profitRate)}
         </td>
 
         {/* 29. 付款截图 - rowSpan合并居中 */}
         {row.isFirstRow && (
-          <td className="py-1 px-1 border-r border-gray-100 text-center align-middle" rowSpan={row.visibleItemCount || 1}>
+          <td className={`py-1 px-1 border-r border-gray-100 text-center align-middle ${cellBorderTop}`} rowSpan={row.visibleItemCount || 1}>
             <button
               className="w-full h-full flex items-center justify-center cursor-pointer hover:bg-gray-50 rounded transition-colors p-0.5"
               onClick={() => {
@@ -1699,7 +1699,7 @@ export default function OrdersPage() {
 
         {/* 29.5. 付款金额($) - rowSpan合并居中 */}
         {row.isFirstRow && (
-          <td className="py-1 px-1 border-r border-gray-100 text-center text-[11px] align-middle" rowSpan={row.visibleItemCount || 1}>
+          <td className={`py-1 px-1 border-r border-gray-100 text-center text-[11px] align-middle ${cellBorderTop}`} rowSpan={row.visibleItemCount || 1}>
             <button
               className="w-full text-center cursor-pointer hover:bg-gray-50 rounded px-1 py-0.5 transition-colors"
               onClick={() => {
@@ -1719,13 +1719,13 @@ export default function OrdersPage() {
 
         {/* 29.6. 收款账户 - rowSpan合并居中，从支付记录聚合多项显示 */}
         {row.isFirstRow && (
-          <td className="py-1 px-1 border-r border-gray-100 text-center text-[11px] align-middle" rowSpan={row.visibleItemCount || 1}>
+          <td className={`py-1 px-1 border-r border-gray-100 text-center text-[11px] align-middle ${cellBorderTop}`} rowSpan={row.visibleItemCount || 1}>
             <ReceivingAccountsDisplay orderId={row.orderId} fallbackAccount={row.receivingAccount} />
           </td>
         )}
 
         {/* 30. 备注 */}
-        <td className="py-1 px-1 border-r border-gray-100 text-center text-[11px] max-w-[120px]">
+        <td className={`py-1 px-1 border-r border-gray-100 text-center text-[11px] max-w-[120px] ${cellBorderTop}`}>
           {hasItem ? (
             <EditableCell
               value={row.remarks || ""}
@@ -1745,7 +1745,7 @@ export default function OrdersPage() {
 
         {/* 31. 付款状态 - rowSpan合并居中 */}
         {row.isFirstRow && (
-          <td className="py-1 px-1 text-center text-[11px] align-middle" rowSpan={row.visibleItemCount || 1}>
+          <td className={`py-1 px-1 border-r border-gray-100 text-center text-[11px] align-middle ${cellBorderTop}`} rowSpan={row.visibleItemCount || 1}>
             <EditableCell
               value={row.paymentStatus || "未收到"}
               type="select"
@@ -1759,7 +1759,7 @@ export default function OrdersPage() {
         {/* 客户名字、国家、客户分层、订购类目、出生日期、客户邮箱 - rowSpan合并 */}
         {row.isFirstRow && (
           <>
-            <td className="py-1 px-1 text-center text-[11px] align-middle" rowSpan={row.visibleItemCount || 1}>
+            <td className={`py-1 px-1 border-r border-gray-100 text-center text-[11px] align-middle ${cellBorderTop}`} rowSpan={row.visibleItemCount || 1}>
               <EditableCell
                 value={row.customerName || ""}
                 type="text"
@@ -1767,7 +1767,7 @@ export default function OrdersPage() {
                 placeholder="客户名字"
               />
             </td>
-            <td className="py-1 px-1 text-center text-[11px] align-middle" rowSpan={row.visibleItemCount || 1}>
+            <td className={`py-1 px-1 border-r border-gray-100 text-center text-[11px] align-middle ${cellBorderTop}`} rowSpan={row.visibleItemCount || 1}>
               <CountrySelect
                 value={row.customerCountry || ""}
                 onValueChange={(v) => saveOrderField(row.orderId, "customerCountry", v)}
@@ -1775,7 +1775,7 @@ export default function OrdersPage() {
                 compact
               />
             </td>
-            <td className="py-1 px-1 text-center text-[11px] align-middle" rowSpan={row.visibleItemCount || 1}>
+            <td className={`py-1 px-1 border-r border-gray-100 text-center text-[11px] align-middle ${cellBorderTop}`} rowSpan={row.visibleItemCount || 1}>
               <EditableCell
                 value={row.customerTier || ""}
                 type="select"
@@ -1784,7 +1784,7 @@ export default function OrdersPage() {
               />
             </td>
 
-            <td className="py-1 px-1 text-center text-[11px] align-middle" rowSpan={row.visibleItemCount || 1}>
+            <td className={`py-1 px-1 border-r border-gray-100 text-center text-[11px] align-middle ${cellBorderTop}`} rowSpan={row.visibleItemCount || 1}>
               <EditableCell
                 value={row.orderCategory || ""}
                 type="multiSelect"
@@ -1793,14 +1793,14 @@ export default function OrdersPage() {
                 placeholder="订购类目"
               />
             </td>
-            <td className="py-1 px-1 text-center text-[11px] align-middle" rowSpan={row.visibleItemCount || 1}>
+            <td className={`py-1 px-1 border-r border-gray-100 text-center text-[11px] align-middle ${cellBorderTop}`} rowSpan={row.visibleItemCount || 1}>
               <EditableCell
                 value={row.customerBirthDate || ""}
                 type="date"
                 onSave={(v) => saveOrderField(row.orderId, "customerBirthDate", v)}
               />
             </td>
-            <td className="py-1 px-1 text-center text-[11px] align-middle" rowSpan={row.visibleItemCount || 1}>
+            <td className={`py-1 px-1 border-r border-gray-100 text-center text-[11px] align-middle ${cellBorderTop}`} rowSpan={row.visibleItemCount || 1}>
               <EditableCell
                 value={row.customerEmail || ""}
                 type="text"
@@ -1808,7 +1808,7 @@ export default function OrdersPage() {
                 placeholder="客户邮箱"
               />
             </td>
-            <td className="py-1 px-1 text-center text-[11px] align-middle" rowSpan={row.visibleItemCount || 1}>
+            <td className={`py-1 px-1 border-r border-gray-100 text-center text-[11px] align-middle ${cellBorderTop}`} rowSpan={row.visibleItemCount || 1}>
               <EditableCell
                 value={row.wpEntryDate || ""}
                 type="date"
@@ -1817,7 +1817,7 @@ export default function OrdersPage() {
               />
             </td>
             {/* 完成状态 */}
-            <td className="py-1 px-1 text-center text-[11px] align-middle" rowSpan={row.visibleItemCount || 1}>
+            <td className={`py-1 px-1 border-r border-gray-100 text-center text-[11px] align-middle ${cellBorderTop}`} rowSpan={row.visibleItemCount || 1}>
               <EditableCell
                 value={row.completionStatus || "未完成"}
                 type="select"
@@ -2140,7 +2140,7 @@ export default function OrdersPage() {
           ) : flatRows.length > 0 ? (
             <>
               <div className="overflow-x-auto">
-                <table className="w-max min-w-full text-xs border-collapse">
+                <table className="w-max min-w-full text-xs" style={{ borderCollapse: 'separate', borderSpacing: 0 }}>
                   <thead className="sticky top-0 z-10">
                     <tr className="bg-emerald-600 text-white">
                       <th className="py-2 px-1 text-center font-medium border-r border-emerald-500 whitespace-nowrap sticky left-0 bg-emerald-600 z-20" style={{ width: "36px" }}>
