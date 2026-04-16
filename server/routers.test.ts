@@ -104,6 +104,7 @@ vi.mock("./db", () => ({
   deleteAnnualTarget: vi.fn().mockResolvedValue(undefined),
   getAnnualTargetProgress: vi.fn().mockResolvedValue({ team: null, individuals: [] }),
   recalculateAllItemProfitRates: vi.fn().mockResolvedValue({ updated: 5, totalItems: 20, totalOrders: 10 }),
+  restoreUser: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock("./storage", () => ({
@@ -198,11 +199,32 @@ describe("User Management (Admin Only)", () => {
     expect(result).toBeUndefined();
   });
 
-  it("admin can delete user", async () => {
+  it("admin can delete (disable) user", async () => {
     const ctx = createAdminContext();
     const caller = appRouter.createCaller(ctx);
     const result = await caller.users.delete({ userId: 2 });
     expect(result).toBeUndefined();
+  });
+
+  it("admin can list users with includeDisabled", async () => {
+    const ctx = createAdminContext();
+    const caller = appRouter.createCaller(ctx);
+    const result = await caller.users.list({ page: 1, pageSize: 20, includeDisabled: true });
+    expect(result).toHaveProperty("data");
+    expect(result).toHaveProperty("total");
+  });
+
+  it("admin can restore disabled user", async () => {
+    const ctx = createAdminContext();
+    const caller = appRouter.createCaller(ctx);
+    const result = await caller.users.restore({ userId: 2 });
+    expect(result).toBeUndefined();
+  });
+
+  it("staff cannot restore user", async () => {
+    const ctx = createStaffContext();
+    const caller = appRouter.createCaller(ctx);
+    await expect(caller.users.restore({ userId: 2 })).rejects.toThrow();
   });
 });
 

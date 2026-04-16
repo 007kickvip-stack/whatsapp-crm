@@ -5,7 +5,7 @@ import { publicProcedure, protectedProcedure, adminProcedure, router } from "./_
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import {
-  listUsers, updateUserRole, deleteUser, getUserById, createUser,
+  listUsers, updateUserRole, deleteUser, restoreUser, getUserById, createUser,
   getUserByUsername, verifyPassword, updateUserPassword, updateUserUsername, updateUserHireDate,
   createCustomer, updateCustomer, deleteCustomer, getCustomerById, getCustomerByWhatsapp, listCustomers, syncCustomerStats, syncCustomerFromOrder, getCustomerOrderHistory, getCustomerOrderList,
   createOrder, updateOrder, deleteOrder, getOrderById, getOrderWithItems, listOrders,
@@ -113,7 +113,8 @@ export const appRouter = router({
     list: adminProcedure.input(z.object({
       page: z.number().default(1),
       pageSize: z.number().default(20),
-    })).query(({ input }) => listUsers(input.page, input.pageSize)),
+      includeDisabled: z.boolean().default(true),
+    })).query(({ input }) => listUsers(input.page, input.pageSize, input.includeDisabled)),
 
     getById: adminProcedure.input(z.object({ id: z.number() })).query(({ input }) => getUserById(input.id)),
 
@@ -123,6 +124,8 @@ export const appRouter = router({
     })).mutation(({ input }) => updateUserRole(input.userId, input.role)),
 
     delete: adminProcedure.input(z.object({ userId: z.number() })).mutation(({ input }) => deleteUser(input.userId)),
+
+    restore: adminProcedure.input(z.object({ userId: z.number() })).mutation(({ input }) => restoreUser(input.userId)),
 
     create: adminProcedure.input(z.object({
       name: z.string().min(1),

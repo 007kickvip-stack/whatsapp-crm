@@ -82,14 +82,18 @@ export async function getUserByOpenId(openId: string) {
   return result.length > 0 ? result[0] : undefined;
 }
 
-export async function listUsers(page: number = 1, pageSize: number = 20) {
+export async function listUsers(page: number = 1, pageSize: number = 20, includeDisabled: boolean = false) {
   const db = await getDb();
   if (!db) return { data: [], total: 0 };
   const offset = (page - 1) * pageSize;
-  const notDeleted = isNull(users.deletedAt);
+  const condition = includeDisabled ? undefined : isNull(users.deletedAt);
   const [data, countResult] = await Promise.all([
-    db.select().from(users).where(notDeleted).orderBy(desc(users.createdAt)).limit(pageSize).offset(offset),
-    db.select({ count: sql<number>`count(*)` }).from(users).where(notDeleted),
+    condition
+      ? db.select().from(users).where(condition).orderBy(desc(users.createdAt)).limit(pageSize).offset(offset)
+      : db.select().from(users).orderBy(desc(users.createdAt)).limit(pageSize).offset(offset),
+    condition
+      ? db.select({ count: sql<number>`count(*)` }).from(users).where(condition)
+      : db.select({ count: sql<number>`count(*)` }).from(users),
   ]);
   return { data, total: countResult[0]?.count ?? 0 };
 }
@@ -103,10 +107,19 @@ export async function updateUserRole(userId: number, role: "user" | "admin") {
 export async function deleteUser(userId: number) {
   const db = await getDb();
   if (!db) return;
-  // Soft delete: mark as deleted and invalidate sessions
+  // Soft delete: mark as disabled and invalidate sessions
   await db.update(users).set({
     deletedAt: new Date(),
     sessionInvalidatedAt: new Date(),
+  }).where(eq(users.id, userId));
+}
+
+export async function restoreUser(userId: number) {
+  const db = await getDb();
+  if (!db) return;
+  // Restore: clear deletedAt to re-enable the user
+  await db.update(users).set({
+    deletedAt: null,
   }).where(eq(users.id, userId));
 }
 

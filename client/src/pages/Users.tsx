@@ -46,6 +46,8 @@ import {
   CalendarDays,
   DollarSign,
   Pencil,
+  Ban,
+  RotateCcw,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useLocation } from "wouter";
@@ -54,7 +56,8 @@ export default function UsersPage() {
   const { user } = useAuth();
   const [, setLocation] = useLocation();
   const [page, setPage] = useState(1);
-  const [deleteId, setDeleteId] = useState<number | null>(null);
+  const [disableId, setDisableId] = useState<number | null>(null);
+  const [restoreId, setRestoreId] = useState<number | null>(null);
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [showPasswordDialog, setShowPasswordDialog] = useState(false);
   const [showSalaryDialog, setShowSalaryDialog] = useState(false);
@@ -98,7 +101,7 @@ export default function UsersPage() {
     );
   }
 
-  const { data, isLoading } = trpc.users.list.useQuery({ page, pageSize: 20 });
+  const { data, isLoading } = trpc.users.list.useQuery({ page, pageSize: 20, includeDisabled: true });
 
   const updateRoleMutation = trpc.users.updateRole.useMutation({
     onSuccess: () => {
@@ -108,11 +111,20 @@ export default function UsersPage() {
     onError: (err) => toast.error(err.message),
   });
 
-  const deleteMutation = trpc.users.delete.useMutation({
+  const disableMutation = trpc.users.delete.useMutation({
     onSuccess: () => {
-      toast.success("用户已删除");
+      toast.success("用户已禁用，其登录会话已失效");
       utils.users.list.invalidate();
-      setDeleteId(null);
+      setDisableId(null);
+    },
+    onError: (err) => toast.error(err.message),
+  });
+
+  const restoreMutation = trpc.users.restore.useMutation({
+    onSuccess: () => {
+      toast.success("用户已恢复，可重新登录");
+      utils.users.list.invalidate();
+      setRestoreId(null);
     },
     onError: (err) => toast.error(err.message),
   });
@@ -325,8 +337,9 @@ export default function UsersPage() {
                   <tbody>
                     {data.data.map((u) => {
                       const isSelf = u.id === user?.id;
+                      const isDisabled = !!(u as any).deletedAt;
                       return (
-                        <tr key={u.id} className="border-b last:border-0 hover:bg-muted/20 transition-colors">
+                        <tr key={u.id} className={`border-b last:border-0 hover:bg-muted/20 transition-colors ${isDisabled ? 'opacity-50 bg-muted/10' : ''}`}>
                           <td className="py-3 px-4 text-muted-foreground">{u.id}</td>
                           <td className="py-3 px-4">
                             <div className="flex items-center gap-2">
@@ -334,6 +347,11 @@ export default function UsersPage() {
                               {isSelf && (
                                 <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4">
                                   我
+                                </Badge>
+                              )}
+                              {isDisabled && (
+                                <Badge className="bg-red-100 text-red-600 hover:bg-red-100 border-red-200 text-[10px] px-1.5 py-0 h-4">
+                                  已禁用
                                 </Badge>
                               )}
                             </div>
@@ -427,15 +445,28 @@ export default function UsersPage() {
                               >
                                 <KeyRound className="h-3.5 w-3.5" />
                               </Button>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-8 w-8 text-destructive hover:text-destructive"
-                                disabled={isSelf}
-                                onClick={() => setDeleteId(u.id)}
-                              >
-                                <Trash2 className="h-3.5 w-3.5" />
-                              </Button>
+                              {isDisabled ? (
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-8 w-8 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50"
+                                  title="恢复用户"
+                                  onClick={() => setRestoreId(u.id)}
+                                >
+                                  <RotateCcw className="h-3.5 w-3.5" />
+                                </Button>
+                              ) : (
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-8 w-8 text-destructive hover:text-destructive"
+                                  disabled={isSelf}
+                                  title="禁用用户"
+                                  onClick={() => setDisableId(u.id)}
+                                >
+                                  <Ban className="h-3.5 w-3.5" />
+                                </Button>
+                              )}
                             </div>
                           </td>
                         </tr>
@@ -808,22 +839,43 @@ export default function UsersPage() {
         </DialogContent>
       </Dialog>
 
-      {/* Delete Confirmation */}
-      <AlertDialog open={deleteId !== null} onOpenChange={() => setDeleteId(null)}>
+      {/* Disable Confirmation */}
+      <AlertDialog open={disableId !== null} onOpenChange={() => setDisableId(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>确认删除</AlertDialogTitle>
+            <AlertDialogTitle>确认禁用</AlertDialogTitle>
             <AlertDialogDescription>
-              确定要删除此用户吗？此操作不可撤销。
+              禁用后该用户将无法登录系统，但所有数据（订单、客户等）将完整保留。您可以随时恢复该用户。
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>取消</AlertDialogCancel>
             <AlertDialogAction
-              onClick={() => deleteId && deleteMutation.mutate({ userId: deleteId })}
+              onClick={() => disableId && disableMutation.mutate({ userId: disableId })}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
-              删除
+              确认禁用
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Restore Confirmation */}
+      <AlertDialog open={restoreId !== null} onOpenChange={() => setRestoreId(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>确认恢复</AlertDialogTitle>
+            <AlertDialogDescription>
+              恢复后该用户将可以重新登录系统。
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>取消</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => restoreId && restoreMutation.mutate({ userId: restoreId })}
+              className="bg-emerald-600 text-white hover:bg-emerald-700"
+            >
+              确认恢复
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
