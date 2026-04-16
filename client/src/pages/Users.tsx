@@ -60,6 +60,14 @@ export default function UsersPage() {
   const [showSalaryDialog, setShowSalaryDialog] = useState(false);
   const [salaryTarget, setSalaryTarget] = useState<{ id: number; name: string; baseSalary: string } | null>(null);
   const [salaryForm, setSalaryForm] = useState("");
+  const [showEmploymentDialog, setShowEmploymentDialog] = useState(false);
+  const [employmentTarget, setEmploymentTarget] = useState<any>(null);
+  const [employmentForm, setEmploymentForm] = useState({
+    employmentStatus: 'regular' as 'probation' | 'regular',
+    probationBaseSalary: '',
+    regularBaseSalary: '',
+    regularDate: '',
+  });
   const [passwordTarget, setPasswordTarget] = useState<{ id: number; name: string; username?: string | null } | null>(null);
   const [passwordForm, setPasswordForm] = useState({ username: "", password: "", confirmPassword: "" });
   const [showPassword, setShowPassword] = useState(false);
@@ -137,6 +145,16 @@ export default function UsersPage() {
       setShowSalaryDialog(false);
       setSalaryTarget(null);
       setSalaryForm("");
+    },
+    onError: (err) => toast.error(err.message),
+  });
+
+  const updateEmploymentMutation = trpc.users.updateEmploymentInfo.useMutation({
+    onSuccess: () => {
+      toast.success("员工薪资信息更新成功");
+      utils.users.list.invalidate();
+      setShowEmploymentDialog(false);
+      setEmploymentTarget(null);
     },
     onError: (err) => toast.error(err.message),
   });
@@ -222,6 +240,31 @@ export default function UsersPage() {
     setShowSalaryDialog(true);
   };
 
+  const openEmploymentDialog = (u: any) => {
+    setEmploymentTarget(u);
+    setEmploymentForm({
+      employmentStatus: u.employmentStatus || 'regular',
+      probationBaseSalary: u.probationBaseSalary ? String(parseFloat(u.probationBaseSalary)) : '',
+      regularBaseSalary: u.regularBaseSalary ? String(parseFloat(u.regularBaseSalary)) : (u.baseSalary ? String(parseFloat(u.baseSalary)) : ''),
+      regularDate: u.regularDate ? new Date(u.regularDate).toISOString().split('T')[0] : '',
+    });
+    setShowEmploymentDialog(true);
+  };
+
+  const handleSaveEmployment = () => {
+    if (!employmentTarget) return;
+    const data: any = { userId: employmentTarget.id };
+    data.employmentStatus = employmentForm.employmentStatus;
+    if (employmentForm.probationBaseSalary) {
+      data.probationBaseSalary = parseFloat(employmentForm.probationBaseSalary).toFixed(2);
+    }
+    if (employmentForm.regularBaseSalary) {
+      data.regularBaseSalary = parseFloat(employmentForm.regularBaseSalary).toFixed(2);
+    }
+    data.regularDate = employmentForm.regularDate || null;
+    updateEmploymentMutation.mutate(data);
+  };
+
   const handleSetSalary = () => {
     if (!salaryTarget) return;
     const val = salaryForm.trim();
@@ -272,7 +315,8 @@ export default function UsersPage() {
                       <th className="text-left py-3 px-4 font-medium text-muted-foreground">用户名</th>
                       <th className="text-left py-3 px-4 font-medium text-muted-foreground">邮箱</th>
                       <th className="text-left py-3 px-4 font-medium text-muted-foreground">角色</th>
-                      <th className="text-right py-3 px-4 font-medium text-muted-foreground">底薪(¥)</th>
+                      <th className="text-left py-3 px-4 font-medium text-muted-foreground">员工状态</th>
+                      <th className="text-right py-3 px-4 font-medium text-muted-foreground">薪资设置</th>
                       <th className="text-left py-3 px-4 font-medium text-muted-foreground">入职时间</th>
                       <th className="text-left py-3 px-4 font-medium text-muted-foreground">最后登录</th>
                       <th className="text-right py-3 px-4 font-medium text-muted-foreground">操作</th>
@@ -335,15 +379,33 @@ export default function UsersPage() {
                               </SelectContent>
                             </Select>
                           </td>
+                          <td className="py-3 px-4">
+                            {(u as any).employmentStatus === 'probation' ? (
+                              <Badge className="bg-amber-100 text-amber-700 hover:bg-amber-100 border-amber-200">试用期</Badge>
+                            ) : (
+                              <Badge className="bg-emerald-100 text-emerald-700 hover:bg-emerald-100 border-emerald-200">正式</Badge>
+                            )}
+                            {(u as any).regularDate && (u as any).employmentStatus === 'regular' && (
+                              <span className="ml-1.5 text-xs text-muted-foreground">
+                                {new Date((u as any).regularDate).toLocaleDateString()}转正
+                              </span>
+                            )}
+                          </td>
                           <td className="py-3 px-4 text-right">
                             <button
                               className="inline-flex items-center gap-1 text-sm hover:text-emerald-600 transition-colors cursor-pointer"
-                              onClick={() => openSalaryDialog(u)}
+                              onClick={() => openEmploymentDialog(u)}
                             >
                               <span className="font-medium">
-                                {(u as any).baseSalary && parseFloat((u as any).baseSalary) > 0
-                                  ? `¥${parseFloat((u as any).baseSalary).toLocaleString()}`
-                                  : <span className="text-muted-foreground/50">未设置</span>}
+                                {(u as any).employmentStatus === 'probation'
+                                  ? ((u as any).probationBaseSalary && parseFloat((u as any).probationBaseSalary) > 0
+                                    ? `¥${parseFloat((u as any).probationBaseSalary).toLocaleString()}`
+                                    : <span className="text-muted-foreground/50">未设置</span>)
+                                  : ((u as any).regularBaseSalary && parseFloat((u as any).regularBaseSalary) > 0
+                                    ? `¥${parseFloat((u as any).regularBaseSalary).toLocaleString()}`
+                                    : ((u as any).baseSalary && parseFloat((u as any).baseSalary) > 0
+                                      ? `¥${parseFloat((u as any).baseSalary).toLocaleString()}`
+                                      : <span className="text-muted-foreground/50">未设置</span>))}
                               </span>
                               <Pencil className="h-3 w-3 text-muted-foreground/50" />
                             </button>
@@ -649,6 +711,98 @@ export default function UsersPage() {
             >
               {setPasswordMutation.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
               保存密码
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Employment Info Dialog */}
+      <Dialog open={showEmploymentDialog} onOpenChange={setShowEmploymentDialog}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <DollarSign className="h-5 w-5 text-emerald-600" />
+              员工薪资设置
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="rounded-lg bg-muted/50 p-3 text-sm">
+              <p>为 <strong>{employmentTarget?.name || '未知用户'}</strong> 设置薪资信息</p>
+            </div>
+            <div className="space-y-2">
+              <Label>员工状态</Label>
+              <Select
+                value={employmentForm.employmentStatus}
+                onValueChange={(v: 'probation' | 'regular') => setEmploymentForm(f => ({ ...f, employmentStatus: v }))}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="probation">
+                    <div className="flex items-center gap-1.5">
+                      <span className="h-2 w-2 rounded-full bg-amber-500" />
+                      试用期
+                    </div>
+                  </SelectItem>
+                  <SelectItem value="regular">
+                    <div className="flex items-center gap-1.5">
+                      <span className="h-2 w-2 rounded-full bg-emerald-500" />
+                      正式员工
+                    </div>
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>试用期底薪(¥)</Label>
+                <Input
+                  type="number"
+                  placeholder="如 2500"
+                  value={employmentForm.probationBaseSalary}
+                  onChange={(e) => setEmploymentForm(f => ({ ...f, probationBaseSalary: e.target.value }))}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>正式底薪(¥)</Label>
+                <Input
+                  type="number"
+                  placeholder="如 3500"
+                  value={employmentForm.regularBaseSalary}
+                  onChange={(e) => setEmploymentForm(f => ({ ...f, regularBaseSalary: e.target.value }))}
+                />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label>转正日期</Label>
+              <Input
+                type="date"
+                value={employmentForm.regularDate}
+                onChange={(e) => setEmploymentForm(f => ({ ...f, regularDate: e.target.value }))}
+              />
+              <p className="text-xs text-muted-foreground">设置转正日期后，状态会自动变为正式员工</p>
+            </div>
+            <div className="rounded-lg bg-blue-50 border border-blue-200 p-3 text-sm text-blue-800">
+              <p className="font-medium mb-1">工资计算规则</p>
+              <ul className="space-y-1 text-xs">
+                <li>• <strong>试用期</strong>：底薪 = 试用期底薪，无提成</li>
+                <li>• <strong>正式员工</strong>：底薪 = 正式底薪，按规则计算提成</li>
+                <li>• <strong>月中转正</strong>：底薪按天数比例计算，提成只算转正后的订单</li>
+              </ul>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowEmploymentDialog(false)}>
+              取消
+            </Button>
+            <Button
+              onClick={handleSaveEmployment}
+              disabled={updateEmploymentMutation.isPending}
+              className="bg-emerald-600 hover:bg-emerald-700"
+            >
+              {updateEmploymentMutation.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+              保存
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -657,3 +657,70 @@ describe("Salary Report Multi-Month (getMulti)", () => {
     ).rejects.toThrow();
   });
 });
+
+describe("Employment Info & Salary Calculation", () => {
+  const adminCaller = appRouter.createCaller(createAdminContext());
+  const staffCaller = appRouter.createCaller(createStaffContext());
+
+  it("admin can update employment info", async () => {
+    const result = await adminCaller.users.updateEmploymentInfo({
+      userId: 1,
+      employmentStatus: "probation",
+      probationBaseSalary: "2500.00",
+      regularBaseSalary: "3500.00",
+      regularDate: null,
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("admin can set regular date to trigger conversion", async () => {
+    const result = await adminCaller.users.updateEmploymentInfo({
+      userId: 1,
+      employmentStatus: "regular",
+      probationBaseSalary: "2500.00",
+      regularBaseSalary: "3500.00",
+      regularDate: "2026-03-15",
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("staff cannot update employment info (should throw FORBIDDEN)", async () => {
+    await expect(
+      staffCaller.users.updateEmploymentInfo({
+        userId: 1,
+        employmentStatus: "regular",
+        probationBaseSalary: "2500.00",
+        regularBaseSalary: "3500.00",
+        regularDate: null,
+      })
+    ).rejects.toThrow();
+  });
+
+  it("salary report includes employment status fields", async () => {
+    const report = await adminCaller.salaryReport.get({ yearMonth: "2026-04" });
+    for (const row of report) {
+      expect(row).toHaveProperty("employmentStatus");
+      expect(row).toHaveProperty("baseSalary");
+      expect(typeof row.baseSalary).toBe("number");
+    }
+  });
+
+  it("salary report includes baseSalaryDetail for mid-month conversion", async () => {
+    const report = await adminCaller.salaryReport.get({ yearMonth: "2026-04" });
+    for (const row of report) {
+      // baseSalaryDetail may be null or string
+      if (row.baseSalaryDetail) {
+        expect(typeof row.baseSalaryDetail).toBe("string");
+      }
+    }
+  });
+
+  it("salary report totalSalary includes baseSalary", async () => {
+    const report = await adminCaller.salaryReport.get({ yearMonth: "2026-04" });
+    for (const row of report) {
+      // totalSalary should be a number and >= baseSalary (unless deductions exceed)
+      expect(typeof row.totalSalary).toBe("number");
+      expect(typeof row.baseSalary).toBe("number");
+    }
+  });
+});

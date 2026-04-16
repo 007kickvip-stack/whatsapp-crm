@@ -14,7 +14,11 @@ export const users = mysqlTable("users", {
   loginMethod: varchar("loginMethod", { length: 64 }),
   role: mysqlEnum("role", ["user", "admin"]).default("user").notNull(),
   hireDate: date("hireDate"),
-  baseSalary: decimal("baseSalary", { precision: 12, scale: 2 }).default("0"), // 底薪
+  baseSalary: decimal("baseSalary", { precision: 12, scale: 2 }).default("0"), // 底薪（兼容保留）
+  employmentStatus: mysqlEnum("employmentStatus", ["probation", "regular"]).default("regular").notNull(), // 试用期/正式
+  probationBaseSalary: decimal("probationBaseSalary", { precision: 12, scale: 2 }).default("0"), // 试用期底薪
+  regularBaseSalary: decimal("regularBaseSalary", { precision: 12, scale: 2 }).default("0"), // 正式底薪
+  regularDate: date("regularDate"), // 转正日期
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
   lastSignedIn: timestamp("lastSignedIn").defaultNow().notNull(),

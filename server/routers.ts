@@ -39,7 +39,7 @@ import {
   getPaypalIncomeOrderId, repairPaypalIncomeSync, syncActualReceivedToOrder,
   createReshipment, updateReshipment, deleteReshipment, getReshipmentById, listReshipments, getReshipmentsByOriginalOrderId,
   createOrderPayment, updateOrderPayment, deleteOrderPayment, getOrderPaymentsByOrderId, getOrderPaymentById,
-  updateUserBaseSalary,
+  updateUserBaseSalary, updateUserEmploymentInfo,
   listCommissionRules, getActiveCommissionRules, createCommissionRule, updateCommissionRule, deleteCommissionRule, getCommissionRuleById,
   getSalaryReport,
   getSalaryHistory,
@@ -137,6 +137,18 @@ export const appRouter = router({
       baseSalary: z.string(),
     })).mutation(async ({ input }) => {
       await updateUserBaseSalary(input.userId, input.baseSalary);
+      return { success: true };
+    }),
+
+    updateEmploymentInfo: adminProcedure.input(z.object({
+      userId: z.number(),
+      employmentStatus: z.enum(['probation', 'regular']).optional(),
+      probationBaseSalary: z.string().optional(),
+      regularBaseSalary: z.string().optional(),
+      regularDate: z.string().nullable().optional(),
+    })).mutation(async ({ input }) => {
+      const { userId, ...data } = input;
+      await updateUserEmploymentInfo(userId, data);
       return { success: true };
     }),
 

@@ -801,3 +801,11 @@
 - [x] 前端：月份选择器改为Popover+Checkbox多月份选择，支持最近12个月份
 - [x] 后端：新增getMulti API支持多月份查询并按客服汇总
 - [x] 测试验证（270条测试全部通过）
+
+## 客服试用期/正式员工工资体系
+- [x] 数据库：users表新增employmentStatus(试用期/正式)、probationBaseSalary(试用期底薪)、regularBaseSalary(正式底薪)、regularDate(转正日期)
+- [x] 后端：getSalaryReport修改工资计算逻辑（试用期无提成、月中转正只算转正后订单提成、底薪按天数比例）
+- [x] 后端：用户管理API支持新字段的CRUD（updateEmploymentInfo）
+- [x] 前端：用户管理页面添加员工状态、试用期底薪、正式底薪、转正日期设置弹窗
+- [x] 前端：工资报表页面显示员工状态列、底薪明细列、更新工资公式说明
+- [x] 测试验证（276条测试全部通过）

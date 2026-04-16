@@ -686,13 +686,19 @@ export default function SalaryReportPage() {
           </div>
           <div className="text-sm text-slate-700 leading-relaxed">
             <span className="font-semibold text-blue-700">应发工资</span> = 
-            <span className="text-emerald-700"> 上月已完成订单总利润</span> − 
+            <span className="text-blue-600">底薪</span> + 
+            <span className="text-emerald-700">上月已完成订单总利润</span> − 
             <span className="text-red-600">扣除利润</span> + 
             <span className="text-amber-700">基础提成</span> + 
             <span className="text-orange-600">高利润单特别奖励</span> + 
             <span className="text-purple-600">奖金</span> + 
             <span className="text-cyan-600">线上订单提成</span> − 
             <span className="text-red-600">绩效扣款</span>
+          </div>
+          <div className="mt-2 text-xs text-slate-600 space-y-0.5">
+            <p>• <strong>试用期员工</strong>：底薪 = 试用期底薪，无提成（基础提成 + 高利润奖励 = 0）</p>
+            <p>• <strong>正式员工</strong>：底薪 = 正式底薪，按规则计算提成</p>
+            <p>• <strong>月中转正</strong>：底薪按天数比例计算，提成只算转正后的订单</p>
           </div>
           <p className="text-xs text-muted-foreground mt-1">
             注：订单数据来源于{isMultiMonth ? dataMonthsDesc : formatMonth(dataMonth)}标记为“已完成”的订单 · 扣除利润/奖金/线上订单提成/绩效扣款由管理员手动填写
@@ -820,6 +826,8 @@ export default function SalaryReportPage() {
                 <thead>
                   <tr className="border-b bg-muted/30">
                     <th className="text-left py-3 px-3 font-medium text-muted-foreground sticky left-0 bg-muted/30 z-10">客服</th>
+                    <th className="text-center py-3 px-3 font-medium text-muted-foreground">状态</th>
+                    <th className="text-right py-3 px-3 font-medium text-blue-700 bg-blue-50/30">底薪(¥)</th>
                     <th className="text-right py-3 px-3 font-medium text-muted-foreground">订单数</th>
                     <th className="text-right py-3 px-3 font-medium text-muted-foreground">营业额(¥)</th>
                     <th className="text-right py-3 px-3 font-medium text-emerald-700 bg-emerald-50/30">总利润(¥)</th>
@@ -843,6 +851,21 @@ export default function SalaryReportPage() {
                           </div>
                           <span className="font-medium">{row.staffName}</span>
                         </div>
+                      </td>
+                      <td className="py-3 px-3 text-center">
+                        {row.employmentStatus === 'probation' ? (
+                          <Badge className="bg-amber-100 text-amber-700 hover:bg-amber-100 border-amber-200 text-[10px]">试用期</Badge>
+                        ) : row.employmentStatus === 'mid_month_regular' ? (
+                          <Badge className="bg-blue-100 text-blue-700 hover:bg-blue-100 border-blue-200 text-[10px]">月中转正</Badge>
+                        ) : (
+                          <Badge className="bg-emerald-100 text-emerald-700 hover:bg-emerald-100 border-emerald-200 text-[10px]">正式</Badge>
+                        )}
+                      </td>
+                      <td className="py-3 px-3 text-right bg-blue-50/30">
+                        <span className="text-blue-700 font-medium">¥{(row.baseSalary || 0).toLocaleString()}</span>
+                        {row.baseSalaryDetail && (
+                          <p className="text-[10px] text-muted-foreground mt-0.5">{row.baseSalaryDetail}</p>
+                        )}
                       </td>
                       <td className="py-3 px-3 text-right">{row.orderCount}</td>
                       <td className="py-3 px-3 text-right">¥{row.totalRevenue.toLocaleString()}</td>

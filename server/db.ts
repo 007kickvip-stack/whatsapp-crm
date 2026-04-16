@@ -171,6 +171,31 @@ export async function updateUserBaseSalary(userId: number, baseSalary: string) {
   await db.update(users).set({ baseSalary }).where(eq(users.id, userId));
 }
 
+export async function updateUserEmploymentInfo(userId: number, data: {
+  employmentStatus?: 'probation' | 'regular';
+  probationBaseSalary?: string;
+  regularBaseSalary?: string;
+  regularDate?: string | null;
+}) {
+  const db = await getDb();
+  if (!db) return;
+  const setData: any = {};
+  if (data.employmentStatus !== undefined) setData.employmentStatus = data.employmentStatus;
+  if (data.probationBaseSalary !== undefined) setData.probationBaseSalary = data.probationBaseSalary;
+  if (data.regularBaseSalary !== undefined) {
+    setData.regularBaseSalary = data.regularBaseSalary;
+    setData.baseSalary = data.regularBaseSalary; // 同步到兼容字段
+  }
+  if (data.regularDate !== undefined) {
+    setData.regularDate = data.regularDate ? new Date(data.regularDate + 'T00:00:00') : null;
+    // 设置转正日期时自动更新状态为正式
+    if (data.regularDate) setData.employmentStatus = 'regular';
+  }
+  if (Object.keys(setData).length > 0) {
+    await db.update(users).set(setData).where(eq(users.id, userId));
+  }
+}
+
 // ==================== Customer Helpers ====================
 
 export async function createCustomer(data: InsertCustomer) {
@@ -3113,12 +3138,16 @@ export async function getSalaryReport(yearMonth: string) {
   const startDate = `${prevYearMonth}-01`;
   const endDate = `${yearMonth}-01`; // 上月1号到本月1号
 
-  // 1. 获取所有客服（role=user）及其底薪
+  // 1. 获取所有客服（role=user）及其底薪和员工状态
   const staffList = await db.select({
     id: users.id,
     name: users.name,
     baseSalary: users.baseSalary,
     hireDate: users.hireDate,
+    employmentStatus: users.employmentStatus,
+    probationBaseSalary: users.probationBaseSalary,
+    regularBaseSalary: users.regularBaseSalary,
+    regularDate: users.regularDate,
   }).from(users).where(eq(users.role, "user"));
 
   // 2. 获取活跃的提成规则
@@ -3134,7 +3163,7 @@ export async function getSalaryReport(yearMonth: string) {
     adjustmentMap.set(adj.staffId, adj);
   }
 
-  // 3. 获取每个客服在上月已完成订单的营业额（仅completionStatus='已完成'的订单）
+  // 3. 获取每个客服在上月已完成订单的营业额（全部订单）
   const revenueResult = await db.execute(sql`
     SELECT staffId, staffName,
       COALESCE(SUM(totalAmountCny), 0) as totalRevenue,
@@ -3153,6 +3182,75 @@ export async function getSalaryReport(yearMonth: string) {
       orderCount: parseInt(row.orderCount) || 0,
       staffName: row.staffName || '',
     });
+  }
+
+  // 3.5 获取每个客服转正后的订单营业额和利润（用于月中转正提成计算）
+  // 先收集需要特殊处理的员工（月中转正的）
+  const midMonthRegularStaff: { id: number; regularDate: string }[] = [];
+  for (const staff of staffList) {
+    if (staff.regularDate) {
+      const rd = typeof staff.regularDate === 'string' ? staff.regularDate : new Date(staff.regularDate).toISOString().split('T')[0];
+      // 转正日期在数据来源月份内（上月）
+      if (rd >= startDate && rd < endDate) {
+        midMonthRegularStaff.push({ id: staff.id, regularDate: rd });
+      }
+    }
+  }
+
+  // 为月中转正员工获取转正后的订单数据
+  const postRegularRevenueMap = new Map<number, { totalRevenue: number; orderCount: number }>();
+  const postRegularProfitMap = new Map<number, { productProfit: number; shippingProfit: number }>();
+  const postRegularOrderProfits = new Map<number, number[]>();
+  for (const ms of midMonthRegularStaff) {
+    // 转正后的订单营业额
+    const postRevResult = await db.execute(sql`
+      SELECT COALESCE(SUM(totalAmountCny), 0) as totalRevenue, COUNT(*) as orderCount
+      FROM orders
+      WHERE orderDate >= ${ms.regularDate} AND orderDate < ${endDate}
+        AND staffId = ${ms.id}
+        AND (completionStatus = '已完成' OR completionStatus IS NULL)
+    `);
+    const postRevRows = (postRevResult as any)[0] || [];
+    if (postRevRows.length > 0) {
+      postRegularRevenueMap.set(ms.id, {
+        totalRevenue: parseFloat(postRevRows[0].totalRevenue) || 0,
+        orderCount: parseInt(postRevRows[0].orderCount) || 0,
+      });
+    }
+    // 转正后的订单利润
+    const postProfResult = await db.execute(sql`
+      SELECT COALESCE(SUM(oi.productProfit), 0) as totalProductProfit,
+        COALESCE(SUM(oi.shippingProfit), 0) as totalShippingProfit
+      FROM order_items oi
+      JOIN orders o ON oi.orderId = o.id
+      WHERE o.orderDate >= ${ms.regularDate} AND o.orderDate < ${endDate}
+        AND o.staffId = ${ms.id}
+        AND (o.completionStatus = '已完成' OR o.completionStatus IS NULL)
+    `);
+    const postProfRows = (postProfResult as any)[0] || [];
+    if (postProfRows.length > 0) {
+      postRegularProfitMap.set(ms.id, {
+        productProfit: parseFloat(postProfRows[0].totalProductProfit) || 0,
+        shippingProfit: parseFloat(postProfRows[0].totalShippingProfit) || 0,
+      });
+    }
+    // 转正后的每笔订单利润（用于高利润单奖励）
+    const postOrderProfResult = await db.execute(sql`
+      SELECT o.id as orderId,
+        COALESCE(SUM(oi.productProfit), 0) + COALESCE(SUM(oi.shippingProfit), 0) as orderTotalProfit
+      FROM order_items oi
+      JOIN orders o ON oi.orderId = o.id
+      WHERE o.orderDate >= ${ms.regularDate} AND o.orderDate < ${endDate}
+        AND o.staffId = ${ms.id}
+        AND (o.completionStatus = '已完成' OR o.completionStatus IS NULL)
+      GROUP BY o.id
+    `);
+    const postOrderProfRows = (postOrderProfResult as any)[0] || [];
+    const profits: number[] = [];
+    for (const row of postOrderProfRows) {
+      profits.push(parseFloat(row.orderTotalProfit) || 0);
+    }
+    postRegularOrderProfits.set(ms.id, profits);
   }
 
   // 4. 获取每个客服在上月已完成订单的利润
@@ -3259,7 +3357,10 @@ export async function getSalaryReport(yearMonth: string) {
     return commission;
   }
 
-  // 6. 计算每个客服的提成和工资
+  // 6. 计算每个客服的提成和工资（区分试用期/正式/月中转正）
+  // 计算数据来源月份的总天数
+  const daysInDataMonth = new Date(prevYear, prevMonth, 0).getDate();
+
   const report = staffList.map(staff => {
     const revenue = revenueMap.get(staff.id);
     const profit = profitMap.get(staff.id);
@@ -3268,17 +3369,100 @@ export async function getSalaryReport(yearMonth: string) {
     const productProfit = profit?.productProfit || 0;
     const shippingProfit = profit?.shippingProfit || 0;
     const totalProfit = productProfit + shippingProfit;
-    const baseSalary = parseFloat(staff.baseSalary as string) || 0;
 
-    // 计算三种模式的提成并累加
-    const revenueCommission = calcStepCommission(totalRevenue, revenueRules);
-    const profitCommission = calcStepCommission(totalProfit, profitRules);
-    const profitRateCommission = calcProfitRateCommission(totalProfit, totalRevenue, profitRateRules);
-    const commission = revenueCommission + profitCommission + profitRateCommission;
+    // 判断员工在数据来源月份的状态
+    const probSalary = parseFloat(staff.probationBaseSalary as string) || 0;
+    const regSalary = parseFloat(staff.regularBaseSalary as string) || parseFloat(staff.baseSalary as string) || 0;
+    const rdRaw = staff.regularDate;
+    const regularDateStr = rdRaw ? (typeof rdRaw === 'string' ? rdRaw : new Date(rdRaw).toISOString().split('T')[0]) : null;
 
-    // 计算高利润单特别奖励
-    const orderProfits = staffOrderProfits.get(staff.id) || [];
-    const { bonusAmount: highProfitBonus, bonusOrderCount: highProfitOrderCount } = calcBonusReward(orderProfits, activeBonusRules);
+    // 判断数据来源月份的员工状态
+    let statusInMonth: 'probation' | 'regular' | 'mid-month' = 'regular'; // 默认正式
+    let probationDays = 0;
+    let regularDays = daysInDataMonth;
+    let regularDayOfMonth = 1; // 转正日期是当月第几天
+
+    if (regularDateStr) {
+      if (regularDateStr >= endDate) {
+        // 转正日期在数据月之后，整月试用期
+        statusInMonth = 'probation';
+        probationDays = daysInDataMonth;
+        regularDays = 0;
+      } else if (regularDateStr >= startDate && regularDateStr < endDate) {
+        // 转正日期在数据月内，月中转正
+        statusInMonth = 'mid-month';
+        regularDayOfMonth = parseInt(regularDateStr.split('-')[2]);
+        probationDays = regularDayOfMonth - 1; // 转正日当天算正式
+        regularDays = daysInDataMonth - probationDays;
+      }
+      // else: 转正日期在数据月之前，整月正式
+    } else if (staff.employmentStatus === 'probation') {
+      // 没有转正日期且状态为试用期
+      statusInMonth = 'probation';
+      probationDays = daysInDataMonth;
+      regularDays = 0;
+    }
+
+    // 计算底薪（按天数比例）
+    let baseSalary = 0;
+    if (statusInMonth === 'probation') {
+      baseSalary = probSalary;
+    } else if (statusInMonth === 'regular') {
+      baseSalary = regSalary;
+    } else {
+      // 月中转正：按天数比例
+      baseSalary = Math.round((probSalary * (probationDays / daysInDataMonth) + regSalary * (regularDays / daysInDataMonth)) * 100) / 100;
+    }
+
+    // 计算提成（试用期无提成，月中转正只算转正后订单）
+    let commission = 0;
+    let revenueCommission = 0;
+    let profitCommission = 0;
+    let profitRateCommission = 0;
+    let highProfitBonus = 0;
+    let highProfitOrderCount = 0;
+    let commissionRevenue = totalRevenue; // 用于提成计算的营业额
+    let commissionProfit = totalProfit; // 用于提成计算的利润
+
+    if (statusInMonth === 'probation') {
+      // 试用期：无提成
+      commission = 0;
+      revenueCommission = 0;
+      profitCommission = 0;
+      profitRateCommission = 0;
+      highProfitBonus = 0;
+      highProfitOrderCount = 0;
+    } else if (statusInMonth === 'mid-month') {
+      // 月中转正：只计算转正后订单的提成
+      const postRev = postRegularRevenueMap.get(staff.id);
+      const postProf = postRegularProfitMap.get(staff.id);
+      commissionRevenue = postRev?.totalRevenue || 0;
+      const postProductProfit = postProf?.productProfit || 0;
+      const postShippingProfit = postProf?.shippingProfit || 0;
+      commissionProfit = postProductProfit + postShippingProfit;
+
+      revenueCommission = calcStepCommission(commissionRevenue, revenueRules);
+      profitCommission = calcStepCommission(commissionProfit, profitRules);
+      profitRateCommission = calcProfitRateCommission(commissionProfit, commissionRevenue, profitRateRules);
+      commission = revenueCommission + profitCommission + profitRateCommission;
+
+      // 高利润单奖励也只算转正后的订单
+      const postProfits = postRegularOrderProfits.get(staff.id) || [];
+      const bonusResult = calcBonusReward(postProfits, activeBonusRules);
+      highProfitBonus = bonusResult.bonusAmount;
+      highProfitOrderCount = bonusResult.bonusOrderCount;
+    } else {
+      // 正式员工：正常计算
+      revenueCommission = calcStepCommission(totalRevenue, revenueRules);
+      profitCommission = calcStepCommission(totalProfit, profitRules);
+      profitRateCommission = calcProfitRateCommission(totalProfit, totalRevenue, profitRateRules);
+      commission = revenueCommission + profitCommission + profitRateCommission;
+
+      const orderProfits = staffOrderProfits.get(staff.id) || [];
+      const bonusResult = calcBonusReward(orderProfits, activeBonusRules);
+      highProfitBonus = bonusResult.bonusAmount;
+      highProfitOrderCount = bonusResult.bonusOrderCount;
+    }
 
     // 获取工资调整项
     const adj = adjustmentMap.get(staff.id);
@@ -3288,13 +3472,13 @@ export async function getSalaryReport(yearMonth: string) {
     const performanceDeduction = adj ? parseFloat(adj.performanceDeduction as string) || 0 : 0;
     const adjRemark = adj?.remark || '';
 
-    // 工资公式：上月已完成订单总利润 - 扣除利润 + 基础提成 + 高利润单特别奖励 + 奖金 + 线上订单提成 - 绩效扣款
-    const totalSalary = totalProfit - profitDeduction + commission + highProfitBonus + bonusAdj + onlineCommission - performanceDeduction;
+    // 工资公式：底薪 + 上月已完成订单总利润 - 扣除利润 + 基础提成 + 高利润单特别奖励 + 奖金 + 线上订单提成 - 绩效扣款
+    const totalSalary = baseSalary + totalProfit - profitDeduction + commission + highProfitBonus + bonusAdj + onlineCommission - performanceDeduction;
 
     return {
       staffId: staff.id,
       staffName: revenue?.staffName || staff.name || '未知',
-      baseSalary,
+      baseSalary: Math.round(baseSalary * 100) / 100,
       totalRevenue,
       orderCount,
       productProfit,
@@ -3317,6 +3501,16 @@ export async function getSalaryReport(yearMonth: string) {
       // 数据来源月份（上月）
       dataMonth: prevYearMonth,
       hireDate: staff.hireDate,
+      // 员工状态信息
+      employmentStatus: statusInMonth,
+      probationDays,
+      regularDays,
+      probationBaseSalary: probSalary,
+      regularBaseSalary: regSalary,
+      regularDate: regularDateStr,
+      // 提成计算基数（月中转正时为转正后订单数据）
+      commissionRevenue: Math.round(commissionRevenue * 100) / 100,
+      commissionProfit: Math.round(commissionProfit * 100) / 100,
     };
   });
 

@@ -267,6 +267,13 @@
       "when": 1776311209188,
       "tag": "0037_slim_mindworm",
       "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "5",
+      "when": 1776337702470,
+      "tag": "0038_tough_lilandra",
+      "breakpoints": true
     }
   ]
 }
