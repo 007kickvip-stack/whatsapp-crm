@@ -1556,3 +1556,32 @@ describe("orders.recalculateAllProfitRates", () => {
     await expect(caller.orders.recalculateAllProfitRates()).rejects.toThrow();
   });
 });
+
+
+// ==================== Batch Delete Orders ====================
+describe("orders.batchDelete", () => {
+  it("admin can batch delete orders", async () => {
+    const ctx = createAdminContext();
+    const caller = appRouter.createCaller(ctx);
+    const result = await caller.orders.batchDelete({ orderIds: [1, 2, 3] });
+    expect(result.deleted).toBe(3);
+  });
+
+  it("non-admin cannot batch delete orders", async () => {
+    const ctx = createStaffContext();
+    const caller = appRouter.createCaller(ctx);
+    await expect(caller.orders.batchDelete({ orderIds: [1] })).rejects.toThrow();
+  });
+
+  it("unauthenticated user cannot batch delete orders", async () => {
+    const ctx = createUnauthContext();
+    const caller = appRouter.createCaller(ctx);
+    await expect(caller.orders.batchDelete({ orderIds: [1] })).rejects.toThrow();
+  });
+
+  it("rejects empty orderIds array", async () => {
+    const ctx = createAdminContext();
+    const caller = appRouter.createCaller(ctx);
+    await expect(caller.orders.batchDelete({ orderIds: [] })).rejects.toThrow();
+  });
+});

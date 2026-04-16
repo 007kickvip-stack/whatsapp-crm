@@ -437,6 +437,20 @@ export const appRouter = router({
       return { success: true };
     }),
 
+    // 批量删除订单
+    batchDelete: adminProcedure.input(z.object({
+      orderIds: z.array(z.number()).min(1).max(200),
+    })).mutation(async ({ input, ctx }) => {
+      let deleted = 0;
+      for (const id of input.orderIds) {
+        await deletePaypalIncomeByOrderId(id);
+        await deleteOrder(id);
+        await logAction(ctx, "delete", "order", id);
+        deleted++;
+      }
+      return { deleted };
+    }),
+
     bulkImport: protectedProcedure.input(z.object({
       rows: z.array(z.object({
         orderDate: z.string().optional(),

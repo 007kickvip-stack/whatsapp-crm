@@ -63,7 +63,6 @@ import {
   DollarSign,
   CheckCircle2,
   XCircle,
-  Calculator,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useLocation } from "wouter";
@@ -636,6 +635,14 @@ export default function OrdersPage() {
     },
     onError: (err) => toast.error(err.message),
   });
+  const batchDeleteMutation = trpc.orders.batchDelete.useMutation({
+    onSuccess: (result) => {
+      toast.success(`成功删除 ${result.deleted} 个订单`);
+      utils.orders.list.invalidate();
+      setSelectedOrderIds(new Set());
+    },
+    onError: (err) => toast.error("批量删除失败: " + err.message),
+  });
   // Collapse/expand state: set of collapsed order IDs
   const [collapsedOrders, setCollapsedOrders] = useState<Set<number>>(new Set());
 
@@ -864,7 +871,6 @@ export default function OrdersPage() {
   const totalPages = Math.ceil((data?.total ?? 0) / 20);
 
   const exportMutation = trpc.export.orders.useMutation();
-  const recalcProfitRates = trpc.orders.recalculateAllProfitRates.useMutation();
 
   const handleExport = async () => {
     setExporting(true);
@@ -1836,27 +1842,6 @@ export default function OrdersPage() {
           </p>
         </div>
         <div className="flex gap-2">
-          {user?.role === "admin" && (
-            <Button
-              variant="outline"
-              onClick={async () => {
-                if (!confirm("确认重算所有订单子项的利润率？\n\n这将根据现有的售价、成本、运费等数据重新计算所有利润率字段。")) return;
-                try {
-                  toast.info("正在重算利润率，请稍候...");
-                  const result = await recalcProfitRates.mutateAsync();
-                  toast.success(`利润率重算完成！更新了 ${result.updated} 条子项（共 ${result.totalItems} 条）`);
-                  utils.orders.list.invalidate();
-                } catch (e: any) {
-                  toast.error("重算失败: " + (e.message || "未知错误"));
-                }
-              }}
-              disabled={recalcProfitRates.isPending}
-              className="gap-2"
-            >
-              {recalcProfitRates.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Calculator className="h-4 w-4" />}
-              重算利润率
-            </Button>
-          )}
           <Button
             variant="outline"
             onClick={handleExport}
@@ -2121,6 +2106,23 @@ export default function OrdersPage() {
                   <XCircle className="h-3.5 w-3.5" />
                   标记为未完成
                 </Button>
+                {user?.role === "admin" && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-7 gap-1 text-xs border-red-300 text-red-700 hover:bg-red-50"
+                    disabled={batchDeleteMutation.isPending}
+                    onClick={() => {
+                      if (!confirm(`确认删除已选择的 ${selectedOrderIds.size} 个订单？\n\n此操作不可撤销，删除后订单及其子项、关联的PayPal收入记录将被永久删除。`)) return;
+                      batchDeleteMutation.mutate({
+                        orderIds: Array.from(selectedOrderIds),
+                      });
+                    }}
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                    {batchDeleteMutation.isPending ? "删除中..." : "批量删除"}
+                  </Button>
+                )}
               </div>
             </div>
           </CardContent>
