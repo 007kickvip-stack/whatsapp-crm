@@ -815,3 +815,79 @@ describe("Salary Report Commission Details", () => {
     }
   });
 });
+
+describe("Salary Slip Data Completeness", () => {
+  const adminCaller = appRouter.createCaller(createAdminContext());
+
+  it("salary report contains all fields needed for salary slip generation", async () => {
+    const report = await adminCaller.salaryReport.get({ yearMonth: "2026-04" });
+    expect(Array.isArray(report)).toBe(true);
+    for (const row of report) {
+      // Basic info
+      expect(row).toHaveProperty("staffId");
+      expect(row).toHaveProperty("staffName");
+      expect(row).toHaveProperty("employmentStatus");
+      expect(row).toHaveProperty("orderCount");
+      expect(row).toHaveProperty("totalRevenue");
+      expect(row).toHaveProperty("totalProfit");
+
+      // Salary breakdown
+      expect(row).toHaveProperty("baseSalary");
+      expect(row).toHaveProperty("commission");
+      expect(row).toHaveProperty("highProfitBonus");
+      expect(row).toHaveProperty("totalSalary");
+
+      // Adjustment fields
+      expect(row).toHaveProperty("profitDeduction");
+      expect(row).toHaveProperty("bonus");
+      expect(row).toHaveProperty("onlineCommission");
+      expect(row).toHaveProperty("performanceDeduction");
+
+      // Commission details for slip
+      expect(row).toHaveProperty("commissionDetails");
+      expect(Array.isArray(row.commissionDetails)).toBe(true);
+
+      // Type checks
+      expect(typeof row.baseSalary).toBe("number");
+      expect(typeof row.commission).toBe("number");
+      expect(typeof row.totalSalary).toBe("number");
+      expect(typeof row.totalRevenue).toBe("number");
+      expect(typeof row.totalProfit).toBe("number");
+    }
+  });
+
+  it("salary slip total formula is correct: baseSalary + totalProfit - profitDeduction + commission + highProfitBonus + bonus + onlineCommission - performanceDeduction", async () => {
+    const report = await adminCaller.salaryReport.get({ yearMonth: "2026-04" });
+    for (const row of report) {
+      const expected = (row.baseSalary || 0)
+        + (row.totalProfit || 0)
+        - (row.profitDeduction || 0)
+        + (row.commission || 0)
+        + (row.highProfitBonus || 0)
+        + (row.bonus || 0)
+        + (row.onlineCommission || 0)
+        - (row.performanceDeduction || 0);
+      expect(row.totalSalary).toBeCloseTo(expected, 1);
+    }
+  });
+
+  it("multi-month report also contains all salary slip fields", async () => {
+    const result = await adminCaller.salaryReport.getMulti({
+      yearMonths: ["2026-03", "2026-04"],
+    });
+    for (const row of result) {
+      expect(row).toHaveProperty("staffId");
+      expect(row).toHaveProperty("staffName");
+      expect(row).toHaveProperty("baseSalary");
+      expect(row).toHaveProperty("commission");
+      expect(row).toHaveProperty("highProfitBonus");
+      expect(row).toHaveProperty("totalSalary");
+      expect(row).toHaveProperty("profitDeduction");
+      expect(row).toHaveProperty("bonus");
+      expect(row).toHaveProperty("onlineCommission");
+      expect(row).toHaveProperty("performanceDeduction");
+      expect(row).toHaveProperty("commissionDetails");
+      expect(Array.isArray(row.commissionDetails)).toBe(true);
+    }
+  });
+});

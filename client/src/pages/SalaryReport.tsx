@@ -67,6 +67,8 @@ import {
   Save,
   CalendarDays,
   Check,
+  Download,
+  FileImage,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -178,6 +180,11 @@ export default function SalaryReportPage() {
       return next;
     });
   };
+
+  // 工资条导出状态
+  const [exportingSlipId, setExportingSlipId] = useState<number | null>(null);
+  const [showSlipPreview, setShowSlipPreview] = useState(false);
+  const [slipPreviewData, setSlipPreviewData] = useState<any>(null);
 
   // 工资调整项弹窗
   const [showAdjustmentDialog, setShowAdjustmentDialog] = useState(false);
@@ -557,6 +564,330 @@ export default function SalaryReportPage() {
     setHistoryStaffId(undefined);
     setHistoryStaffName("全部客服");
     setShowHistoryChart(true);
+  };
+
+  // 工资条生成与导出
+  const exportSalarySlip = async (row: any) => {
+    setExportingSlipId(row.staffId);
+    try {
+      const monthLabel = isMultiMonth
+        ? selectedMonths.sort().map((ym: string) => formatMonth(ym)).join("+")
+        : formatMonth(yearMonth);
+      const dataMonthLabel = isMultiMonth ? dataMonthsDesc : formatMonth(dataMonth);
+
+      // Canvas 布局参数
+      const scale = 2;
+      const padding = 36;
+      const contentWidth = 680;
+      const totalWidth = contentWidth + padding * 2;
+      const font = "'Noto Sans SC', 'PingFang SC', 'Microsoft YaHei', sans-serif";
+
+      // 计算提成明细行数
+      const details = (row.commissionDetails || []).filter((d: any) => d.participatesInCommission);
+      const allDetails = row.commissionDetails || [];
+      const hasDetails = allDetails.length > 0;
+      const isProbation = row.employmentStatus === 'probation';
+
+      // 预计算高度
+      let y = 0;
+      const headerH = 100;
+      const infoSectionH = 80;
+      const salaryBreakdownH = 220;
+      const detailHeaderH = hasDetails ? 45 : 0;
+      const detailRowH = 26;
+      const detailTableH = hasDetails ? (detailHeaderH + 30 + allDetails.length * detailRowH + (details.length > 0 ? 30 : 0)) : 0;
+      const probationNoteH = isProbation ? 40 : 0;
+      const footerH = 60;
+      const totalH = headerH + infoSectionH + salaryBreakdownH + detailTableH + probationNoteH + footerH + 20;
+
+      const canvas = document.createElement("canvas");
+      canvas.width = totalWidth * scale;
+      canvas.height = totalH * scale;
+      const ctx = canvas.getContext("2d")!;
+      ctx.scale(scale, scale);
+
+      // 圆角矩形辅助函数
+      const roundRect = (x: number, ry: number, w: number, h: number, r: number) => {
+        ctx.beginPath();
+        ctx.moveTo(x + r, ry);
+        ctx.lineTo(x + w - r, ry);
+        ctx.quadraticCurveTo(x + w, ry, x + w, ry + r);
+        ctx.lineTo(x + w, ry + h - r);
+        ctx.quadraticCurveTo(x + w, ry + h, x + w - r, ry + h);
+        ctx.lineTo(x + r, ry + h);
+        ctx.quadraticCurveTo(x, ry + h, x, ry + h - r);
+        ctx.lineTo(x, ry + r);
+        ctx.quadraticCurveTo(x, ry, x + r, ry);
+        ctx.closePath();
+      };
+
+      // === 背景 ===
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(0, 0, totalWidth, totalH);
+
+      // === 头部标题栏 ===
+      y = 0;
+      ctx.fillStyle = "#059669";
+      ctx.fillRect(0, 0, totalWidth, 60);
+      ctx.fillStyle = "#ffffff";
+      ctx.font = `bold 22px ${font}`;
+      ctx.textAlign = "center";
+      ctx.fillText("工资条", totalWidth / 2, 28);
+      ctx.font = `13px ${font}`;
+      ctx.fillStyle = "#d1fae5";
+      ctx.fillText(`结算月份：${monthLabel}  ·  数据来源：${dataMonthLabel}已完成订单`, totalWidth / 2, 50);
+      y = 70;
+
+      // === 员工信息区 ===
+      ctx.fillStyle = "#f0fdf4";
+      roundRect(padding, y, contentWidth, 55, 8);
+      ctx.fill();
+      ctx.strokeStyle = "#bbf7d0";
+      ctx.lineWidth = 1;
+      roundRect(padding, y, contentWidth, 55, 8);
+      ctx.stroke();
+
+      ctx.fillStyle = "#111827";
+      ctx.font = `bold 16px ${font}`;
+      ctx.textAlign = "left";
+      ctx.fillText(row.staffName || "未知", padding + 16, y + 24);
+
+      // 员工状态标签
+      const statusText = row.employmentStatus === 'probation' ? '试用期' : row.employmentStatus === 'mid_month_regular' ? '月中转正' : '正式员工';
+      const statusBg = row.employmentStatus === 'probation' ? '#fef3c7' : row.employmentStatus === 'mid_month_regular' ? '#dbeafe' : '#d1fae5';
+      const statusColor = row.employmentStatus === 'probation' ? '#92400e' : row.employmentStatus === 'mid_month_regular' ? '#1d4ed8' : '#047857';
+      ctx.font = `11px ${font}`;
+      const statusW = ctx.measureText(statusText).width + 14;
+      const statusX = padding + 16 + ctx.measureText(row.staffName || '未知').width + 12;
+      ctx.fillStyle = statusBg;
+      roundRect(statusX, y + 12, statusW, 20, 4);
+      ctx.fill();
+      ctx.fillStyle = statusColor;
+      ctx.font = `bold 11px ${font}`;
+      ctx.fillText(statusText, statusX + 7, y + 26);
+
+      // 订单数 & 营业额
+      ctx.font = `12px ${font}`;
+      ctx.fillStyle = "#6b7280";
+      ctx.fillText(`订单数：${row.orderCount}单  ·  营业额：¥${row.totalRevenue.toLocaleString()}  ·  总利润：¥${row.totalProfit.toLocaleString()}`, padding + 16, y + 45);
+      y += 65;
+
+      // === 工资明细区 ===
+      y += 10;
+      ctx.fillStyle = "#111827";
+      ctx.font = `bold 14px ${font}`;
+      ctx.textAlign = "left";
+      ctx.fillText("工资明细", padding, y + 14);
+      y += 28;
+
+      // 工资明细表格
+      const salaryItems = [
+        { label: "底薪", value: row.baseSalary || 0, color: "#2563eb", detail: row.baseSalaryDetail || null, isAdd: true },
+        { label: "总利润(已完成)", value: row.totalProfit, color: "#059669", detail: null, isAdd: true },
+        { label: "扣除利润", value: row.profitDeduction || 0, color: "#dc2626", detail: null, isAdd: false },
+        { label: "基础提成", value: row.commission, color: "#d97706", detail: null, isAdd: true },
+        { label: "高利润单奖励", value: row.highProfitBonus || 0, color: "#ea580c", detail: row.highProfitOrderCount ? `${row.highProfitOrderCount}单` : null, isAdd: true },
+        { label: "奖金", value: row.bonus || 0, color: "#7c3aed", detail: null, isAdd: true },
+        { label: "线上订单提成", value: row.onlineCommission || 0, color: "#0891b2", detail: null, isAdd: true },
+        { label: "绩效扣款", value: row.performanceDeduction || 0, color: "#dc2626", detail: null, isAdd: false },
+      ];
+
+      const itemH = 22;
+      const labelX = padding + 12;
+      const valueX = padding + contentWidth - 12;
+
+      salaryItems.forEach((item) => {
+        // 交替背景
+        ctx.fillStyle = salaryItems.indexOf(item) % 2 === 0 ? "#f9fafb" : "#ffffff";
+        ctx.fillRect(padding, y, contentWidth, itemH);
+
+        // 标签
+        ctx.fillStyle = "#374151";
+        ctx.font = `13px ${font}`;
+        ctx.textAlign = "left";
+        const prefix = item.isAdd ? "+" : "-";
+        ctx.fillText(`${prefix} ${item.label}`, labelX, y + 15);
+
+        // 明细注释
+        if (item.detail) {
+          const detailX = labelX + ctx.measureText(`${prefix} ${item.label}`).width + 8;
+          ctx.fillStyle = "#9ca3af";
+          ctx.font = `11px ${font}`;
+          ctx.fillText(`(${item.detail})`, detailX, y + 15);
+        }
+
+        // 金额
+        ctx.fillStyle = item.color;
+        ctx.font = `bold 13px ${font}`;
+        ctx.textAlign = "right";
+        const sign = item.isAdd ? "" : "-";
+        ctx.fillText(`${sign}¥${item.value.toLocaleString()}`, valueX, y + 15);
+        y += itemH;
+      });
+
+      // 分割线
+      y += 4;
+      ctx.strokeStyle = "#059669";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(padding, y);
+      ctx.lineTo(padding + contentWidth, y);
+      ctx.stroke();
+      y += 8;
+
+      // 应发工资总额
+      ctx.fillStyle = "#f0fdf4";
+      roundRect(padding, y, contentWidth, 36, 6);
+      ctx.fill();
+      ctx.fillStyle = "#374151";
+      ctx.font = `bold 14px ${font}`;
+      ctx.textAlign = "left";
+      ctx.fillText("应发工资", labelX, y + 23);
+      ctx.fillStyle = "#059669";
+      ctx.font = `bold 20px ${font}`;
+      ctx.textAlign = "right";
+      ctx.fillText(`¥${row.totalSalary.toLocaleString()}`, valueX, y + 25);
+      y += 46;
+
+      // === 提成明细表 ===
+      if (hasDetails && !isProbation) {
+        ctx.fillStyle = "#111827";
+        ctx.font = `bold 14px ${font}`;
+        ctx.textAlign = "left";
+        ctx.fillText(`提成明细 · ${allDetails.length}笔订单`, padding, y + 14);
+        y += 28;
+
+        // 明细表头
+        const detailCols = ["订单编号", "客户名", "日期", "营业额", "产品利润", "运费利润", "总利润", "高利润奖励"];
+        const detailColWidths = [100, 80, 75, 80, 80, 80, 80, 80];
+        const detailTableWidth = detailColWidths.reduce((a, b) => a + b, 0);
+        const detailStartX = padding + (contentWidth - detailTableWidth) / 2;
+
+        // 表头背景
+        ctx.fillStyle = "#f3f4f6";
+        roundRect(detailStartX, y, detailTableWidth, 24, 4);
+        ctx.fill();
+        ctx.fillStyle = "#374151";
+        ctx.font = `bold 10px ${font}`;
+        ctx.textAlign = "center";
+        let dx = detailStartX;
+        detailCols.forEach((col, i) => {
+          ctx.fillText(col, dx + detailColWidths[i] / 2, y + 16);
+          dx += detailColWidths[i];
+        });
+        y += 26;
+
+        // 明细数据行
+        allDetails.forEach((detail: any, idx: number) => {
+          ctx.fillStyle = idx % 2 === 0 ? "#ffffff" : "#f9fafb";
+          ctx.fillRect(detailStartX, y, detailTableWidth, detailRowH);
+          if (!detail.participatesInCommission) {
+            ctx.fillStyle = "#f3f4f6";
+            ctx.fillRect(detailStartX, y, detailTableWidth, detailRowH);
+          }
+          // 底部边线
+          ctx.strokeStyle = "#e5e7eb";
+          ctx.lineWidth = 0.5;
+          ctx.beginPath();
+          ctx.moveTo(detailStartX, y + detailRowH);
+          ctx.lineTo(detailStartX + detailTableWidth, y + detailRowH);
+          ctx.stroke();
+
+          const opacity = detail.participatesInCommission ? 1 : 0.5;
+          ctx.globalAlpha = opacity;
+          ctx.font = `10px ${font}`;
+          ctx.textAlign = "center";
+          ctx.fillStyle = "#111827";
+          const vals = [
+            detail.orderNumber || '-',
+            (detail.customerName || '-').length > 6 ? (detail.customerName || '-').slice(0, 6) + '..' : (detail.customerName || '-'),
+            detail.orderDate || '-',
+            `¥${detail.revenue.toLocaleString()}`,
+            `¥${detail.productProfit.toLocaleString()}`,
+            `¥${detail.shippingProfit.toLocaleString()}`,
+            `¥${detail.totalProfit.toLocaleString()}`,
+            detail.highProfitBonus > 0 ? `¥${detail.highProfitBonus.toLocaleString()}` : '-',
+          ];
+          dx = detailStartX;
+          vals.forEach((v, i) => {
+            if (i === 6) {
+              ctx.fillStyle = detail.totalProfit >= 0 ? "#059669" : "#dc2626";
+            } else if (i === 7 && detail.highProfitBonus > 0) {
+              ctx.fillStyle = "#ea580c";
+            } else {
+              ctx.fillStyle = "#111827";
+            }
+            ctx.fillText(v, dx + detailColWidths[i] / 2, y + 17);
+            dx += detailColWidths[i];
+          });
+          ctx.globalAlpha = 1;
+          y += detailRowH;
+        });
+
+        // 合计行
+        if (details.length > 0) {
+          ctx.fillStyle = "#fef3c7";
+          ctx.fillRect(detailStartX, y, detailTableWidth, 26);
+          ctx.fillStyle = "#92400e";
+          ctx.font = `bold 10px ${font}`;
+          ctx.textAlign = "center";
+          const totals = details.reduce((acc: any, d: any) => ({
+            revenue: acc.revenue + d.revenue,
+            productProfit: acc.productProfit + d.productProfit,
+            shippingProfit: acc.shippingProfit + d.shippingProfit,
+            totalProfit: acc.totalProfit + d.totalProfit,
+            highProfitBonus: acc.highProfitBonus + d.highProfitBonus,
+          }), { revenue: 0, productProfit: 0, shippingProfit: 0, totalProfit: 0, highProfitBonus: 0 });
+          const tvals = [
+            '参与提成合计', '', '',
+            `¥${totals.revenue.toLocaleString()}`,
+            `¥${totals.productProfit.toLocaleString()}`,
+            `¥${totals.shippingProfit.toLocaleString()}`,
+            `¥${totals.totalProfit.toLocaleString()}`,
+            `¥${totals.highProfitBonus.toLocaleString()}`,
+          ];
+          dx = detailStartX;
+          tvals.forEach((v, i) => {
+            if (i === 0) ctx.textAlign = "center";
+            ctx.fillText(v, dx + detailColWidths[i] / 2, y + 17);
+            dx += detailColWidths[i];
+          });
+          y += 30;
+        }
+      } else if (isProbation && hasDetails) {
+        ctx.fillStyle = "#92400e";
+        ctx.font = `12px ${font}`;
+        ctx.textAlign = "center";
+        ctx.fillText("试用期员工无提成，仅发放底薪", totalWidth / 2, y + 20);
+        y += 40;
+      }
+
+      // === 底部 ===
+      y += 10;
+      ctx.strokeStyle = "#e5e7eb";
+      ctx.lineWidth = 0.5;
+      ctx.beginPath();
+      ctx.moveTo(padding, y);
+      ctx.lineTo(padding + contentWidth, y);
+      ctx.stroke();
+      y += 12;
+      ctx.fillStyle = "#9ca3af";
+      ctx.font = `11px ${font}`;
+      ctx.textAlign = "center";
+      ctx.fillText(`生成时间：${new Date().toLocaleString("zh-CN")}  ·  WhatsApp CRM 工资系统`, totalWidth / 2, y + 10);
+
+      // 下载
+      const link = document.createElement("a");
+      link.download = `工资条_${row.staffName}_${isMultiMonth ? selectedMonths.sort().join('_') : yearMonth}.png`;
+      link.href = canvas.toDataURL("image/png");
+      link.click();
+      toast.success(`${row.staffName} 的工资条已保存`);
+    } catch (err) {
+      console.error("导出工资条失败:", err);
+      toast.error("导出失败，请尝试截图保存");
+    } finally {
+      setExportingSlipId(null);
+    }
   };
 
   const getRangeLabel = (rule: any) => {
@@ -952,7 +1283,7 @@ export default function SalaryReportPage() {
                               variant="ghost"
                               size="sm"
                               className="text-orange-600 hover:text-orange-700 hover:bg-orange-50"
-                              onClick={() => openAdjustment(row)}
+                              onClick={(e) => { e.stopPropagation(); openAdjustment(row); }}
                             >
                               <FileEdit className="h-3.5 w-3.5 mr-1" />
                               调整
@@ -961,8 +1292,22 @@ export default function SalaryReportPage() {
                           <Button
                             variant="ghost"
                             size="sm"
+                            className="text-teal-600 hover:text-teal-700 hover:bg-teal-50"
+                            onClick={(e) => { e.stopPropagation(); exportSalarySlip(row); }}
+                            disabled={exportingSlipId === row.staffId}
+                          >
+                            {exportingSlipId === row.staffId ? (
+                              <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />
+                            ) : (
+                              <Download className="h-3.5 w-3.5 mr-1" />
+                            )}
+                            工资条
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
                             className="text-blue-600 hover:text-blue-700 hover:bg-blue-50"
-                            onClick={() => openStaffHistory(row.staffId, row.staffName)}
+                            onClick={(e) => { e.stopPropagation(); openStaffHistory(row.staffId, row.staffName); }}
                           >
                             <BarChart3 className="h-3.5 w-3.5 mr-1" />
                             历史
