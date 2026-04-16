@@ -1272,6 +1272,56 @@ export const appRouter = router({
       return await getSalaryReport(input.yearMonth);
     }),
 
+    // 获取多月份工资报表（汇总）
+    getMulti: adminProcedure.input(z.object({
+      yearMonths: z.array(z.string().regex(/^\d{4}-\d{2}$/)).min(1).max(12),
+    })).query(async ({ input }) => {
+      const allReports = await Promise.all(
+        input.yearMonths.map(ym => getSalaryReport(ym))
+      );
+      // 按staffId汇总
+      const staffMap = new Map<number, any>();
+      for (const report of allReports) {
+        for (const row of report) {
+          const existing = staffMap.get(row.staffId);
+          if (existing) {
+            existing.totalRevenue += row.totalRevenue;
+            existing.orderCount += row.orderCount;
+            existing.productProfit += row.productProfit;
+            existing.shippingProfit += row.shippingProfit;
+            existing.totalProfit += row.totalProfit;
+            existing.commission += row.commission;
+            existing.revenueCommission += row.revenueCommission;
+            existing.profitCommission += row.profitCommission;
+            existing.profitRateCommission += row.profitRateCommission;
+            existing.highProfitBonus += row.highProfitBonus;
+            existing.highProfitOrderCount += row.highProfitOrderCount;
+            existing.profitDeduction += row.profitDeduction;
+            existing.bonus += row.bonus;
+            existing.onlineCommission += row.onlineCommission;
+            existing.performanceDeduction += row.performanceDeduction;
+            existing.totalSalary += row.totalSalary;
+            existing.monthCount += 1;
+          } else {
+            staffMap.set(row.staffId, { ...row, monthCount: 1 });
+          }
+        }
+      }
+      return Array.from(staffMap.values()).map((r: any) => ({
+        ...r,
+        commission: Math.round(r.commission * 100) / 100,
+        revenueCommission: Math.round(r.revenueCommission * 100) / 100,
+        profitCommission: Math.round(r.profitCommission * 100) / 100,
+        profitRateCommission: Math.round(r.profitRateCommission * 100) / 100,
+        highProfitBonus: Math.round(r.highProfitBonus * 100) / 100,
+        profitDeduction: Math.round(r.profitDeduction * 100) / 100,
+        bonus: Math.round(r.bonus * 100) / 100,
+        onlineCommission: Math.round(r.onlineCommission * 100) / 100,
+        performanceDeduction: Math.round(r.performanceDeduction * 100) / 100,
+        totalSalary: Math.round(r.totalSalary * 100) / 100,
+      }));
+    }),
+
     // 获取历史工资数据（用于图表）
     history: adminProcedure.input(z.object({
       months: z.number().min(1).max(24).optional(),

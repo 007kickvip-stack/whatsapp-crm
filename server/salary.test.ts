@@ -605,3 +605,55 @@ describe("User Base Salary", () => {
     ).rejects.toThrow();
   });
 });
+
+describe("Salary Report Multi-Month (getMulti)", () => {
+  const adminCaller = appRouter.createCaller(createAdminContext());
+  const staffCaller = appRouter.createCaller(createStaffContext());
+
+  it("admin can get multi-month salary report", async () => {
+    const result = await adminCaller.salaryReport.getMulti({
+      yearMonths: ["2026-03", "2026-04"],
+    });
+    expect(result).toBeDefined();
+    expect(Array.isArray(result)).toBe(true);
+  });
+
+  it("multi-month report aggregates data by staff", async () => {
+    const result = await adminCaller.salaryReport.getMulti({
+      yearMonths: ["2026-03", "2026-04"],
+    });
+    // Each staff should appear only once in the aggregated result
+    const staffIds = result.map((r: any) => r.staffId);
+    const uniqueStaffIds = [...new Set(staffIds)];
+    expect(staffIds.length).toBe(uniqueStaffIds.length);
+  });
+
+  it("multi-month report returns valid numeric fields", async () => {
+    const result = await adminCaller.salaryReport.getMulti({
+      yearMonths: ["2026-04"],
+    });
+    for (const row of result) {
+      expect(typeof row.totalRevenue).toBe("number");
+      expect(typeof row.totalProfit).toBe("number");
+      expect(typeof row.commission).toBe("number");
+      expect(typeof row.totalSalary).toBe("number");
+      expect(typeof row.orderCount).toBe("number");
+    }
+  });
+
+  it("staff cannot access multi-month salary report (should throw FORBIDDEN)", async () => {
+    await expect(
+      staffCaller.salaryReport.getMulti({
+        yearMonths: ["2026-03", "2026-04"],
+      })
+    ).rejects.toThrow();
+  });
+
+  it("requires at least one month", async () => {
+    await expect(
+      adminCaller.salaryReport.getMulti({
+        yearMonths: [],
+      })
+    ).rejects.toThrow();
+  });
+});

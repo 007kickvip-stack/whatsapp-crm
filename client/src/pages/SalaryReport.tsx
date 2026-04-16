@@ -38,6 +38,12 @@ import {
   TabsTrigger,
 } from "@/components/ui/tabs";
 import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import { Checkbox } from "@/components/ui/checkbox";
+import {
   ChevronLeft,
   ChevronRight,
   Wallet,
@@ -57,6 +63,8 @@ import {
   Star,
   FileEdit,
   Save,
+  CalendarDays,
+  Check,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -109,11 +117,17 @@ export default function SalaryReportPage() {
     );
   }
 
-  // 月份选择
+  // 月份选择 - 支持多月份
   const [yearMonth, setYearMonth] = useState(() => {
     const now = new Date();
     return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
   });
+  const [selectedMonths, setSelectedMonths] = useState<string[]>(() => {
+    const now = new Date();
+    return [`${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`];
+  });
+  const [multiMonthOpen, setMultiMonthOpen] = useState(false);
+  const isMultiMonth = selectedMonths.length > 1;
 
   // 提成制度弹窗
   const [showRulesDialog, setShowRulesDialog] = useState(false);
@@ -164,14 +178,24 @@ export default function SalaryReportPage() {
   const utils = trpc.useUtils();
 
   const stableYearMonth = useMemo(() => yearMonth, [yearMonth]);
+  const stableSelectedMonths = useMemo(() => [...selectedMonths].sort(), [selectedMonths]);
   const stableHistoryMonths = useMemo(() => historyMonths, [historyMonths]);
   const stableHistoryStaffId = useMemo(() => historyStaffId, [historyStaffId]);
 
-  // 工资报表数据
-  const { data: reportData, isLoading: reportLoading } = trpc.salaryReport.get.useQuery(
+  // 工资报表数据 - 单月
+  const { data: singleReportData, isLoading: singleReportLoading } = trpc.salaryReport.get.useQuery(
     { yearMonth: stableYearMonth },
-    { enabled: !!stableYearMonth }
+    { enabled: !isMultiMonth && !!stableYearMonth }
   );
+
+  // 工资报表数据 - 多月
+  const { data: multiReportData, isLoading: multiReportLoading } = trpc.salaryReport.getMulti.useQuery(
+    { yearMonths: stableSelectedMonths },
+    { enabled: isMultiMonth && stableSelectedMonths.length > 1 }
+  );
+
+  const reportData = isMultiMonth ? multiReportData : singleReportData;
+  const reportLoading = isMultiMonth ? multiReportLoading : singleReportLoading;
 
   // 提成规则列表（管理员）
   const { data: rulesData, isLoading: rulesLoading } = trpc.commissionRules.list.useQuery(
@@ -312,7 +336,35 @@ export default function SalaryReportPage() {
   const navigateMonth = (delta: number) => {
     const [y, m] = yearMonth.split("-").map(Number);
     const d = new Date(y, m - 1 + delta, 1);
-    setYearMonth(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`);
+    const newYm = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+    setYearMonth(newYm);
+    setSelectedMonths([newYm]);
+  };
+
+  // 生成最近12个月份列表供多月选择
+  const availableMonths = useMemo(() => {
+    const months: string[] = [];
+    const now = new Date();
+    for (let i = 0; i < 12; i++) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      months.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`);
+    }
+    return months;
+  }, []);
+
+  const toggleMonth = (ym: string) => {
+    setSelectedMonths(prev => {
+      if (prev.includes(ym)) {
+        if (prev.length === 1) return prev; // 至少保留一个
+        return prev.filter(m => m !== ym);
+      }
+      return [...prev, ym];
+    });
+  };
+
+  const selectSingleMonth = (ym: string) => {
+    setYearMonth(ym);
+    setSelectedMonths([ym]);
   };
 
   const formatMonth = (ym: string) => {
@@ -331,6 +383,17 @@ export default function SalaryReportPage() {
     const d = new Date(y, m - 2, 1);
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
   }, [yearMonth]);
+
+  // 多月模式的数据来源月份描述
+  const dataMonthsDesc = useMemo(() => {
+    if (!isMultiMonth) return formatMonth(dataMonth);
+    const sorted = [...selectedMonths].sort();
+    return sorted.map(ym => {
+      const [y, m] = ym.split("-").map(Number);
+      const d = new Date(y, m - 2, 1);
+      return formatMonth(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`);
+    }).join("、");
+  }, [isMultiMonth, selectedMonths, dataMonth]);
 
   // 汇总数据
   const summary = useMemo(() => {
@@ -422,7 +485,7 @@ export default function SalaryReportPage() {
     if (!adjustmentStaffId) return;
     upsertAdjustmentMutation.mutate({
       staffId: adjustmentStaffId,
-      yearMonth: stableYearMonth,
+      yearMonth: isMultiMonth ? selectedMonths.sort()[0] : stableYearMonth,
       profitDeduction: adjustmentForm.profitDeduction || "0",
       bonus: adjustmentForm.bonus || "0",
       onlineCommission: adjustmentForm.onlineCommission || "0",
@@ -498,7 +561,9 @@ export default function SalaryReportPage() {
         <div>
           <h1 className="text-2xl font-bold tracking-tight">客服工资与提成报表</h1>
           <p className="text-muted-foreground mt-1">
-            结算{formatMonth(yearMonth)}工资 · 基于{formatMonth(dataMonth)}已完成订单数据
+            {isMultiMonth
+              ? `汇总${selectedMonths.length}个月工资数据`
+              : `结算${formatMonth(yearMonth)}工资 · 基于${formatMonth(dataMonth)}已完成订单数据`}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -524,12 +589,14 @@ export default function SalaryReportPage() {
       </div>
 
       {/* Month Selector */}
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-3 flex-wrap">
         <Button variant="outline" size="icon" onClick={() => navigateMonth(-1)}>
           <ChevronLeft className="h-4 w-4" />
         </Button>
         <div className="text-lg font-semibold min-w-[120px] text-center">
-          {formatMonth(yearMonth)}
+          {isMultiMonth
+            ? `${selectedMonths.length}个月份汇总`
+            : formatMonth(yearMonth)}
         </div>
         <Button variant="outline" size="icon" onClick={() => navigateMonth(1)}>
           <ChevronRight className="h-4 w-4" />
@@ -537,9 +604,77 @@ export default function SalaryReportPage() {
         <Input
           type="month"
           value={yearMonth}
-          onChange={(e) => e.target.value && setYearMonth(e.target.value)}
+          onChange={(e) => {
+            if (e.target.value) {
+              setYearMonth(e.target.value);
+              setSelectedMonths([e.target.value]);
+            }
+          }}
           className="w-40 ml-2"
         />
+        <Popover open={multiMonthOpen} onOpenChange={setMultiMonthOpen}>
+          <PopoverTrigger asChild>
+            <Button variant="outline" className="gap-2">
+              <CalendarDays className="h-4 w-4" />
+              多月份选择
+              {isMultiMonth && (
+                <Badge variant="secondary" className="bg-emerald-100 text-emerald-700 ml-1">
+                  {selectedMonths.length}
+                </Badge>
+              )}
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent className="w-64 p-3" align="start">
+            <div className="space-y-1">
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-sm font-medium">选择月份</p>
+                {isMultiMonth && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-6 text-xs text-muted-foreground"
+                    onClick={() => selectSingleMonth(yearMonth)}
+                  >
+                    重置为单月
+                  </Button>
+                )}
+              </div>
+              {availableMonths.map((ym) => (
+                <label
+                  key={ym}
+                  className="flex items-center gap-2 px-2 py-1.5 rounded-md hover:bg-muted/50 cursor-pointer text-sm"
+                >
+                  <Checkbox
+                    checked={selectedMonths.includes(ym)}
+                    onCheckedChange={() => toggleMonth(ym)}
+                  />
+                  <span className={selectedMonths.includes(ym) ? "font-medium" : ""}>
+                    {formatMonth(ym)}
+                  </span>
+                </label>
+              ))}
+            </div>
+          </PopoverContent>
+        </Popover>
+        {isMultiMonth && (
+          <div className="flex flex-wrap gap-1.5">
+            {selectedMonths.sort().map(ym => (
+              <Badge key={ym} variant="secondary" className="bg-emerald-50 text-emerald-700 gap-1">
+                {formatMonth(ym)}
+                <button
+                  onClick={() => {
+                    if (selectedMonths.length > 1) {
+                      setSelectedMonths(prev => prev.filter(m => m !== ym));
+                    }
+                  }}
+                  className="ml-0.5 hover:text-red-500"
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              </Badge>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* 工资构成公式说明 */}
@@ -560,7 +695,7 @@ export default function SalaryReportPage() {
             <span className="text-red-600">绩效扣款</span>
           </div>
           <p className="text-xs text-muted-foreground mt-1">
-            注：订单数据来源于{formatMonth(dataMonth)}标记为"已完成"的订单 · 扣除利润/奖金/线上订单提成/绩效扣款由管理员手动填写
+            注：订单数据来源于{isMultiMonth ? dataMonthsDesc : formatMonth(dataMonth)}标记为“已完成”的订单 · 扣除利润/奖金/线上订单提成/绩效扣款由管理员手动填写
           </p>
         </CardContent>
       </Card>
@@ -810,8 +945,8 @@ export default function SalaryReportPage() {
           ) : (
             <div className="p-12 text-center text-muted-foreground">
               <Users className="h-10 w-10 mx-auto mb-3 opacity-40" />
-              <p>{formatMonth(yearMonth)} 暂无工资数据</p>
-              <p className="text-xs mt-1">请确认{formatMonth(dataMonth)}有已完成的客服订单数据</p>
+              <p>{isMultiMonth ? `所选${selectedMonths.length}个月份` : formatMonth(yearMonth)} 暂无工资数据</p>
+              <p className="text-xs mt-1">请确认{isMultiMonth ? "对应月份" : formatMonth(dataMonth)}有已完成的客服订单数据</p>
             </div>
           )}
         </CardContent>
