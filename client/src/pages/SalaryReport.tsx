@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import React, { useState, useMemo } from "react";
 import { trpc } from "@/lib/trpc";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -46,6 +46,8 @@ import { Checkbox } from "@/components/ui/checkbox";
 import {
   ChevronLeft,
   ChevronRight,
+  ChevronDown,
+  ChevronUp,
   Wallet,
   TrendingUp,
   DollarSign,
@@ -162,6 +164,20 @@ export default function SalaryReportPage() {
 
   // 管理弹窗tab
   const [rulesTab, setRulesTab] = useState("commission");
+
+  // 提成明细展开/折叠状态
+  const [expandedRows, setExpandedRows] = useState<Set<number>>(new Set());
+  const toggleRowExpand = (staffId: number) => {
+    setExpandedRows(prev => {
+      const next = new Set(prev);
+      if (next.has(staffId)) {
+        next.delete(staffId);
+      } else {
+        next.add(staffId);
+      }
+      return next;
+    });
+  };
 
   // 工资调整项弹窗
   const [showAdjustmentDialog, setShowAdjustmentDialog] = useState(false);
@@ -843,9 +859,20 @@ export default function SalaryReportPage() {
                 </thead>
                 <tbody>
                   {reportData.map((row: any) => (
-                    <tr key={row.staffId} className="border-b last:border-0 hover:bg-muted/20 transition-colors">
+                    <React.Fragment key={row.staffId}>
+                    <tr className="border-b hover:bg-muted/20 transition-colors cursor-pointer" onClick={() => toggleRowExpand(row.staffId)}>
                       <td className="py-3 px-3 sticky left-0 bg-white z-10">
                         <div className="flex items-center gap-2">
+                          <button
+                            className="h-5 w-5 flex items-center justify-center rounded hover:bg-muted/40 transition-colors flex-shrink-0"
+                            onClick={(e) => { e.stopPropagation(); toggleRowExpand(row.staffId); }}
+                          >
+                            {expandedRows.has(row.staffId) ? (
+                              <ChevronUp className="h-3.5 w-3.5 text-muted-foreground" />
+                            ) : (
+                              <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
+                            )}
+                          </button>
                           <div className="h-8 w-8 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-700 font-medium text-xs">
                             {(row.staffName || "?").charAt(0)}
                           </div>
@@ -943,6 +970,112 @@ export default function SalaryReportPage() {
                         </div>
                       </td>
                     </tr>
+                    {/* 提成明细展开行 */}
+                    {expandedRows.has(row.staffId) && (
+                      <tr className="bg-slate-50/80">
+                        <td colSpan={14} className="p-0">
+                          <div className="px-6 py-3">
+                            {row.employmentStatus === 'probation' ? (
+                              <div className="text-center py-4 text-amber-600 text-sm">
+                                <Badge className="bg-amber-100 text-amber-700 border-amber-200 mr-2">试用期</Badge>
+                                试用期员工无提成，仅发放底薪
+                              </div>
+                            ) : row.commissionDetails && row.commissionDetails.length > 0 ? (
+                              <div>
+                                <div className="flex items-center justify-between mb-2">
+                                  <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                                    提成明细 · {row.commissionDetails.length} 笔订单
+                                  </h4>
+                                  {row.employmentStatus === 'mid_month_regular' && (
+                                    <Badge className="bg-blue-100 text-blue-700 border-blue-200 text-[10px]">
+                                      月中转正：仅转正后订单参与提成计算
+                                    </Badge>
+                                  )}
+                                </div>
+                                <div className="border rounded-lg overflow-hidden bg-white">
+                                  <table className="w-full text-xs">
+                                    <thead>
+                                      <tr className="bg-muted/40 border-b">
+                                        <th className="text-left py-2 px-3 font-medium text-muted-foreground">订单编号</th>
+                                        <th className="text-left py-2 px-3 font-medium text-muted-foreground">客户名</th>
+                                        <th className="text-center py-2 px-3 font-medium text-muted-foreground">日期</th>
+                                        <th className="text-right py-2 px-3 font-medium text-muted-foreground">营业额(¥)</th>
+                                        <th className="text-right py-2 px-3 font-medium text-muted-foreground">产品利润(¥)</th>
+                                        <th className="text-right py-2 px-3 font-medium text-muted-foreground">运费利润(¥)</th>
+                                        <th className="text-right py-2 px-3 font-medium text-emerald-700">总利润(¥)</th>
+                                        <th className="text-center py-2 px-3 font-medium text-muted-foreground">参与提成</th>
+                                        <th className="text-right py-2 px-3 font-medium text-orange-700">高利润奖励(¥)</th>
+                                      </tr>
+                                    </thead>
+                                    <tbody>
+                                      {row.commissionDetails.map((detail: any, idx: number) => (
+                                        <tr key={idx} className={`border-b last:border-0 ${!detail.participatesInCommission ? 'opacity-50 bg-gray-50' : 'hover:bg-muted/20'}`}>
+                                          <td className="py-1.5 px-3 font-mono text-xs">{detail.orderNumber || '-'}</td>
+                                          <td className="py-1.5 px-3">{detail.customerName || '-'}</td>
+                                          <td className="py-1.5 px-3 text-center text-muted-foreground">{detail.orderDate || '-'}</td>
+                                          <td className="py-1.5 px-3 text-right">¥{detail.revenue.toLocaleString()}</td>
+                                          <td className="py-1.5 px-3 text-right">¥{detail.productProfit.toLocaleString()}</td>
+                                          <td className="py-1.5 px-3 text-right">¥{detail.shippingProfit.toLocaleString()}</td>
+                                          <td className="py-1.5 px-3 text-right font-medium">
+                                            <span className={detail.totalProfit >= 0 ? 'text-emerald-600' : 'text-red-500'}>
+                                              ¥{detail.totalProfit.toLocaleString()}
+                                            </span>
+                                          </td>
+                                          <td className="py-1.5 px-3 text-center">
+                                            {detail.participatesInCommission ? (
+                                              <Badge className="bg-emerald-100 text-emerald-700 border-emerald-200 text-[10px]">是</Badge>
+                                            ) : (
+                                              <Badge className="bg-gray-100 text-gray-500 border-gray-200 text-[10px]">否</Badge>
+                                            )}
+                                          </td>
+                                          <td className="py-1.5 px-3 text-right">
+                                            {detail.highProfitBonus > 0 ? (
+                                              <span className="text-orange-600 font-medium">¥{detail.highProfitBonus.toLocaleString()}</span>
+                                            ) : (
+                                              <span className="text-muted-foreground">-</span>
+                                            )}
+                                          </td>
+                                        </tr>
+                                      ))}
+                                    </tbody>
+                                    {row.commissionDetails.filter((d: any) => d.participatesInCommission).length > 0 && (
+                                      <tfoot>
+                                        <tr className="border-t bg-muted/20 font-medium text-xs">
+                                          <td colSpan={3} className="py-1.5 px-3 text-muted-foreground">
+                                            参与提成计算的订单合计
+                                          </td>
+                                          <td className="py-1.5 px-3 text-right">
+                                            ¥{row.commissionDetails.filter((d: any) => d.participatesInCommission).reduce((s: number, d: any) => s + d.revenue, 0).toLocaleString()}
+                                          </td>
+                                          <td className="py-1.5 px-3 text-right">
+                                            ¥{row.commissionDetails.filter((d: any) => d.participatesInCommission).reduce((s: number, d: any) => s + d.productProfit, 0).toLocaleString()}
+                                          </td>
+                                          <td className="py-1.5 px-3 text-right">
+                                            ¥{row.commissionDetails.filter((d: any) => d.participatesInCommission).reduce((s: number, d: any) => s + d.shippingProfit, 0).toLocaleString()}
+                                          </td>
+                                          <td className="py-1.5 px-3 text-right text-emerald-600">
+                                            ¥{row.commissionDetails.filter((d: any) => d.participatesInCommission).reduce((s: number, d: any) => s + d.totalProfit, 0).toLocaleString()}
+                                          </td>
+                                          <td className="py-1.5 px-3"></td>
+                                          <td className="py-1.5 px-3 text-right text-orange-600">
+                                            ¥{row.commissionDetails.filter((d: any) => d.participatesInCommission).reduce((s: number, d: any) => s + d.highProfitBonus, 0).toLocaleString()}
+                                          </td>
+                                        </tr>
+                                      </tfoot>
+                                    )}
+                                  </table>
+                                </div>
+                              </div>
+                            ) : (
+                              <div className="text-center py-4 text-muted-foreground text-sm">
+                                暂无订单提成明细
+                              </div>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                    </React.Fragment>
                   ))}
                 </tbody>
                 {reportData.length > 1 && summary && (

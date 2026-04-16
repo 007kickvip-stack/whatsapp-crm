@@ -724,3 +724,94 @@ describe("Employment Info & Salary Calculation", () => {
     }
   });
 });
+
+describe("Salary Report Commission Details", () => {
+  const adminCaller = appRouter.createCaller(createAdminContext());
+
+  it("salary report includes commissionDetails array for each staff", async () => {
+    const report = await adminCaller.salaryReport.get({ yearMonth: "2026-04" });
+    expect(Array.isArray(report)).toBe(true);
+    for (const row of report) {
+      expect(row).toHaveProperty("commissionDetails");
+      expect(Array.isArray(row.commissionDetails)).toBe(true);
+    }
+  });
+
+  it("commissionDetails entries have correct structure", async () => {
+    const report = await adminCaller.salaryReport.get({ yearMonth: "2026-04" });
+    for (const row of report) {
+      for (const detail of row.commissionDetails) {
+        expect(detail).toHaveProperty("orderNumber");
+        expect(detail).toHaveProperty("customerName");
+        expect(detail).toHaveProperty("orderDate");
+        expect(detail).toHaveProperty("revenue");
+        expect(detail).toHaveProperty("productProfit");
+        expect(detail).toHaveProperty("shippingProfit");
+        expect(detail).toHaveProperty("totalProfit");
+        expect(detail).toHaveProperty("participatesInCommission");
+        expect(detail).toHaveProperty("highProfitBonus");
+        expect(typeof detail.revenue).toBe("number");
+        expect(typeof detail.productProfit).toBe("number");
+        expect(typeof detail.shippingProfit).toBe("number");
+        expect(typeof detail.totalProfit).toBe("number");
+        expect(typeof detail.participatesInCommission).toBe("boolean");
+        expect(typeof detail.highProfitBonus).toBe("number");
+      }
+    }
+  });
+
+  it("probation employees have all commissionDetails with participatesInCommission=false", async () => {
+    const report = await adminCaller.salaryReport.get({ yearMonth: "2026-04" });
+    for (const row of report) {
+      if (row.employmentStatus === "probation") {
+        for (const detail of row.commissionDetails) {
+          expect(detail.participatesInCommission).toBe(false);
+        }
+      }
+    }
+  });
+
+  it("regular employees have all commissionDetails with participatesInCommission=true", async () => {
+    const report = await adminCaller.salaryReport.get({ yearMonth: "2026-04" });
+    for (const row of report) {
+      if (row.employmentStatus === "regular") {
+        for (const detail of row.commissionDetails) {
+          expect(detail.participatesInCommission).toBe(true);
+        }
+      }
+    }
+  });
+
+  it("commissionDetails count matches orderCount", async () => {
+    const report = await adminCaller.salaryReport.get({ yearMonth: "2026-04" });
+    for (const row of report) {
+      // commissionDetails should have same number of orders as orderCount
+      expect(row.commissionDetails.length).toBe(row.orderCount);
+    }
+  });
+
+  it("multi-month report includes commissionDetails", async () => {
+    const result = await adminCaller.salaryReport.getMulti({
+      yearMonths: ["2026-03", "2026-04"],
+    });
+    expect(Array.isArray(result)).toBe(true);
+    for (const row of result) {
+      expect(row).toHaveProperty("commissionDetails");
+      expect(Array.isArray(row.commissionDetails)).toBe(true);
+    }
+  });
+
+  it("multi-month report merges commissionDetails from all months", async () => {
+    const singleReport = await adminCaller.salaryReport.get({ yearMonth: "2026-04" });
+    const multiReport = await adminCaller.salaryReport.getMulti({
+      yearMonths: ["2026-04"],
+    });
+    // For single month, multi should have same detail count per staff
+    for (const multiRow of multiReport) {
+      const singleRow = singleReport.find((r: any) => r.staffId === multiRow.staffId);
+      if (singleRow) {
+        expect(multiRow.commissionDetails.length).toBe(singleRow.commissionDetails.length);
+      }
+    }
+  });
+});

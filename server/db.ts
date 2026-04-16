@@ -3268,22 +3268,39 @@ export async function getSalaryReport(yearMonth: string) {
 
   // 4.5 获取每个客服的高利润订单明细（仅已完成订单）
   const orderProfitResult = await db.execute(sql`
-    SELECT o.staffId, o.id as orderId,
-      COALESCE(SUM(oi.productProfit), 0) + COALESCE(SUM(oi.shippingProfit), 0) as orderTotalProfit
+    SELECT o.staffId, o.id as orderId, o.orderNumber, o.customerName, o.orderDate,
+      COALESCE(SUM(oi.productProfit), 0) as orderProductProfit,
+      COALESCE(SUM(oi.shippingProfit), 0) as orderShippingProfit,
+      COALESCE(SUM(oi.productProfit), 0) + COALESCE(SUM(oi.shippingProfit), 0) as orderTotalProfit,
+      o.totalAmountCny as orderRevenue
     FROM order_items oi
     JOIN orders o ON oi.orderId = o.id
     WHERE o.orderDate >= ${startDate} AND o.orderDate < ${endDate}
       AND o.staffId IS NOT NULL
       AND (o.completionStatus = '已完成' OR o.completionStatus IS NULL)
-    GROUP BY o.staffId, o.id
+    GROUP BY o.staffId, o.id, o.orderNumber, o.customerName, o.orderDate, o.totalAmountCny
   `);
   const orderProfitRows = (orderProfitResult as any)[0] || [];
+  type OrderDetail = { orderId: number; orderNumber: string; customerName: string; orderDate: string; productProfit: number; shippingProfit: number; totalProfit: number; revenue: number };
   // 按客服分组，存储每笔订单的利润
   const staffOrderProfits = new Map<number, number[]>();
+  const staffOrderDetails = new Map<number, OrderDetail[]>();
   for (const row of orderProfitRows) {
     const profits = staffOrderProfits.get(row.staffId) || [];
     profits.push(parseFloat(row.orderTotalProfit) || 0);
     staffOrderProfits.set(row.staffId, profits);
+    const details = staffOrderDetails.get(row.staffId) || [];
+    details.push({
+      orderId: row.orderId,
+      orderNumber: row.orderNumber || '',
+      customerName: row.customerName || '',
+      orderDate: row.orderDate ? (typeof row.orderDate === 'string' ? row.orderDate : new Date(row.orderDate).toISOString().split('T')[0]) : '',
+      productProfit: parseFloat(row.orderProductProfit) || 0,
+      shippingProfit: parseFloat(row.orderShippingProfit) || 0,
+      totalProfit: parseFloat(row.orderTotalProfit) || 0,
+      revenue: parseFloat(row.orderRevenue) || 0,
+    });
+    staffOrderDetails.set(row.staffId, details);
   }
 
   // 高利润单奖励计算函数
@@ -3511,6 +3528,41 @@ export async function getSalaryReport(yearMonth: string) {
       // 提成计算基数（月中转正时为转正后订单数据）
       commissionRevenue: Math.round(commissionRevenue * 100) / 100,
       commissionProfit: Math.round(commissionProfit * 100) / 100,
+      // 提成明细（每笔订单的提成计算详情）
+      commissionDetails: (() => {
+        // 获取该员工的订单明细
+        let orderDetails = staffOrderDetails.get(staff.id) || [];
+        // 月中转正时，标记哪些订单参与了提成计算
+        const isPostRegular = (orderDate: string) => {
+          if (statusInMonth !== 'mid-month' || !regularDateStr) return true;
+          return orderDate >= regularDateStr;
+        };
+        return orderDetails.map(od => {
+          const participatesInCommission = statusInMonth !== 'probation' && isPostRegular(od.orderDate);
+          // 计算该订单的高利润单奖励
+          let orderBonus = 0;
+          if (participatesInCommission && activeBonusRules.length > 0) {
+            for (const rule of activeBonusRules) {
+              const threshold = parseFloat(rule.profitThreshold as string) || 0;
+              const bonus = parseFloat(rule.bonusAmount as string) || 0;
+              if (od.totalProfit >= threshold) {
+                orderBonus = bonus;
+              }
+            }
+          }
+          return {
+            orderNumber: od.orderNumber,
+            customerName: od.customerName,
+            orderDate: od.orderDate,
+            revenue: Math.round(od.revenue * 100) / 100,
+            productProfit: Math.round(od.productProfit * 100) / 100,
+            shippingProfit: Math.round(od.shippingProfit * 100) / 100,
+            totalProfit: Math.round(od.totalProfit * 100) / 100,
+            participatesInCommission,
+            highProfitBonus: Math.round(orderBonus * 100) / 100,
+          };
+        });
+      })(),
     };
   });
 

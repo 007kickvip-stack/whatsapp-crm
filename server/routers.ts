@@ -1314,6 +1314,10 @@ export const appRouter = router({
             existing.performanceDeduction += row.performanceDeduction;
             existing.totalSalary += row.totalSalary;
             existing.monthCount += 1;
+            // 合并提成明细
+            if (row.commissionDetails) {
+              existing.commissionDetails = [...(existing.commissionDetails || []), ...row.commissionDetails];
+            }
           } else {
             staffMap.set(row.staffId, { ...row, monthCount: 1 });
           }
