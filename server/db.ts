@@ -1,6 +1,6 @@
 import { eq, like, and, sql, desc, or, SQL, inArray, isNotNull } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
-import { InsertUser, users, customers, orders, orderItems, InsertCustomer, InsertOrder, InsertOrderItem, auditLogs, InsertAuditLog, exchangeRates, InsertExchangeRate, profitAlertSettings, InsertProfitAlertSetting, staffMonthlyTargets, InsertStaffMonthlyTarget, dailyData, InsertDailyData, accounts, InsertAccount, dailyReportNotes, InsertDailyReportNote, quotations, quotationItems, InsertQuotation, InsertQuotationItem, paypalIncome, paypalExpense, InsertPaypalIncome, InsertPaypalExpense, reshipments, InsertReshipment, orderPayments, InsertOrderPayment, commissionRules, InsertCommissionRule, bonusRules, InsertBonusRule, salaryAdjustments, InsertSalaryAdjustment } from "../drizzle/schema";
+import { InsertUser, users, customers, orders, orderItems, InsertCustomer, InsertOrder, InsertOrderItem, auditLogs, InsertAuditLog, exchangeRates, InsertExchangeRate, profitAlertSettings, InsertProfitAlertSetting, staffMonthlyTargets, InsertStaffMonthlyTarget, dailyData, InsertDailyData, accounts, InsertAccount, dailyReportNotes, InsertDailyReportNote, quotations, quotationItems, InsertQuotation, InsertQuotationItem, paypalIncome, paypalExpense, InsertPaypalIncome, InsertPaypalExpense, reshipments, InsertReshipment, orderPayments, InsertOrderPayment, commissionRules, InsertCommissionRule, bonusRules, InsertBonusRule, salaryAdjustments, InsertSalaryAdjustment, socialInsuranceCosts, InsertSocialInsuranceCost } from "../drizzle/schema";
 import { ENV } from './_core/env';
 import { nanoid } from 'nanoid';
 import { createHash, randomBytes } from 'crypto';
@@ -3507,4 +3507,128 @@ export async function batchUpdateOrderCompletionStatus(orderIds: number[], compl
   if (orderIds.length === 0) return { success: true, count: 0 };
   await db.update(orders).set({ completionStatus }).where(inArray(orders.id, orderIds));
   return { success: true, count: orderIds.length };
+}
+
+
+// ==================== Social Insurance Costs ====================
+
+export async function getSocialInsuranceCost(yearMonth: string) {
+  const db = await getDb();
+  if (!db) return null;
+  const rows = await db.select().from(socialInsuranceCosts).where(eq(socialInsuranceCosts.yearMonth, yearMonth)).limit(1);
+  return rows[0] ?? null;
+}
+
+export async function upsertSocialInsuranceCost(data: { yearMonth: string; amount: number; remark?: string; createdById?: number; createdByName?: string }) {
+  const db = await getDb();
+  if (!db) return null;
+  const existing = await getSocialInsuranceCost(data.yearMonth);
+  if (existing) {
+    await db.update(socialInsuranceCosts).set({
+      amount: String(data.amount),
+      remark: data.remark ?? existing.remark,
+    }).where(eq(socialInsuranceCosts.id, existing.id));
+    return existing.id;
+  } else {
+    const result = await db.insert(socialInsuranceCosts).values({
+      yearMonth: data.yearMonth,
+      amount: String(data.amount),
+      remark: data.remark,
+      createdById: data.createdById,
+      createdByName: data.createdByName,
+    });
+    return result[0].insertId;
+  }
+}
+
+export async function listSocialInsuranceCosts() {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(socialInsuranceCosts).orderBy(desc(socialInsuranceCosts.yearMonth));
+}
+
+// ==================== Profit Report Extra Data ====================
+
+/**
+ * 获取补发表盈亏汇总（按日期范围和客服过滤）
+ */
+export async function getReshipmentProfitLoss(params: { startDate?: string; endDate?: string; staffName?: string }) {
+  const db = await getDb();
+  if (!db) return { totalProfitLoss: "0", count: 0 };
+  
+  const conditions: SQL[] = [];
+  if (params.startDate) {
+    conditions.push(sql`${reshipments.reshipDate} >= ${params.startDate}`);
+  }
+  if (params.endDate) {
+    conditions.push(sql`${reshipments.reshipDate} <= ${params.endDate}`);
+  }
+  if (params.staffName) {
+    conditions.push(eq(reshipments.staffName, params.staffName));
+  }
+  
+  const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
+  
+  const result = await db.select({
+    totalProfitLoss: sql<string>`COALESCE(SUM(${reshipments.profitLoss}), 0)`,
+    count: sql<number>`COUNT(*)`,
+  }).from(reshipments).where(whereClause);
+  
+  return result[0] ?? { totalProfitLoss: "0", count: 0 };
+}
+
+/**
+ * 获取工资汇总（按月份范围）
+ * 注意：工资是按结算月份计算的，需要将日期范围转换为月份范围
+ */
+export async function getSalaryTotalForPeriod(params: { startDate?: string; endDate?: string }) {
+  // 工资是按月结算的，我们需要计算覆盖的月份范围
+  // 如果没有日期范围，返回当月工资
+  const now = new Date();
+  const startMonth = params.startDate ? params.startDate.substring(0, 7) : `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+  const endMonth = params.endDate ? params.endDate.substring(0, 7) : startMonth;
+  
+  // 生成月份列表
+  const months: string[] = [];
+  const [sy, sm] = startMonth.split("-").map(Number);
+  const [ey, em] = endMonth.split("-").map(Number);
+  let cy = sy, cm = sm;
+  while (cy < ey || (cy === ey && cm <= em)) {
+    months.push(`${cy}-${String(cm).padStart(2, "0")}`);
+    cm++;
+    if (cm > 12) { cm = 1; cy++; }
+  }
+  
+  let totalSalary = 0;
+  for (const ym of months) {
+    const report = await getSalaryReport(ym);
+    for (const entry of report) {
+      totalSalary += entry.totalSalary;
+    }
+  }
+  
+  return { totalSalary: Math.round(totalSalary * 100) / 100, months };
+}
+
+/**
+ * 获取社保费用汇总（按月份范围）
+ */
+export async function getSocialInsuranceTotalForPeriod(params: { startDate?: string; endDate?: string }) {
+  const db = await getDb();
+  if (!db) return { totalAmount: "0" };
+  
+  const now = new Date();
+  const startMonth = params.startDate ? params.startDate.substring(0, 7) : `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+  const endMonth = params.endDate ? params.endDate.substring(0, 7) : startMonth;
+  
+  const result = await db.select({
+    totalAmount: sql<string>`COALESCE(SUM(${socialInsuranceCosts.amount}), 0)`,
+  }).from(socialInsuranceCosts).where(
+    and(
+      sql`${socialInsuranceCosts.yearMonth} >= ${startMonth}`,
+      sql`${socialInsuranceCosts.yearMonth} <= ${endMonth}`,
+    )
+  );
+  
+  return result[0] ?? { totalAmount: "0" };
 }

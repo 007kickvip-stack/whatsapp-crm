@@ -253,6 +253,13 @@
       "when": 1776262085766,
       "tag": "0035_salty_iron_man",
       "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "5",
+      "when": 1776305344267,
+      "tag": "0036_round_scalphunter",
+      "breakpoints": true
     }
   ]
 }

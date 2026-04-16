@@ -46,6 +46,8 @@ import {
   listBonusRules, getActiveBonusRules, createBonusRule, updateBonusRule, deleteBonusRule,
   upsertSalaryAdjustment, listSalaryAdjustments, getSalaryAdjustment,
   updateOrderCompletionStatus, batchUpdateOrderCompletionStatus,
+  getSocialInsuranceCost, upsertSocialInsuranceCost, listSocialInsuranceCosts,
+  getReshipmentProfitLoss, getSalaryTotalForPeriod, getSocialInsuranceTotalForPeriod,
 } from "./db";
 import type { SQL } from "drizzle-orm";
 import { sdk } from "./_core/sdk";
@@ -981,6 +983,69 @@ export const appRouter = router({
       const minRate = parseFloat(String(setting.minProfitRate));
       const alerts = await getStaffProfitAlerts(minRate);
       return { alerts, setting };
+    }),
+    // 获取利润报表额外数据：补发盈亏、人员工资、人工社保
+    extraData: protectedProcedure.input(z.object({
+      startDate: z.string().optional(),
+      endDate: z.string().optional(),
+      staffName: z.string().optional(),
+    }).optional()).query(async ({ input, ctx }) => {
+      const isAdmin = ctx.user.role === "admin";
+      const staffName = isAdmin ? input?.staffName : (ctx.user.name || undefined);
+      // 补发表盈亏
+      const reshipmentData = await getReshipmentProfitLoss({
+        startDate: input?.startDate,
+        endDate: input?.endDate,
+        staffName,
+      });
+      // 人员工资（仅管理员可见）
+      let salaryTotal = 0;
+      if (isAdmin) {
+        const salaryData = await getSalaryTotalForPeriod({
+          startDate: input?.startDate,
+          endDate: input?.endDate,
+        });
+        salaryTotal = salaryData.totalSalary;
+      }
+      // 人工社保（仅管理员可见）
+      let insuranceTotal = "0";
+      if (isAdmin) {
+        const insuranceData = await getSocialInsuranceTotalForPeriod({
+          startDate: input?.startDate,
+          endDate: input?.endDate,
+        });
+        insuranceTotal = insuranceData.totalAmount;
+      }
+      return {
+        reshipmentProfitLoss: reshipmentData.totalProfitLoss,
+        reshipmentCount: reshipmentData.count,
+        salaryTotal,
+        insuranceTotal,
+      };
+    }),
+    // 社保费用管理（管理员）
+    getSocialInsurance: adminProcedure.input(z.object({
+      yearMonth: z.string().regex(/^\d{4}-\d{2}$/),
+    })).query(async ({ input }) => {
+      return await getSocialInsuranceCost(input.yearMonth);
+    }),
+    upsertSocialInsurance: adminProcedure.input(z.object({
+      yearMonth: z.string().regex(/^\d{4}-\d{2}$/),
+      amount: z.number().min(0),
+      remark: z.string().optional(),
+    })).mutation(async ({ input, ctx }) => {
+      const id = await upsertSocialInsuranceCost({
+        yearMonth: input.yearMonth,
+        amount: input.amount,
+        remark: input.remark,
+        createdById: ctx.user.id,
+        createdByName: ctx.user.name || "未知",
+      });
+      await logAction(ctx, "update", "socialInsurance", id ?? 0, `社保费用 ${input.yearMonth}: ¥${input.amount}`, JSON.stringify(input));
+      return { id };
+    }),
+    listSocialInsurance: adminProcedure.query(async () => {
+      return await listSocialInsuranceCosts();
     }),
   }),
 

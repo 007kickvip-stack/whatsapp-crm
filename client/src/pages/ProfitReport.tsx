@@ -25,7 +25,9 @@ import {
 import {
   BarChart3, TrendingUp, TrendingDown, DollarSign, Percent, Package, Truck,
   Filter, RotateCcw, AlertTriangle, Settings, ArrowUpRight, ArrowDownRight, Minus,
+  RefreshCw, Users, ShieldCheck, Pencil,
 } from "lucide-react";
+import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 
 const COLORS = ["#10b981", "#3b82f6", "#f59e0b", "#ef4444", "#8b5cf6", "#ec4899", "#06b6d4", "#84cc16"];
@@ -85,8 +87,26 @@ export default function ProfitReportPage() {
   const { data: quarterlyData } = trpc.profitReport.quarterlyComparison.useQuery(comparisonInput, { enabled: comparisonTab === "quarterly" });
   const { data: alertData } = trpc.profitReport.staffAlerts.useQuery(undefined, { enabled: isAdmin });
   const { data: alertSetting } = trpc.profitReport.alertSetting.useQuery(undefined, { enabled: isAdmin });
+  const { data: extraData } = trpc.profitReport.extraData.useQuery(queryInput);
+
+  // 社保编辑弹窗
+  const [insuranceDialogOpen, setInsuranceDialogOpen] = useState(false);
+  const [insuranceMonth, setInsuranceMonth] = useState("");
+  const [insuranceAmount, setInsuranceAmount] = useState("");
+  const [insuranceRemark, setInsuranceRemark] = useState("");
 
   const utils = trpc.useUtils();
+
+  const upsertInsuranceMutation = trpc.profitReport.upsertSocialInsurance.useMutation({
+    onSuccess: () => {
+      utils.profitReport.extraData.invalidate();
+      utils.profitReport.listSocialInsurance.invalidate();
+      toast.success("社保费用已保存");
+      setInsuranceDialogOpen(false);
+    },
+    onError: (err: any) => toast.error(err.message),
+  });
+
   const updateAlertMutation = trpc.profitReport.updateAlertSetting.useMutation({
     onSuccess: () => {
       utils.profitReport.alertSetting.invalidate();
@@ -147,10 +167,36 @@ export default function ProfitReportPage() {
   // Pie data for profit breakdown
   const productProfit = parseFloat(String(summary?.totalProductProfit || "0"));
   const shippingProfit = parseFloat(String(summary?.totalShippingProfit || "0"));
+
+  // 额外数据：补发盈亏、工资、社保
+  const reshipmentProfitLoss = parseFloat(String(extraData?.reshipmentProfitLoss || "0"));
+  const salaryTotal = extraData?.salaryTotal || 0;
+  const insuranceTotal = parseFloat(String(extraData?.insuranceTotal || "0"));
+
+  // 总利润 = 产品毛利润 + 运费利润 + 补发盈亏 - 人员工资 - 人工社保
+  const totalProfitWithExtra = isAdmin
+    ? productProfit + shippingProfit + reshipmentProfitLoss - salaryTotal - insuranceTotal
+    : productProfit + shippingProfit + reshipmentProfitLoss;
+
   const profitPieData = [
     { name: "产品毛利润", value: Math.max(0, productProfit) },
     { name: "运费利润", value: Math.max(0, shippingProfit) },
   ].filter(d => d.value > 0);
+
+  // 社保弹窗操作
+  const openInsuranceDialog = () => {
+    const now = new Date();
+    setInsuranceMonth(`${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`);
+    setInsuranceAmount("");
+    setInsuranceRemark("");
+    setInsuranceDialogOpen(true);
+  };
+  const saveInsurance = () => {
+    const amt = parseFloat(insuranceAmount);
+    if (isNaN(amt) || amt < 0) { toast.error("请输入有效的社保费用金额"); return; }
+    if (!/^\d{4}-\d{2}$/.test(insuranceMonth)) { toast.error("请输入有效的月份格式"); return; }
+    upsertInsuranceMutation.mutate({ yearMonth: insuranceMonth, amount: amt, remark: insuranceRemark || undefined });
+  };
 
   // Monthly/Quarterly comparison chart data
   const comparisonData = comparisonTab === "monthly" ? (monthlyData || []) : (quarterlyData || []);
@@ -266,7 +312,8 @@ export default function ProfitReportPage() {
                 <div className="flex items-center gap-2 text-sm text-gray-500">
                   <TrendingUp className="h-4 w-4" />总利润 (¥)
                 </div>
-                <p className="text-2xl font-bold text-emerald-600 mt-1">¥{fmtMoney(productProfit + shippingProfit)}</p>
+                <p className={`text-2xl font-bold mt-1 ${totalProfitWithExtra >= 0 ? "text-emerald-600" : "text-red-600"}`}>¥{fmtMoney(totalProfitWithExtra)}</p>
+                <p className="text-xs text-gray-400 mt-0.5">含补发盈亏{isAdmin ? "、工资、社保" : ""}</p>
               </CardContent>
             </Card>
             <Card>
@@ -279,8 +326,8 @@ export default function ProfitReportPage() {
             </Card>
           </div>
 
-          {/* Product Profit & Shipping Profit */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {/* Product Profit & Shipping Profit + Extra Cards */}
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
             <Card>
               <CardContent className="pt-4 pb-4">
                 <div className="flex items-center gap-2 text-sm text-gray-500">
@@ -297,6 +344,40 @@ export default function ProfitReportPage() {
                 <p className="text-2xl font-bold text-amber-600 mt-1">¥{fmtMoney(shippingProfit)}</p>
               </CardContent>
             </Card>
+            <Card>
+              <CardContent className="pt-4 pb-4">
+                <div className="flex items-center gap-2 text-sm text-gray-500">
+                  <RefreshCw className="h-4 w-4 text-purple-500" />补发盈亏
+                </div>
+                <p className={`text-2xl font-bold mt-1 ${reshipmentProfitLoss >= 0 ? "text-purple-600" : "text-red-600"}`}>¥{fmtMoney(reshipmentProfitLoss)}</p>
+                {extraData?.reshipmentCount ? <p className="text-xs text-gray-400 mt-0.5">共 {extraData.reshipmentCount} 条补发</p> : null}
+              </CardContent>
+            </Card>
+            {isAdmin && (
+              <Card>
+                <CardContent className="pt-4 pb-4">
+                  <div className="flex items-center gap-2 text-sm text-gray-500">
+                    <Users className="h-4 w-4 text-orange-500" />人员工资
+                  </div>
+                  <p className="text-2xl font-bold text-orange-600 mt-1">-¥{fmtMoney(salaryTotal)}</p>
+                </CardContent>
+              </Card>
+            )}
+            {isAdmin && (
+              <Card className="relative">
+                <CardContent className="pt-4 pb-4">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2 text-sm text-gray-500">
+                      <ShieldCheck className="h-4 w-4 text-teal-500" />人工社保
+                    </div>
+                    <Button variant="ghost" size="icon" className="h-6 w-6" onClick={openInsuranceDialog}>
+                      <Pencil className="h-3 w-3 text-gray-400" />
+                    </Button>
+                  </div>
+                  <p className="text-2xl font-bold text-teal-600 mt-1">-¥{fmtMoney(insuranceTotal)}</p>
+                </CardContent>
+              </Card>
+            )}
           </div>
 
           {/* Monthly/Quarterly Comparison Section */}
@@ -565,6 +646,57 @@ export default function ProfitReportPage() {
             </DialogClose>
             <Button onClick={saveAlertSetting} disabled={updateAlertMutation.isPending}>
               {updateAlertMutation.isPending ? "保存中..." : "保存"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Social Insurance Dialog */}
+      <Dialog open={insuranceDialogOpen} onOpenChange={setInsuranceDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <ShieldCheck className="h-5 w-5 text-teal-500" />
+              填写人工社保费用
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <Label>月份</Label>
+              <Input
+                type="month"
+                value={insuranceMonth}
+                onChange={e => setInsuranceMonth(e.target.value)}
+                className="w-48"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>社保费用金额 (¥)</Label>
+              <Input
+                type="number"
+                min="0"
+                step="0.01"
+                value={insuranceAmount}
+                onChange={e => setInsuranceAmount(e.target.value)}
+                placeholder="0.00"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>备注</Label>
+              <Textarea
+                value={insuranceRemark}
+                onChange={e => setInsuranceRemark(e.target.value)}
+                placeholder="可选填写备注信息"
+                rows={2}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <DialogClose asChild>
+              <Button variant="outline">取消</Button>
+            </DialogClose>
+            <Button onClick={saveInsurance} disabled={upsertInsuranceMutation.isPending}>
+              {upsertInsuranceMutation.isPending ? "保存中..." : "保存"}
             </Button>
           </DialogFooter>
         </DialogContent>

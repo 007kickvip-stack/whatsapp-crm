@@ -90,6 +90,12 @@ vi.mock("./db", () => ({
   getCustomerOrderHistory: vi.fn().mockResolvedValue([]),
   findOrderItemByDomesticTrackingNo: vi.fn().mockResolvedValue(null),
   markLogisticsSubscribed: vi.fn().mockResolvedValue(undefined),
+  getSocialInsuranceCost: vi.fn().mockResolvedValue({ id: 1, yearMonth: "2026-04", amount: "3000.00", remark: null }),
+  upsertSocialInsuranceCost: vi.fn().mockResolvedValue(1),
+  listSocialInsuranceCosts: vi.fn().mockResolvedValue([{ id: 1, yearMonth: "2026-04", amount: "3000.00" }]),
+  getReshipmentProfitLoss: vi.fn().mockResolvedValue({ totalProfitLoss: "-500.00", count: 3 }),
+  getSalaryTotalForPeriod: vi.fn().mockResolvedValue({ totalSalary: 15000, months: ["2026-04"] }),
+  getSocialInsuranceTotalForPeriod: vi.fn().mockResolvedValue({ totalAmount: "3000.00" }),
 }));
 
 vi.mock("./storage", () => ({
@@ -870,6 +876,66 @@ describe("Profit Report", () => {
     const ctx = createStaffContext();
     const caller = appRouter.createCaller(ctx);
     await expect(caller.profitReport.staffAlerts()).rejects.toThrow();
+  });
+
+  // ==================== Extra Data (补发盈亏、工资、社保) ====================
+  it("admin can get extra data with all fields", async () => {
+    const ctx = createAdminContext();
+    const caller = appRouter.createCaller(ctx);
+    const result = await caller.profitReport.extraData({});
+    expect(result.reshipmentProfitLoss).toBe("-500.00");
+    expect(result.reshipmentCount).toBe(3);
+    expect(result.salaryTotal).toBe(15000);
+    expect(result.insuranceTotal).toBe("3000.00");
+  });
+
+  it("staff can get extra data but salary and insurance are 0", async () => {
+    const ctx = createStaffContext();
+    const caller = appRouter.createCaller(ctx);
+    const result = await caller.profitReport.extraData({});
+    expect(result.reshipmentProfitLoss).toBeDefined();
+    expect(result.salaryTotal).toBe(0);
+    expect(result.insuranceTotal).toBe("0");
+  });
+
+  it("staff extraData filters reshipment by own staffName", async () => {
+    const ctx = createStaffContext();
+    const caller = appRouter.createCaller(ctx);
+    await caller.profitReport.extraData({ staffName: "Other Staff" });
+    const { getReshipmentProfitLoss } = await import("./db");
+    const lastCall = (getReshipmentProfitLoss as any).mock.calls.at(-1);
+    expect(lastCall[0].staffName).toBe("Staff User");
+  });
+
+  it("admin can get social insurance for a month", async () => {
+    const ctx = createAdminContext();
+    const caller = appRouter.createCaller(ctx);
+    const result = await caller.profitReport.getSocialInsurance({ yearMonth: "2026-04" });
+    expect(result).toBeDefined();
+    expect(result?.amount).toBe("3000.00");
+  });
+
+  it("admin can upsert social insurance", async () => {
+    const ctx = createAdminContext();
+    const caller = appRouter.createCaller(ctx);
+    const result = await caller.profitReport.upsertSocialInsurance({ yearMonth: "2026-04", amount: 5000, remark: "测试" });
+    expect(result.id).toBeDefined();
+  });
+
+  it("admin can list social insurance", async () => {
+    const ctx = createAdminContext();
+    const caller = appRouter.createCaller(ctx);
+    const result = await caller.profitReport.listSocialInsurance();
+    expect(Array.isArray(result)).toBe(true);
+    expect(result.length).toBe(1);
+  });
+
+  it("staff cannot access social insurance APIs", async () => {
+    const ctx = createStaffContext();
+    const caller = appRouter.createCaller(ctx);
+    await expect(caller.profitReport.getSocialInsurance({ yearMonth: "2026-04" })).rejects.toThrow();
+    await expect(caller.profitReport.upsertSocialInsurance({ yearMonth: "2026-04", amount: 5000 })).rejects.toThrow();
+    await expect(caller.profitReport.listSocialInsurance()).rejects.toThrow();
   });
 });
 

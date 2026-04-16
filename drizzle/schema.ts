@@ -494,3 +494,20 @@ export const salaryAdjustments = mysqlTable("salary_adjustments", {
 
 export type SalaryAdjustment = typeof salaryAdjustments.$inferSelect;
 export type InsertSalaryAdjustment = typeof salaryAdjustments.$inferInsert;
+
+/**
+ * 社保费用表 - 管理员按月填写的人工社保费用
+ * 用于利润报表中计算净利润
+ */
+export const socialInsuranceCosts = mysqlTable("social_insurance_costs", {
+  id: int("id").autoincrement().primaryKey(),
+  yearMonth: varchar("yearMonth", { length: 7 }).notNull().unique(), // 月份 YYYY-MM
+  amount: decimal("amount", { precision: 12, scale: 2 }).notNull().default("0"), // 社保费用金额
+  remark: text("remark"), // 备注说明
+  createdById: int("createdById"),
+  createdByName: varchar("createdByName", { length: 128 }),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+export type SocialInsuranceCost = typeof socialInsuranceCosts.$inferSelect;
+export type InsertSocialInsuranceCost = typeof socialInsuranceCosts.$inferInsert;
