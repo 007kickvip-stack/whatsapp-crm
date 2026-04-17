@@ -43,6 +43,8 @@ import {
   Wallet,
   RefreshCw,
   Banknote,
+  UserSearch,
+  DatabaseBackup,
 } from "lucide-react";
 import { CSSProperties, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation } from "wouter";
@@ -76,6 +78,7 @@ const dataMenuItems: MenuItem[] = [
   { icon: CalendarDays, label: "每日数据", path: "/daily-data" },
   { icon: BarChart3, label: "利润报表", path: "/profit-report" },
   { icon: Target, label: "目标管理", path: "/staff-targets" },
+  { icon: UserSearch, label: "客户分析", path: "/customer-analysis" },
 ];
 
 // 仅管理员可见的工资与提成菜单
@@ -87,6 +90,7 @@ const adminMenuItems: MenuItem[] = [
   { icon: Palette, label: "账号管理", path: "/account-management", adminOnly: true },
   { icon: ArrowRightLeft, label: "汇率管理", path: "/exchange-rate", adminOnly: true },
   { icon: ClipboardList, label: "操作日志", path: "/audit-logs", adminOnly: true },
+  { icon: DatabaseBackup, label: "数据备份", path: "/data-backup", adminOnly: true },
 ];
 
 export default function DashboardLayout({

@@ -105,10 +105,28 @@ vi.mock("./db", () => ({
   getAnnualTargetProgress: vi.fn().mockResolvedValue({ team: null, individuals: [] }),
   recalculateAllItemProfitRates: vi.fn().mockResolvedValue({ updated: 5, totalItems: 20, totalOrders: 10 }),
   restoreUser: vi.fn().mockResolvedValue(undefined),
+  hardDeleteUser: vi.fn().mockResolvedValue(undefined),
+  getRepurchaseOverview: vi.fn().mockResolvedValue({
+    totalCustomers: 100, repeatCustomerCount: 30, repurchaseRate: '30.0',
+    avgRepurchaseCycle: '45.5', avgLTV: '1500.00',
+    activityDistribution: { active: 40, silent: 30, lost: 25, unknown: 5 },
+  }),
+  getCustomerValueList: vi.fn().mockResolvedValue({
+    customers: [{ customerWhatsapp: '+123', customerName: 'Test', orderCount: 3, ltv: '1500.00', activity: 'active' }],
+    ltvDistribution: { high: 20, medium: 60, low: 20, highThreshold: '2000.00', lowThreshold: '500.00' },
+  }),
+  getRepurchaseTrend: vi.fn().mockResolvedValue([
+    { yearMonth: '2026-01', totalCustomers: 50, repeatCustomers: 15, repurchaseRate: '30.0', newCustomers: 35 },
+  ]),
+  exportAllData: vi.fn().mockResolvedValue({
+    tables: { users: [{ id: 1 }] }, exportedAt: '2026-04-17T00:00:00Z', tableCount: 22, totalRows: 100,
+  }),
+  restoreAllData: vi.fn().mockResolvedValue({ restoredTables: 22, totalRows: 100 }),
 }));
 
 vi.mock("./storage", () => ({
-  storagePut: vi.fn().mockResolvedValue({ url: "https://cdn.example.com/test.jpg" }),
+  storagePut: vi.fn().mockResolvedValue({ url: "https://cdn.example.com/test.jpg", key: "test-key" }),
+  storageGet: vi.fn().mockResolvedValue({ url: "https://cdn.example.com/backup.json", key: "backup-key" }),
 }));
 
 type AuthenticatedUser = NonNullable<TrpcContext["user"]>;
@@ -1702,5 +1720,87 @@ describe("context-level session checks", () => {
     }
     expect(result).not.toBeNull();
     expect(result.openId).toBe("re-logged-user");
+  });
+});
+
+// ==================== 客户复购分析 Tests ====================
+describe("Repurchase Analysis", () => {
+  it("should return repurchase overview for admin", async () => {
+    const caller = appRouter.createCaller(createAdminContext());
+    const result = await caller.repurchase.overview({});
+    expect(result).toBeDefined();
+    expect(result.totalCustomers).toBe(100);
+    expect(result.repeatCustomerCount).toBe(30);
+    expect(result.repurchaseRate).toBe("30.0");
+    expect(result.avgRepurchaseCycle).toBe("45.5");
+    expect(result.avgLTV).toBe("1500.00");
+    expect(result.activityDistribution).toBeDefined();
+    expect(result.activityDistribution.active).toBe(40);
+  });
+
+  it("should return customer value list for admin", async () => {
+    const caller = appRouter.createCaller(createAdminContext());
+    const result = await caller.repurchase.customerList({});
+    expect(result).toBeDefined();
+    expect(result.customers).toHaveLength(1);
+    expect(result.customers[0].customerWhatsapp).toBe("+123");
+    expect(result.ltvDistribution).toBeDefined();
+    expect(result.ltvDistribution.high).toBe(20);
+  });
+
+  it("should return repurchase trend for admin", async () => {
+    const caller = appRouter.createCaller(createAdminContext());
+    const result = await caller.repurchase.trend({ months: 12 });
+    expect(result).toHaveLength(1);
+    expect(result[0].yearMonth).toBe("2026-01");
+    expect(result[0].repurchaseRate).toBe("30.0");
+  });
+
+  it("should filter by staff name for non-admin", async () => {
+    const caller = appRouter.createCaller(createStaffContext());
+    const result = await caller.repurchase.overview({});
+    expect(result).toBeDefined();
+    // Non-admin should have staffName auto-set
+    const { getRepurchaseOverview } = await import("./db");
+    expect(getRepurchaseOverview).toHaveBeenCalledWith(expect.objectContaining({
+      staffName: "Staff User",
+    }));
+  });
+});
+
+// ==================== 数据备份 Tests ====================
+describe("Data Backup", () => {
+  it("should create backup (admin only)", async () => {
+    const caller = appRouter.createCaller(createAdminContext());
+    const result = await caller.backup.create();
+    expect(result).toBeDefined();
+    expect(result.tableCount).toBe(22);
+    expect(result.totalRows).toBe(100);
+    expect(result.url).toBeDefined();
+    expect(result.key).toContain("backups/backup-");
+  });
+
+  it("should list backups (admin only)", async () => {
+    const caller = appRouter.createCaller(createAdminContext());
+    const result = await caller.backup.list();
+    expect(result).toBeDefined();
+    expect(Array.isArray(result)).toBe(true);
+  });
+
+  it("should reject backup creation for non-admin", async () => {
+    const caller = appRouter.createCaller(createStaffContext());
+    await expect(caller.backup.create()).rejects.toThrow();
+  });
+
+  it("should reject backup list for non-admin", async () => {
+    const caller = appRouter.createCaller(createStaffContext());
+    await expect(caller.backup.list()).rejects.toThrow();
+  });
+
+  it("should get download URL for backup (admin only)", async () => {
+    const caller = appRouter.createCaller(createAdminContext());
+    const result = await caller.backup.download({ key: "backups/test.json" });
+    expect(result).toBeDefined();
+    expect(result.url).toBeDefined();
   });
 });

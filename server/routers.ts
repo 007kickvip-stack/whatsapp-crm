@@ -51,6 +51,8 @@ import {
   listAnnualTargets, upsertAnnualTarget, deleteAnnualTarget, getAnnualTargetProgress,
   recalculateAllItemProfitRates,
   upsertUser,
+  getRepurchaseOverview, getCustomerValueList, getRepurchaseTrend,
+  exportAllData, restoreAllData,
 } from "./db";
 import type { SQL } from "drizzle-orm";
 import { sdk } from "./_core/sdk";
@@ -2381,6 +2383,126 @@ export const appRouter = router({
       await updatePaypalIncomeFromPayment(input.paymentId);
       return { url };
     }),
+  }),
+
+  // ==================== 客户复购分析 ====================
+  repurchase: router({
+    overview: protectedProcedure
+      .input(z.object({ staffName: z.string().optional() }).optional())
+      .query(async ({ ctx, input }) => {
+        const params: { staffName?: string } = {};
+        if (ctx.user.role !== 'admin') {
+          params.staffName = ctx.user.name || '';
+        } else if (input?.staffName) {
+          params.staffName = input.staffName;
+        }
+        return getRepurchaseOverview(params);
+      }),
+
+    customerList: protectedProcedure
+      .input(z.object({
+        staffName: z.string().optional(),
+        sortBy: z.string().optional(),
+        sortOrder: z.enum(['asc', 'desc']).optional(),
+        activityFilter: z.enum(['all', 'active', 'silent', 'lost']).optional(),
+        tierFilter: z.enum(['all', 'high', 'medium', 'low']).optional(),
+      }).optional())
+      .query(async ({ ctx, input }) => {
+        const params = { ...input };
+        if (ctx.user.role !== 'admin') {
+          params.staffName = ctx.user.name || '';
+        }
+        return getCustomerValueList(params || {});
+      }),
+
+    trend: protectedProcedure
+      .input(z.object({
+        staffName: z.string().optional(),
+        months: z.number().optional(),
+      }).optional())
+      .query(async ({ ctx, input }) => {
+        const params: { staffName?: string; months?: number } = { months: input?.months };
+        if (ctx.user.role !== 'admin') {
+          params.staffName = ctx.user.name || '';
+        } else if (input?.staffName) {
+          params.staffName = input.staffName;
+        }
+        return getRepurchaseTrend(params);
+      }),
+  }),
+
+  // ==================== 数据备份与恢复 ====================
+  backup: router({
+    // 创建备份（导出数据到S3）
+    create: adminProcedure.mutation(async ({ ctx }) => {
+      const data = await exportAllData();
+      const jsonStr = JSON.stringify(data, null, 0);
+      const buffer = Buffer.from(jsonStr, 'utf-8');
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+      const key = `backups/backup-${timestamp}.json`;
+      const { url } = await storagePut(key, buffer, 'application/json');
+
+      await logAction(ctx, '创建数据备份', 'backup', undefined, key, `表数: ${data.tableCount}, 总行数: ${data.totalRows}`);
+
+      return {
+        key,
+        url,
+        exportedAt: data.exportedAt,
+        tableCount: data.tableCount,
+        totalRows: data.totalRows,
+        sizeBytes: buffer.length,
+      };
+    }),
+
+    // 获取备份列表（从审计日志中查询）
+    list: adminProcedure.query(async () => {
+      const logs = await listAuditLogs({
+        action: '创建数据备份',
+        pageSize: 50,
+      });
+      return logs.data.map(log => {
+        const details = log.details || '';
+        const tableCountMatch = details.match(/表数: (\d+)/);
+        const totalRowsMatch = details.match(/总行数: (\d+)/);
+        return {
+          id: log.id,
+          key: log.targetName || '',
+          createdAt: log.createdAt,
+          userName: log.userName,
+          tableCount: tableCountMatch ? parseInt(tableCountMatch[1]) : 0,
+          totalRows: totalRowsMatch ? parseInt(totalRowsMatch[1]) : 0,
+        };
+      });
+    }),
+
+    // 从备份恢复
+    restore: adminProcedure
+      .input(z.object({ backupUrl: z.string() }))
+      .mutation(async ({ ctx, input }) => {
+        // 下载备份文件
+        const response = await fetch(input.backupUrl);
+        if (!response.ok) throw new TRPCError({ code: 'BAD_REQUEST', message: '无法下载备份文件' });
+        const backupData = await response.json();
+
+        if (!backupData.tables) {
+          throw new TRPCError({ code: 'BAD_REQUEST', message: '备份文件格式无效' });
+        }
+
+        const result = await restoreAllData(backupData);
+
+        await logAction(ctx, '恢复数据备份', 'backup', undefined, undefined, `恢复表数: ${result.restoredTables}, 总行数: ${result.totalRows}`);
+
+        return result;
+      }),
+
+    // 下载备份文件URL
+    download: adminProcedure
+      .input(z.object({ key: z.string() }))
+      .query(async ({ input }) => {
+        const { storageGet } = await import('./storage');
+        const { url } = await storageGet(input.key);
+        return { url };
+      }),
   }),
 });
 

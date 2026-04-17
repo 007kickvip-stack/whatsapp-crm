@@ -25,6 +25,8 @@ const QuotationsPage = lazy(() => import("./pages/Quotations"));
 const PaypalPage = lazy(() => import("./pages/Paypal"));
 const ReshipmentsPage = lazy(() => import("./pages/Reshipments"));
 const SalaryReportPage = lazy(() => import("./pages/SalaryReport"));
+const CustomerAnalysisPage = lazy(() => import("./pages/CustomerAnalysis"));
+const DataBackupPage = lazy(() => import("./pages/DataBackup"));
 
 function PageLoading() {
   return (
@@ -60,6 +62,8 @@ function Router() {
                 <Route path="/paypal" component={PaypalPage} />
                 <Route path="/reshipments" component={ReshipmentsPage} />
                 <Route path="/salary-report" component={SalaryReportPage} />
+                <Route path="/customer-analysis" component={CustomerAnalysisPage} />
+                <Route path="/data-backup" component={DataBackupPage} />
                 <Route path="/404" component={NotFound} />
                 <Route component={NotFound} />
               </Switch>

@@ -4145,3 +4145,386 @@ export async function getAnnualTargetProgress(year: number) {
 
   return { team: teamProgress, individuals };
 }
+
+
+// ==================== 客户复购分析 ====================
+
+/**
+ * 获取客户复购统计概览
+ * 复购率、平均复购周期、平均LTV、活跃度分布
+ */
+export async function getRepurchaseOverview(params?: { staffName?: string }) {
+  const db = await getDb();
+  if (!db) return { totalCustomers: 0, repeatCustomerCount: 0, repurchaseRate: '0.0', avgRepurchaseCycle: '0.0', avgLTV: '0.00', activityDistribution: { active: 0, silent: 0, lost: 0, unknown: 0 } };
+  
+  const staffFilter = params?.staffName ? sql` AND o.staffName = ${params.staffName}` : sql``;
+  const result = await db.execute(sql`
+    SELECT 
+      o.customerWhatsapp,
+      o.customerName,
+      o.customerCountry,
+      o.customerTier,
+      o.staffName,
+      COUNT(DISTINCT o.id) as orderCount,
+      COALESCE(SUM(o.totalAmountCny), 0) as totalSpentCny,
+      COALESCE(SUM(o.totalAmountUsd), 0) as totalSpentUsd,
+      MIN(o.orderDate) as firstOrderDate,
+      MAX(o.orderDate) as lastOrderDate,
+      DATEDIFF(MAX(o.orderDate), MIN(o.orderDate)) as daySpan
+    FROM orders o
+    WHERE o.customerWhatsapp IS NOT NULL AND o.customerWhatsapp != ''
+    ${staffFilter}
+    GROUP BY o.customerWhatsapp, o.customerName, o.customerCountry, o.customerTier, o.staffName
+  `);
+  const customers = (result as any)[0] as any[];
+  
+  const totalCustomers = customers.length;
+  const repeatCustomers = customers.filter(c => Number(c.orderCount) >= 2);
+  const repeatCustomerCount = repeatCustomers.length;
+  const repurchaseRate = totalCustomers > 0 ? (repeatCustomerCount / totalCustomers * 100) : 0;
+  
+  // 平均复购周期（仅复购客户）
+  let totalCycleDays = 0;
+  let cycleCount = 0;
+  for (const c of repeatCustomers) {
+    const orderCount = Number(c.orderCount);
+    const daySpan = Number(c.daySpan);
+    if (orderCount >= 2 && daySpan > 0) {
+      totalCycleDays += daySpan / (orderCount - 1);
+      cycleCount++;
+    }
+  }
+  const avgRepurchaseCycle = cycleCount > 0 ? (totalCycleDays / cycleCount) : 0;
+  
+  // 平均LTV
+  const totalLTV = customers.reduce((sum, c) => sum + Number(c.totalSpentCny || 0), 0);
+  const avgLTV = totalCustomers > 0 ? (totalLTV / totalCustomers) : 0;
+  
+  // 活跃度分布（基于最近下单时间）
+  const now = new Date();
+  let activeCount = 0; // 30天内
+  let silentCount = 0; // 30-90天
+  let lostCount = 0;   // 90天以上
+  let unknownCount = 0;
+  
+  for (const c of customers) {
+    if (!c.lastOrderDate) { unknownCount++; continue; }
+    const lastDate = new Date(c.lastOrderDate);
+    const daysSince = Math.floor((now.getTime() - lastDate.getTime()) / (1000 * 60 * 60 * 24));
+    if (daysSince <= 30) activeCount++;
+    else if (daysSince <= 90) silentCount++;
+    else lostCount++;
+  }
+  
+  return {
+    totalCustomers,
+    repeatCustomerCount,
+    repurchaseRate: repurchaseRate.toFixed(1),
+    avgRepurchaseCycle: avgRepurchaseCycle.toFixed(1),
+    avgLTV: avgLTV.toFixed(2),
+    activityDistribution: {
+      active: activeCount,
+      silent: silentCount,
+      lost: lostCount,
+      unknown: unknownCount,
+    },
+  };
+}
+
+/**
+ * 获取客户价值明细列表
+ * 支持排序和筛选
+ */
+export async function getCustomerValueList(params: {
+  staffName?: string;
+  sortBy?: string;
+  sortOrder?: 'asc' | 'desc';
+  activityFilter?: 'all' | 'active' | 'silent' | 'lost';
+  tierFilter?: 'all' | 'high' | 'medium' | 'low';
+}) {
+  const db = await getDb();
+  if (!db) return { customers: [], ltvDistribution: { high: 0, medium: 0, low: 0, highThreshold: '0.00', lowThreshold: '0.00' } };
+  
+  const staffFilter = params.staffName ? sql` AND o.staffName = ${params.staffName}` : sql``;
+  const result = await db.execute(sql`
+    SELECT 
+      o.customerWhatsapp,
+      o.customerName,
+      o.customerCountry,
+      o.customerTier,
+      o.staffName,
+      COUNT(DISTINCT o.id) as orderCount,
+      COALESCE(SUM(o.totalAmountCny), 0) as totalSpentCny,
+      COALESCE(SUM(o.totalAmountUsd), 0) as totalSpentUsd,
+      MIN(o.orderDate) as firstOrderDate,
+      MAX(o.orderDate) as lastOrderDate,
+      DATEDIFF(MAX(o.orderDate), MIN(o.orderDate)) as daySpan
+    FROM orders o
+    WHERE o.customerWhatsapp IS NOT NULL AND o.customerWhatsapp != ''
+    ${staffFilter}
+    GROUP BY o.customerWhatsapp, o.customerName, o.customerCountry, o.customerTier, o.staffName
+  `);
+  const customers = ((result as any)[0] as any[]).map(c => {
+    const orderCount = Number(c.orderCount);
+    const daySpan = Number(c.daySpan || 0);
+    const avgCycle = orderCount >= 2 && daySpan > 0 ? daySpan / (orderCount - 1) : 0;
+    const totalSpentCny = Number(c.totalSpentCny || 0);
+    
+    // 活跃度
+    const now = new Date();
+    let activity = 'unknown';
+    if (c.lastOrderDate) {
+      const lastDate = new Date(c.lastOrderDate);
+      const daysSince = Math.floor((now.getTime() - lastDate.getTime()) / (1000 * 60 * 60 * 24));
+      if (daysSince <= 30) activity = 'active';
+      else if (daysSince <= 90) activity = 'silent';
+      else activity = 'lost';
+    }
+    
+    return {
+      customerWhatsapp: c.customerWhatsapp,
+      customerName: c.customerName || '',
+      customerCountry: c.customerCountry || '',
+      customerTier: c.customerTier || '',
+      staffName: c.staffName || '',
+      orderCount,
+      totalSpentCny: totalSpentCny.toFixed(2),
+      totalSpentUsd: Number(c.totalSpentUsd || 0).toFixed(2),
+      firstOrderDate: c.firstOrderDate,
+      lastOrderDate: c.lastOrderDate,
+      avgRepurchaseCycle: avgCycle.toFixed(1),
+      ltv: totalSpentCny.toFixed(2),
+      activity,
+    };
+  });
+  
+  // 活跃度筛选
+  let filtered = customers;
+  if (params.activityFilter && params.activityFilter !== 'all') {
+    filtered = filtered.filter(c => c.activity === params.activityFilter);
+  }
+  
+  // LTV分层筛选
+  if (params.tierFilter && params.tierFilter !== 'all') {
+    const ltvValues = customers.map(c => Number(c.ltv)).sort((a, b) => b - a);
+    const highThreshold = ltvValues[Math.floor(ltvValues.length * 0.2)] || 0;
+    const lowThreshold = ltvValues[Math.floor(ltvValues.length * 0.8)] || 0;
+    
+    if (params.tierFilter === 'high') {
+      filtered = filtered.filter(c => Number(c.ltv) >= highThreshold);
+    } else if (params.tierFilter === 'low') {
+      filtered = filtered.filter(c => Number(c.ltv) <= lowThreshold);
+    } else {
+      filtered = filtered.filter(c => Number(c.ltv) > lowThreshold && Number(c.ltv) < highThreshold);
+    }
+  }
+  
+  // 排序
+  const sortBy = params.sortBy || 'ltv';
+  const sortOrder = params.sortOrder || 'desc';
+  filtered.sort((a, b) => {
+    let valA: number, valB: number;
+    switch (sortBy) {
+      case 'orderCount': valA = a.orderCount; valB = b.orderCount; break;
+      case 'ltv': valA = Number(a.ltv); valB = Number(b.ltv); break;
+      case 'avgRepurchaseCycle': valA = Number(a.avgRepurchaseCycle); valB = Number(b.avgRepurchaseCycle); break;
+      case 'lastOrderDate':
+        valA = a.lastOrderDate ? new Date(a.lastOrderDate).getTime() : 0;
+        valB = b.lastOrderDate ? new Date(b.lastOrderDate).getTime() : 0;
+        break;
+      default: valA = Number(a.ltv); valB = Number(b.ltv);
+    }
+    return sortOrder === 'asc' ? valA - valB : valB - valA;
+  });
+  
+  // 计算LTV分层
+  const allLtvValues = customers.map(c => Number(c.ltv)).sort((a, b) => b - a);
+  const highThreshold = allLtvValues[Math.floor(allLtvValues.length * 0.2)] || 0;
+  const lowThreshold = allLtvValues[Math.floor(allLtvValues.length * 0.8)] || 0;
+  
+  const ltvDistribution = {
+    high: customers.filter(c => Number(c.ltv) >= highThreshold).length,
+    medium: customers.filter(c => Number(c.ltv) > lowThreshold && Number(c.ltv) < highThreshold).length,
+    low: customers.filter(c => Number(c.ltv) <= lowThreshold).length,
+    highThreshold: highThreshold.toFixed(2),
+    lowThreshold: lowThreshold.toFixed(2),
+  };
+  
+  return { customers: filtered, ltvDistribution };
+}
+
+/**
+ * 获取月度复购趋势
+ */
+export async function getRepurchaseTrend(params?: { staffName?: string; months?: number }) {
+  const db = await getDb();
+  if (!db) return [];
+  const monthCount = params?.months || 12;
+  
+  const staffFilter = params?.staffName ? sql` AND o.staffName = ${params.staffName}` : sql``;
+  const result = await db.execute(sql`
+    SELECT 
+      DATE_FORMAT(o.orderDate, '%Y-%m') as yearMonth,
+      o.customerWhatsapp,
+      COUNT(DISTINCT o.id) as orderCount
+    FROM orders o
+    WHERE o.orderDate >= DATE_SUB(CURDATE(), INTERVAL ${monthCount} MONTH)
+      AND o.customerWhatsapp IS NOT NULL AND o.customerWhatsapp != ''
+    ${staffFilter}
+    GROUP BY yearMonth, o.customerWhatsapp
+  `);
+  const data = (result as any)[0] as any[];
+  
+  // 先统计每个客户在每个月的订单数
+  const customerMonthOrders: Record<string, Record<string, number>> = {};
+  for (const row of data) {
+    const ym = row.yearMonth;
+    const wp = row.customerWhatsapp;
+    if (!customerMonthOrders[wp]) customerMonthOrders[wp] = {};
+    customerMonthOrders[wp][ym] = Number(row.orderCount);
+  }
+  
+  // 收集所有月份
+  const allMonthsSet = new Set<string>();
+  for (const row of data) allMonthsSet.add(row.yearMonth);
+  
+  // 获取每个客户的首次下单月份
+  const staffFilter2 = params?.staffName ? sql` AND staffName = ${params.staffName}` : sql``;
+  const firstResult = await db.execute(sql`
+    SELECT customerWhatsapp, DATE_FORMAT(MIN(orderDate), '%Y-%m') as firstMonth
+    FROM orders
+    WHERE customerWhatsapp IS NOT NULL AND customerWhatsapp != ''
+    ${staffFilter2}
+    GROUP BY customerWhatsapp
+  `);
+  const firstOrderMap: Record<string, string> = {};
+  for (const r of (firstResult as any)[0] as any[]) {
+    firstOrderMap[r.customerWhatsapp] = r.firstMonth;
+  }
+  
+  // 按月统计：当月有下单的客户中，之前已经下过单的算复购客户
+  const trend: { yearMonth: string; totalCustomers: number; repeatCustomers: number; repurchaseRate: string; newCustomers: number }[] = [];
+  
+  const sortedMonths = Array.from(allMonthsSet).sort();
+  for (const ym of sortedMonths) {
+    let totalInMonth = 0;
+    let repeatInMonth = 0;
+    let newInMonth = 0;
+    
+    for (const wp of Object.keys(customerMonthOrders)) {
+      if (customerMonthOrders[wp][ym]) {
+        totalInMonth++;
+        const firstMonth = firstOrderMap[wp];
+        if (firstMonth && firstMonth < ym) {
+          repeatInMonth++;
+        } else {
+          newInMonth++;
+        }
+      }
+    }
+    
+    trend.push({
+      yearMonth: ym,
+      totalCustomers: totalInMonth,
+      repeatCustomers: repeatInMonth,
+      repurchaseRate: totalInMonth > 0 ? (repeatInMonth / totalInMonth * 100).toFixed(1) : '0.0',
+      newCustomers: newInMonth,
+    });
+  }
+  
+  return trend;
+}
+
+// ==================== 数据备份与恢复 ====================
+
+const ALL_TABLES = [
+  "users", "customers", "orders", "order_items", "audit_logs",
+  "exchange_rates", "profit_alert_settings", "staff_monthly_targets",
+  "daily_data", "accounts", "daily_report_notes", "quotations",
+  "quotation_items", "paypal_income", "paypal_expense", "reshipments",
+  "order_payments", "commission_rules", "bonus_rules", "salary_adjustments",
+  "social_insurance_costs", "annual_targets",
+];
+
+/**
+ * 导出所有业务表数据为JSON对象
+ */
+export async function exportAllData(): Promise<{ tables: Record<string, any[]>; exportedAt: string; tableCount: number; totalRows: number }> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const tables: Record<string, any[]> = {};
+  let totalRows = 0;
+
+  for (const tableName of ALL_TABLES) {
+    try {
+      const result = await db.execute(sql`SELECT * FROM ${sql.raw(tableName)}`);
+      const rows = (result as any)[0] as any[];
+      tables[tableName] = rows;
+      totalRows += rows.length;
+    } catch (e) {
+      // 表可能不存在，跳过
+      tables[tableName] = [];
+    }
+  }
+
+  return {
+    tables,
+    exportedAt: new Date().toISOString(),
+    tableCount: ALL_TABLES.length,
+    totalRows,
+  };
+}
+
+/**
+ * 从备份JSON恢复所有业务表数据
+ * 注意：这是全量覆盖操作，会先清空再写入
+ */
+export async function restoreAllData(backupData: { tables: Record<string, any[]> }): Promise<{ restoredTables: number; totalRows: number }> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  let restoredTables = 0;
+  let totalRows = 0;
+
+  // 先禁用外键检查
+  await db.execute(sql`SET FOREIGN_KEY_CHECKS = 0`);
+
+  try {
+    // 按逆序清空表（先子表后父表）
+    const reversedTables = [...ALL_TABLES].reverse();
+    for (const tableName of reversedTables) {
+      try {
+        await db.execute(sql`DELETE FROM ${sql.raw(tableName)}`);
+      } catch (e) {
+        // 忽略不存在的表
+      }
+    }
+
+    // 按正序写入数据（先父表后子表）
+    for (const tableName of ALL_TABLES) {
+      const rows = backupData.tables[tableName];
+      if (!rows || rows.length === 0) continue;
+
+      for (const row of rows) {
+        const columns = Object.keys(row);
+        const values = columns.map(col => row[col]);
+        const colNames = columns.map(c => sql.raw(`\`${c}\``));
+        const placeholders = values.map(v => {
+          if (v === null || v === undefined) return sql`NULL`;
+          return sql`${v}`;
+        });
+
+        await db.execute(sql`INSERT INTO ${sql.raw(tableName)} (${sql.join(colNames, sql`, `)}) VALUES (${sql.join(placeholders, sql`, `)})`);
+      }
+
+      restoredTables++;
+      totalRows += rows.length;
+    }
+  } finally {
+    // 恢复外键检查
+    await db.execute(sql`SET FOREIGN_KEY_CHECKS = 1`);
+  }
+
+  return { restoredTables, totalRows };
+}
