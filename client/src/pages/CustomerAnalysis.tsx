@@ -153,8 +153,8 @@ export default function CustomerAnalysisPage() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">全部客服</SelectItem>
-              {staffList?.map((s: any) => (
-                <SelectItem key={s.id} value={s.name || ""}>{s.name}</SelectItem>
+              {staffList?.filter((s: any) => s.name).map((s: any) => (
+                <SelectItem key={s.id} value={s.name}>{s.name}</SelectItem>
               ))}
             </SelectContent>
           </Select>
