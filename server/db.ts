@@ -2711,8 +2711,10 @@ export async function syncPaymentToPaypalIncome(paymentId: number, orderId: numb
   const row = rows[0];
   if (!row.amount || parseFloat(String(row.amount)) <= 0) return;
   
+  // 日期回退逻辑：paymentDate > orderDate > 当前日期
+  const incomeDate = row.paymentDate || row.orderDate || new Date().toISOString().slice(0, 10);
   await db.insert(paypalIncome).values({
-    incomeDate: row.paymentDate || row.orderDate || null,
+    incomeDate,
     account: row.account || null,
     customerWhatsapp: row.customerWhatsapp || null,
     customerName: row.customerName || null,
@@ -2747,11 +2749,13 @@ export async function updatePaypalIncomeFromPayment(paymentId: number) {
   if (rows.length === 0) return;
   
   const row = rows[0];
+  // 日期回退逻辑：paymentDate > orderDate > 保持原值
+  const updatedDate = row.paymentDate || row.orderDate || null;
   await db.execute(sql`
     UPDATE paypal_income SET
       paymentAmount = ${row.amount ? String(row.amount) : "0"},
       paymentScreenshotUrl = ${row.screenshotUrl || null},
-      incomeDate = ${row.paymentDate || null},
+      incomeDate = COALESCE(${updatedDate}, incomeDate),
       receivingAccount = ${row.receivingAccount || null},
       paymentType = ${row.paymentType || null},
       orderNumber = ${row.orderNumber || null}
@@ -2814,7 +2818,7 @@ export async function syncOrdersToPaypalIncome(userId: number) {
   
   for (const row of paymentRows) {
     await db.insert(paypalIncome).values({
-      incomeDate: row.paymentDate || row.orderDate || null,
+      incomeDate: row.paymentDate || row.orderDate || new Date().toISOString().slice(0, 10),
       account: row.account || null,
       customerWhatsapp: row.customerWhatsapp || null,
       customerName: row.customerName || null,
@@ -2855,7 +2859,7 @@ export async function syncOrdersToPaypalIncome(userId: number) {
   
   for (const row of legacyRows) {
     await db.insert(paypalIncome).values({
-      incomeDate: row.orderDate || null,
+      incomeDate: row.orderDate || new Date().toISOString().slice(0, 10),
       account: row.account || null,
       customerWhatsapp: row.customerWhatsapp || null,
       customerName: row.customerName || null,
@@ -2885,6 +2889,7 @@ export async function repairPaypalIncomeSync() {
   let updated = 0;
 
   // 1. 修复有paymentId的记录（从order_payments同步）
+  // 包括：截图缺失、日期缺失、订单编号缺失、支付类型缺失
   const paymentLinked = await db.execute(sql`
     SELECT pi.id, op.screenshotUrl, op.paymentDate, op.paymentType, op.receivingAccount,
            o.orderNumber, o.orderDate
@@ -2938,6 +2943,29 @@ export async function repairPaypalIncomeSync() {
       WHERE id = ${row.id}
     `);
     updated++;
+  }
+
+  // 3. 强制修复：对所有仍然缺失日期的记录，尝试从关联的支付记录或订单中获取日期
+  const stillMissing = await db.execute(sql`
+    SELECT pi.id, pi.paymentId, pi.orderId,
+           op.paymentDate,
+           o.orderDate,
+           DATE(o.createdAt) as orderCreatedDate
+    FROM paypal_income pi
+    LEFT JOIN order_payments op ON op.id = pi.paymentId
+    LEFT JOIN orders o ON o.id = pi.orderId
+    WHERE pi.incomeDate IS NULL
+      AND (op.paymentDate IS NOT NULL OR o.orderDate IS NOT NULL OR o.createdAt IS NOT NULL)
+  `);
+  const missingRows = (stillMissing as any)[0] || [];
+  for (const row of missingRows) {
+    const dateToUse = row.paymentDate || row.orderDate || row.orderCreatedDate || null;
+    if (dateToUse) {
+      await db.execute(sql`
+        UPDATE paypal_income SET incomeDate = ${dateToUse} WHERE id = ${row.id}
+      `);
+      updated++;
+    }
   }
 
   return { updated };

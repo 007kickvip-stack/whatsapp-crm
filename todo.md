@@ -905,3 +905,7 @@
 
 ## Bug修复：客户分析页面Select.Item空值错误
 - [x] 修复CustomerAnalysis.tsx中Select.Item的value为空字符串导致页面崩溃（过滤掉name为空的staff）
+
+## Bug修复：PayPal收支日期列不显示
+- [x] 修复PayPal收支管理页面收入记录的日期列为空，增强日期同步回退逻辑（paymentDate > orderDate > 当前日期）
+- [x] 增强修复同步函数，添加第3步强制修复仍缺失日期的记录
