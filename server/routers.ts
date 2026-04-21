@@ -716,8 +716,13 @@ export const appRouter = router({
       paymentScreenshotUrl: z.string().optional(),
       remarks: z.string().optional(),
       paymentStatus: z.string().optional(),
-    })).mutation(async ({ input }) => {
+    })).mutation(async ({ input, ctx }) => {
       const { id, orderId, ...data } = input;
+      // 权限控制：非管理员不能修改产品成本和实际运费
+      if (ctx.user.role !== "admin") {
+        delete data.productCost;
+        delete data.shippingActual;
+      }
       // Fetch current item to merge partial updates
       const currentItem = await getOrderItemById(id);
       const merged = {

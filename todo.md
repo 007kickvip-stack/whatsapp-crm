@@ -909,3 +909,7 @@
 ## Bug修复：PayPal收支日期列不显示
 - [x] 修复PayPal收支管理页面收入记录的日期列为空，增强日期同步回退逻辑（paymentDate > orderDate > 当前日期）
 - [x] 增强修复同步函数，添加第3步强制修复仍缺失日期的记录
+
+## 权限控制：产品成本和实际运费仅管理员可编辑
+- [x] 前端：产品成本和实际运费对非管理员显示为只读文本（灰色）
+- [x] 后端：非管理员调用updateOrderItem时自动删除productCost和shippingActual字段

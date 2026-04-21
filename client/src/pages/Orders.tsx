@@ -1669,12 +1669,16 @@ export default function OrdersPage() {
         {/* 20. 产品成本 */}
         {isColVisible('productCost') && <td className={`${dp} px-1 border-r border-gray-100 text-center font-mono whitespace-nowrap text-[11px] ${cellBorderTop}`}>
           {hasItem ? (
-            <EditableCell
-              value={row.productCost || ""}
-              type="number"
-              onSave={(v) => saveItemField(row.itemId!, row.orderId, "productCost", v)}
-              placeholder="0"
-            />
+            user?.role === "admin" ? (
+              <EditableCell
+                value={row.productCost || ""}
+                type="number"
+                onSave={(v) => saveItemField(row.itemId!, row.orderId, "productCost", v)}
+                placeholder="0"
+              />
+            ) : (
+              <span className="text-gray-500">{row.productCost || "-"}</span>
+            )
           ) : null}
         </td>}
 
@@ -1696,12 +1700,16 @@ export default function OrdersPage() {
         {/* 24. 实际运费 */}
         {isColVisible('shippingActual') && <td className={`${dp} px-1 border-r border-gray-100 text-center font-mono whitespace-nowrap text-[11px] ${cellBorderTop}`}>
           {hasItem ? (
-            <EditableCell
-              value={row.shippingActual || ""}
-              type="number"
-              onSave={(v) => saveItemField(row.itemId!, row.orderId, "shippingActual", v)}
-              placeholder="0"
-            />
+            user?.role === "admin" ? (
+              <EditableCell
+                value={row.shippingActual || ""}
+                type="number"
+                onSave={(v) => saveItemField(row.itemId!, row.orderId, "shippingActual", v)}
+                placeholder="0"
+              />
+            ) : (
+              <span className="text-gray-500">{row.shippingActual || "-"}</span>
+            )
           ) : null}
         </td>}
 
