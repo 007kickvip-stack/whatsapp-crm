@@ -913,3 +913,24 @@
 ## 权限控制：产品成本和实际运费仅管理员可编辑
 - [x] 前端：产品成本和实际运费对非管理员显示为只读文本（灰色）
 - [x] 后端：非管理员调用updateOrderItem时自动删除productCost和shippingActual字段
+
+## 权限配置页面：订单字段级读写权限
+- [ ] 数据库：创建field_permissions表存储字段权限配置
+- [ ] 后端API：获取权限配置、更新权限配置、获取当前用户字段权限
+- [ ] 前端：权限配置管理页面（管理员可配置每个角色对每个字段的读/写权限）
+- [ ] 集成：订单管理页面根据权限配置动态控制字段的可见性和可编辑性
+- [ ] 侧边栏添加"权限配置"入口（仅管理员可见）
+- [ ] 测试验证
+
+## 订单字段级权限配置
+
+- [x] 数据库表设计：field_permissions 表（role, fieldKey, permission）
+- [x] 后端API：getFieldPermissions / getAllFieldPermissions / upsertFieldPermissions
+- [x] tRPC路由：fieldPermissions.getAll（管理员）/ getMine（当前用户）/ update（管理员）
+- [x] 前端页面：FieldPermissions.tsx 权限配置管理页面
+- [x] 侧边栏导航：系统管理菜单中添加"字段权限"入口
+- [x] App.tsx路由注册：/field-permissions 路由
+- [x] Orders.tsx集成：isColVisible 支持权限隐藏、isFieldReadonly 支持只读控制
+- [x] 所有可编辑字段（30+）添加 readonly 权限判断
+- [x] 替代硬编码的 admin 权限判断（productCost / shippingActual）为动态权限
+- [x] 单元测试：6个测试覆盖 getAll / getMine / update 的权限控制（共339条测试全部通过）

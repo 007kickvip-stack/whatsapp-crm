@@ -91,6 +91,7 @@ const adminMenuItems: MenuItem[] = [
   { icon: ArrowRightLeft, label: "汇率管理", path: "/exchange-rate", adminOnly: true },
   { icon: ClipboardList, label: "操作日志", path: "/audit-logs", adminOnly: true },
   { icon: DatabaseBackup, label: "数据备份", path: "/data-backup", adminOnly: true },
+  { icon: Shield, label: "字段权限", path: "/field-permissions", adminOnly: true },
 ];
 
 export default function DashboardLayout({

@@ -1,6 +1,6 @@
 import { eq, like, and, sql, desc, or, SQL, inArray, isNotNull, isNull } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
-import { InsertUser, users, customers, orders, orderItems, InsertCustomer, InsertOrder, InsertOrderItem, auditLogs, InsertAuditLog, exchangeRates, InsertExchangeRate, profitAlertSettings, InsertProfitAlertSetting, staffMonthlyTargets, InsertStaffMonthlyTarget, dailyData, InsertDailyData, accounts, InsertAccount, dailyReportNotes, InsertDailyReportNote, quotations, quotationItems, InsertQuotation, InsertQuotationItem, paypalIncome, paypalExpense, InsertPaypalIncome, InsertPaypalExpense, reshipments, InsertReshipment, orderPayments, InsertOrderPayment, commissionRules, InsertCommissionRule, bonusRules, InsertBonusRule, salaryAdjustments, InsertSalaryAdjustment, socialInsuranceCosts, InsertSocialInsuranceCost, annualTargets, InsertAnnualTarget } from "../drizzle/schema";
+import { InsertUser, users, customers, orders, orderItems, InsertCustomer, InsertOrder, InsertOrderItem, auditLogs, InsertAuditLog, exchangeRates, InsertExchangeRate, profitAlertSettings, InsertProfitAlertSetting, staffMonthlyTargets, InsertStaffMonthlyTarget, dailyData, InsertDailyData, accounts, InsertAccount, dailyReportNotes, InsertDailyReportNote, quotations, quotationItems, InsertQuotation, InsertQuotationItem, paypalIncome, paypalExpense, InsertPaypalIncome, InsertPaypalExpense, reshipments, InsertReshipment, orderPayments, InsertOrderPayment, commissionRules, InsertCommissionRule, bonusRules, InsertBonusRule, salaryAdjustments, InsertSalaryAdjustment, socialInsuranceCosts, InsertSocialInsuranceCost, annualTargets, InsertAnnualTarget, fieldPermissions, InsertFieldPermission } from "../drizzle/schema";
 import { ENV } from './_core/env';
 import { nanoid } from 'nanoid';
 import { createHash, randomBytes } from 'crypto';
@@ -4555,4 +4555,45 @@ export async function restoreAllData(backupData: { tables: Record<string, any[]>
   }
 
   return { restoredTables, totalRows };
+}
+
+// ==================== 字段权限管理 ====================
+
+/** 获取指定角色的所有字段权限配置 */
+export async function getFieldPermissions(role: string) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(fieldPermissions).where(eq(fieldPermissions.role, role));
+}
+
+/** 获取所有角色的字段权限配置 */
+export async function getAllFieldPermissions() {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(fieldPermissions);
+}
+
+/** 批量更新字段权限（先删除该角色的旧配置，再插入新配置） */
+export async function upsertFieldPermissions(
+  role: string,
+  permissions: { fieldKey: string; permission: string }[],
+  updatedById: number,
+  updatedByName: string
+) {
+  const db = await getDb();
+  if (!db) return;
+  // 删除该角色的所有旧配置
+  await db.delete(fieldPermissions).where(eq(fieldPermissions.role, role));
+  // 插入新配置
+  if (permissions.length > 0) {
+    await db.insert(fieldPermissions).values(
+      permissions.map(p => ({
+        role,
+        fieldKey: p.fieldKey,
+        permission: p.permission,
+        updatedById,
+        updatedByName,
+      }))
+    );
+  }
 }

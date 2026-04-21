@@ -718,6 +718,14 @@ export default function OrdersPage() {
 
   const { data, isLoading } = trpc.orders.list.useQuery(queryInput);
 
+  // 字段权限配置
+  const { data: fieldPerms } = trpc.fieldPermissions.getMine.useQuery();
+  const getFieldPerm = useCallback((key: string): "editable" | "readonly" | "hidden" => {
+    if (!fieldPerms || fieldPerms.length === 0) return "editable";
+    const p = fieldPerms.find((f: any) => f.fieldKey === key);
+    return (p?.permission as "editable" | "readonly" | "hidden") || "editable";
+  }, [fieldPerms]);
+
   const toggleSelectAll = useCallback(() => {
     if (!data?.data) return;
     const allIds = data.data.map((o: any) => o.id);
@@ -1213,7 +1221,18 @@ export default function OrdersPage() {
   }, [data, collapsedOrders]);
 
   // Column visibility helper
-  const isColVisible = useCallback((key: string) => !hiddenColumns.has(key), [hiddenColumns]);
+  const isColVisible = useCallback((key: string) => {
+    // 用户手动隐藏的列
+    if (hiddenColumns.has(key)) return false;
+    // 字段权限配置隐藏的列
+    if (getFieldPerm(key) === "hidden") return false;
+    return true;
+  }, [hiddenColumns, getFieldPerm]);
+
+  // 判断字段是否只读（权限配置为readonly时）
+  const isFieldReadonly = useCallback((key: string) => {
+    return getFieldPerm(key) === "readonly";
+  }, [getFieldPerm]);
 
   // Render a single table row
   const renderRow = (row: FlatRow, rowIdx: number) => {
@@ -1398,31 +1417,43 @@ export default function OrdersPage() {
         {row.isFirstRow && (
           <>
             {isColVisible('date') && <td className={`${dp} px-1 border-r border-gray-100 whitespace-nowrap text-center text-[11px] align-middle ${cellBorderTop}`} rowSpan={row.visibleItemCount || 1}>
-              <EditableCell
-                value={row.orderDate || ""}
-                type="date"
-                onSave={(v) => saveOrderField(row.orderId, "orderDate", v)}
-                className="font-medium text-gray-700"
-              />
+              {isFieldReadonly('date') ? (
+                <span className="text-gray-500">{row.orderDate || "-"}</span>
+              ) : (
+                <EditableCell
+                  value={row.orderDate || ""}
+                  type="date"
+                  onSave={(v) => saveOrderField(row.orderId, "orderDate", v)}
+                  className="font-medium text-gray-700"
+                />
+              )}
             </td>}
             {isColVisible('staffName') && <td className={`${dp} px-1 border-r border-gray-100 whitespace-nowrap text-center text-[11px] align-middle ${cellBorderTop}`} rowSpan={row.visibleItemCount || 1}>
               {row.staffName || ""}
             </td>}
             {isColVisible('account') && <td className={`${dp} px-1 border-r border-gray-100 whitespace-nowrap text-center text-[11px] align-middle ${cellBorderTop}`} rowSpan={row.visibleItemCount || 1}>
-              <AccountSelect
-                value={row.account || ""}
-                onValueChange={(v) => saveOrderField(row.orderId, "account", v)}
-                placeholder="账号"
-                compact
-              />
+              {isFieldReadonly('account') ? (
+                <span className="text-gray-500">{row.account || "-"}</span>
+              ) : (
+                <AccountSelect
+                  value={row.account || ""}
+                  onValueChange={(v) => saveOrderField(row.orderId, "account", v)}
+                  placeholder="账号"
+                  compact
+                />
+              )}
             </td>}
             {isColVisible('whatsapp') && <td className={`${dp} px-1 border-r border-gray-100 whitespace-nowrap text-center text-[11px] align-middle ${cellBorderTop}`} rowSpan={row.visibleItemCount || 1}>
-              <EditableCell
-                value={row.customerWhatsapp}
-                onSave={(v) => saveOrderField(row.orderId, "customerWhatsapp", v)}
-                className="font-medium text-emerald-700"
-                placeholder="WhatsApp"
-              />
+              {isFieldReadonly('whatsapp') ? (
+                <span className="text-gray-500 font-medium">{row.customerWhatsapp || "-"}</span>
+              ) : (
+                <EditableCell
+                  value={row.customerWhatsapp}
+                  onSave={(v) => saveOrderField(row.orderId, "customerWhatsapp", v)}
+                  className="font-medium text-emerald-700"
+                  placeholder="WhatsApp"
+                />
+              )}
             </td>}
           </>
         )}
@@ -1430,13 +1461,17 @@ export default function OrdersPage() {
         {/* 5. 客户属性 */}
         {row.isFirstRow && isColVisible('customerType') && (
           <td className={`${dp} px-1 border-r border-gray-100 whitespace-nowrap text-center text-[11px] align-middle ${cellBorderTop}`} rowSpan={row.visibleItemCount || 1}>
-            <EditableCell
-              value={row.customerType || "新零售"}
-              type="select"
-              selectOptions={["零售复购", "新零售"]}
-              onSave={(v) => saveOrderField(row.orderId, "customerType", v)}
-              selectColorFn={customerTypeColor}
-            />
+            {isFieldReadonly('customerType') ? (
+              <span className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-medium border ${customerTypeColor(row.customerType)}`}>{row.customerType || "新零售"}</span>
+            ) : (
+              <EditableCell
+                value={row.customerType || "新零售"}
+                type="select"
+                selectOptions={["零售复购", "新零售"]}
+                onSave={(v) => saveOrderField(row.orderId, "customerType", v)}
+                selectColorFn={customerTypeColor}
+              />
+            )}
           </td>
         )}
 
@@ -1455,25 +1490,35 @@ export default function OrdersPage() {
         {/* 7. 订单图片 */}
         {isColVisible('orderImage') && <td className={`${dp} px-1 border-r border-gray-100 text-center ${cellBorderTop}`}>
           {hasItem ? (
-            <ImageUploadCell
-              imageUrl={row.orderImageUrl}
-              onUploaded={(url) => saveItemField(row.itemId!, row.orderId, "orderImageUrl", url)}
-              onRemove={() => saveItemField(row.itemId!, row.orderId, "orderImageUrl", "")}
-              onPreview={setPreviewImage}
-              uploadMutation={uploadMutation}
-            />
+            isFieldReadonly('orderImage') ? (
+              row.orderImageUrl ? (
+                <img src={row.orderImageUrl} alt="" className="h-8 w-8 object-cover rounded cursor-pointer mx-auto" onClick={() => setPreviewImage(row.orderImageUrl!)} />
+              ) : <span className="text-gray-300">-</span>
+            ) : (
+              <ImageUploadCell
+                imageUrl={row.orderImageUrl}
+                onUploaded={(url) => saveItemField(row.itemId!, row.orderId, "orderImageUrl", url)}
+                onRemove={() => saveItemField(row.itemId!, row.orderId, "orderImageUrl", "")}
+                onPreview={setPreviewImage}
+                uploadMutation={uploadMutation}
+              />
+            )
           ) : null}
         </td>}
 
         {/* 8. Size */}
         {isColVisible('size') && <td className={`${dp} px-1 border-r border-gray-100 whitespace-nowrap text-center text-[11px] ${cellBorderTop}`}>
           {hasItem ? (
-            <EditableCell
-              value={row.size || ""}
-              onSave={(v) => saveItemField(row.itemId!, row.orderId, "size", v)}
-              placeholder="尺码"
-              className="font-medium"
-            />
+            isFieldReadonly('size') ? (
+              <span className="text-gray-500">{row.size || "-"}</span>
+            ) : (
+              <EditableCell
+                value={row.size || ""}
+                onSave={(v) => saveItemField(row.itemId!, row.orderId, "size", v)}
+                placeholder="尺码"
+                className="font-medium"
+              />
+            )
           ) : null}
         </td>}
 
@@ -1482,11 +1527,15 @@ export default function OrdersPage() {
           {hasItem ? (
             <div className="flex flex-col gap-0.5">
               <div className="flex items-center gap-0.5">
-                <EditableCell
-                  value={row.domesticTrackingNo || ""}
-                  onSave={(v) => saveItemField(row.itemId!, row.orderId, "domesticTrackingNo", v)}
-                  placeholder="国内单号"
-                />
+                {isFieldReadonly('domesticTracking') ? (
+                  <span className="text-gray-500">{row.domesticTrackingNo || "-"}</span>
+                ) : (
+                  <EditableCell
+                    value={row.domesticTrackingNo || ""}
+                    onSave={(v) => saveItemField(row.itemId!, row.orderId, "domesticTrackingNo", v)}
+                    placeholder="国内单号"
+                  />
+                )}
                 {row.domesticTrackingNo && (
                   <Tooltip>
                     <TooltipTrigger asChild>
@@ -1521,11 +1570,15 @@ export default function OrdersPage() {
         {/* 10. 推荐码数 */}
         {isColVisible('sizeRec') && <td className={`${dp} px-1 border-r border-gray-100 whitespace-nowrap text-center text-[11px] ${cellBorderTop}`}>
           {hasItem ? (
-            <EditableCell
-              value={row.sizeRecommendation || ""}
-              onSave={(v) => saveItemField(row.itemId!, row.orderId, "sizeRecommendation", v)}
-              placeholder="推荐码数"
-            />
+            isFieldReadonly('sizeRec') ? (
+              <span className="text-gray-500">{row.sizeRecommendation || "-"}</span>
+            ) : (
+              <EditableCell
+                value={row.sizeRecommendation || ""}
+                onSave={(v) => saveItemField(row.itemId!, row.orderId, "sizeRecommendation", v)}
+                placeholder="推荐码数"
+              />
+            )
           ) : null}
         </td>}
 
@@ -1533,12 +1586,16 @@ export default function OrdersPage() {
         {row.isFirstRow && isColVisible('contactInfo') && (
           <td className={`${dp} px-1 border-r border-gray-100 text-center text-[11px] max-w-[200px] align-middle ${cellBorderTop}`} rowSpan={row.visibleItemCount || 1}>
             {hasItem ? (
-              <EditableCell
-                value={row.contactInfo || ""}
-                type="textarea"
-                onSave={(v) => saveItemField(row.itemId!, row.orderId, "contactInfo", v)}
-                placeholder="姓名/电话/地址"
-              />
+              isFieldReadonly('contactInfo') ? (
+                <span className="text-gray-500 text-[10px] whitespace-pre-wrap">{row.contactInfo || "-"}</span>
+              ) : (
+                <EditableCell
+                  value={row.contactInfo || ""}
+                  type="textarea"
+                  onSave={(v) => saveItemField(row.itemId!, row.orderId, "contactInfo", v)}
+                  placeholder="姓名/电话/地址"
+                />
+              )
             ) : null}
           </td>
         )}
@@ -1547,11 +1604,15 @@ export default function OrdersPage() {
         {isColVisible('intlTracking') && <td className={`${dp} px-1 border-r border-gray-100 whitespace-nowrap text-center text-[11px] ${cellBorderTop}`}>
           {hasItem ? (
             <div className="flex items-center gap-0.5">
-              <EditableCell
-                value={row.internationalTrackingNo || ""}
-                onSave={(v) => saveItemField(row.itemId!, row.orderId, "internationalTrackingNo", v)}
-                placeholder="国际单号"
-              />
+              {isFieldReadonly('intlTracking') ? (
+                <span className="text-gray-500">{row.internationalTrackingNo || "-"}</span>
+              ) : (
+                <EditableCell
+                  value={row.internationalTrackingNo || ""}
+                  onSave={(v) => saveItemField(row.itemId!, row.orderId, "internationalTrackingNo", v)}
+                  placeholder="国际单号"
+                />
+              )}
               {row.internationalTrackingNo && (
                 <Tooltip>
                   <TooltipTrigger asChild>
@@ -1572,52 +1633,72 @@ export default function OrdersPage() {
         {/* 12.5. 原订单号 */}
         {isColVisible('originalOrderNo') && <td className={`${dp} px-1 border-r border-gray-100 whitespace-nowrap text-center text-[11px] ${cellBorderTop}`}>
           {hasItem ? (
-            <EditableCell
-              value={row.originalOrderNo || ""}
-              onSave={(v) => saveItemField(row.itemId!, row.orderId, "originalOrderNo", v)}
-              placeholder="原订单号"
-            />
+            isFieldReadonly('originalOrderNo') ? (
+              <span className="text-gray-500">{row.originalOrderNo || "-"}</span>
+            ) : (
+              <EditableCell
+                value={row.originalOrderNo || ""}
+                onSave={(v) => saveItemField(row.itemId!, row.orderId, "originalOrderNo", v)}
+                placeholder="原订单号"
+              />
+            )
           ) : null}
         </td>}
 
         {/* 13. 发出日期 */}
         {isColVisible('shipDate') && <td className={`${dp} px-1 border-r border-gray-100 whitespace-nowrap text-center text-[11px] ${cellBorderTop}`}>
           {hasItem ? (
-            <EditableCell
-              value={row.shipDate || ""}
-              type="date"
-              onSave={(v) => saveItemField(row.itemId!, row.orderId, "shipDate", v)}
-              placeholder="日期"
-            />
+            isFieldReadonly('shipDate') ? (
+              <span className="text-gray-500">{row.shipDate || "-"}</span>
+            ) : (
+              <EditableCell
+                value={row.shipDate || ""}
+                type="date"
+                onSave={(v) => saveItemField(row.itemId!, row.orderId, "shipDate", v)}
+                placeholder="日期"
+              />
+            )
           ) : null}
         </td>}
 
         {/* 14. 件数 */}
         {isColVisible('quantity') && <td className={`${dp} px-1 border-r border-gray-100 text-center text-[11px] ${cellBorderTop}`}>
           {hasItem ? (
-            <EditableCell
-              value={row.quantity || ""}
-              type="number"
-              onSave={(v) => saveItemField(row.itemId!, row.orderId, "quantity", v)}
-              placeholder="0"
-            />
+            isFieldReadonly('quantity') ? (
+              <span className="text-gray-500">{row.quantity || "-"}</span>
+            ) : (
+              <EditableCell
+                value={row.quantity || ""}
+                type="number"
+                onSave={(v) => saveItemField(row.itemId!, row.orderId, "quantity", v)}
+                placeholder="0"
+              />
+            )
           ) : null}
         </td>}
 
         {/* 15. 货源 */}
         {isColVisible('source') && <td className={`${dp} px-1 border-r border-gray-100 whitespace-nowrap text-center text-[11px] ${cellBorderTop}`}>
           {hasItem ? (
-            <EditableCell
-              value={row.source || ""}
-              onSave={(v) => saveItemField(row.itemId!, row.orderId, "source", v)}
-              placeholder="货源"
-            />
+            isFieldReadonly('source') ? (
+              <span className="text-gray-500">{row.source || "-"}</span>
+            ) : (
+              <EditableCell
+                value={row.source || ""}
+                onSave={(v) => saveItemField(row.itemId!, row.orderId, "source", v)}
+                placeholder="货源"
+              />
+            )
           ) : null}
         </td>}
 
         {/* 16. 订单状态 */}
         {isColVisible('orderStatus') && <td className={`${dp} px-1 border-r border-gray-100 text-center text-[11px] ${cellBorderTop}`}>
-          {hasItem ? (
+          {isFieldReadonly('orderStatus') ? (
+            <span className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-medium border ${statusColor(row.itemStatus || row.orderStatus)}`}>
+              {row.itemStatus || row.orderStatus || "已报货，待发货"}
+            </span>
+          ) : hasItem ? (
             <EditableCell
               value={row.itemStatus || row.orderStatus || "已报货，待发货"}
               type="select"
@@ -1632,12 +1713,15 @@ export default function OrdersPage() {
               selectOptions={ORDER_STATUSES}
               selectColorFn={statusColor}
               onSave={(v) => saveOrderField(row.orderId, "orderStatus", v)}
-            />          ) : null}
+            />
+          ) : null}
         </td>}
 
         {/* 17. 总金额$ */}
         {isColVisible('amountUsd') && <td className={`${dp} px-1 border-r border-gray-100 text-center font-mono whitespace-nowrap text-[11px] ${cellBorderTop}`}>
-          {hasItem ? (
+          {isFieldReadonly('amountUsd') ? (
+            <span className="text-gray-500">{fmtNum(row.amountUsd) ? `$${fmtNum(row.amountUsd)}` : "-"}</span>
+          ) : hasItem ? (
             <EditableCell
               value={row.amountUsd || ""}
               type="number"
@@ -1657,27 +1741,31 @@ export default function OrdersPage() {
         {/* 19. 售价 */}
         {isColVisible('sellingPrice') && <td className={`${dp} px-1 border-r border-gray-100 text-center font-mono whitespace-nowrap text-[11px] ${cellBorderTop}`}>
           {hasItem ? (
-            <EditableCell
-              value={row.sellingPrice || ""}
-              type="number"
-              onSave={(v) => saveItemField(row.itemId!, row.orderId, "sellingPrice", v)}
-              placeholder="0"
-            />
+            isFieldReadonly('sellingPrice') ? (
+              <span className="text-gray-500">{fmtNum(row.sellingPrice) || "-"}</span>
+            ) : (
+              <EditableCell
+                value={row.sellingPrice || ""}
+                type="number"
+                onSave={(v) => saveItemField(row.itemId!, row.orderId, "sellingPrice", v)}
+                placeholder="0"
+              />
+            )
           ) : null}
         </td>}
 
         {/* 20. 产品成本 */}
         {isColVisible('productCost') && <td className={`${dp} px-1 border-r border-gray-100 text-center font-mono whitespace-nowrap text-[11px] ${cellBorderTop}`}>
           {hasItem ? (
-            user?.role === "admin" ? (
+            isFieldReadonly('productCost') ? (
+              <span className="text-gray-500">{row.productCost || "-"}</span>
+            ) : (
               <EditableCell
                 value={row.productCost || ""}
                 type="number"
                 onSave={(v) => saveItemField(row.itemId!, row.orderId, "productCost", v)}
                 placeholder="0"
               />
-            ) : (
-              <span className="text-gray-500">{row.productCost || "-"}</span>
             )
           ) : null}
         </td>}
@@ -1700,15 +1788,15 @@ export default function OrdersPage() {
         {/* 24. 实际运费 */}
         {isColVisible('shippingActual') && <td className={`${dp} px-1 border-r border-gray-100 text-center font-mono whitespace-nowrap text-[11px] ${cellBorderTop}`}>
           {hasItem ? (
-            user?.role === "admin" ? (
+            isFieldReadonly('shippingActual') ? (
+              <span className="text-gray-500">{row.shippingActual || "-"}</span>
+            ) : (
               <EditableCell
                 value={row.shippingActual || ""}
                 type="number"
                 onSave={(v) => saveItemField(row.itemId!, row.orderId, "shippingActual", v)}
                 placeholder="0"
               />
-            ) : (
-              <span className="text-gray-500">{row.shippingActual || "-"}</span>
             )
           ) : null}
         </td>}
@@ -1780,7 +1868,9 @@ export default function OrdersPage() {
 
         {/* 30. 备注 */}
         {isColVisible('remarks') && <td className={`${dp} px-1 border-r border-gray-100 text-center text-[11px] max-w-[120px] ${cellBorderTop}`}>
-          {hasItem ? (
+          {isFieldReadonly('remarks') ? (
+            <span className="text-gray-500 text-[10px] whitespace-pre-wrap">{row.remarks || "-"}</span>
+          ) : hasItem ? (
             <EditableCell
               value={row.remarks || ""}
               type="textarea"
@@ -1800,13 +1890,17 @@ export default function OrdersPage() {
         {/* 31. 付款状态 */}
         {row.isFirstRow && isColVisible('paymentStatus') && (
           <td className={`${dp} px-1 border-r border-gray-100 text-center text-[11px] align-middle ${cellBorderTop}`} rowSpan={row.visibleItemCount || 1}>
-            <EditableCell
-              value={row.paymentStatus || "未收到"}
-              type="select"
-              selectOptions={PAYMENT_STATUSES}
-              selectColorFn={paymentColor}
-              onSave={(v) => saveOrderField(row.orderId, "paymentStatus", v)}
-            />
+            {isFieldReadonly('paymentStatus') ? (
+              <span className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-medium border ${paymentColor(row.paymentStatus)}`}>{row.paymentStatus || "未收到"}</span>
+            ) : (
+              <EditableCell
+                value={row.paymentStatus || "未收到"}
+                type="select"
+                selectOptions={PAYMENT_STATUSES}
+                selectColorFn={paymentColor}
+                onSave={(v) => saveOrderField(row.orderId, "paymentStatus", v)}
+              />
+            )}
           </td>
         )}
 
@@ -1814,68 +1908,100 @@ export default function OrdersPage() {
         {row.isFirstRow && (
           <>
             {isColVisible('customerName') && <td className={`${dp} px-1 border-r border-gray-100 text-center text-[11px] align-middle ${cellBorderTop}`} rowSpan={row.visibleItemCount || 1}>
-              <EditableCell
-                value={row.customerName || ""}
-                type="text"
-                onSave={(v) => saveOrderField(row.orderId, "customerName", v)}
-                placeholder="客户名字"
-              />
+              {isFieldReadonly('customerName') ? (
+                <span className="text-gray-500">{row.customerName || "-"}</span>
+              ) : (
+                <EditableCell
+                  value={row.customerName || ""}
+                  type="text"
+                  onSave={(v) => saveOrderField(row.orderId, "customerName", v)}
+                  placeholder="客户名字"
+                />
+              )}
             </td>}
             {isColVisible('customerCountry') && <td className={`${dp} px-1 border-r border-gray-100 text-center text-[11px] align-middle ${cellBorderTop}`} rowSpan={row.visibleItemCount || 1}>
-              <CountrySelect
-                value={row.customerCountry || ""}
-                onValueChange={(v) => saveOrderField(row.orderId, "customerCountry", v)}
-                placeholder="国家"
-                compact
-              />
+              {isFieldReadonly('customerCountry') ? (
+                <span className="text-gray-500">{row.customerCountry || "-"}</span>
+              ) : (
+                <CountrySelect
+                  value={row.customerCountry || ""}
+                  onValueChange={(v) => saveOrderField(row.orderId, "customerCountry", v)}
+                  placeholder="国家"
+                  compact
+                />
+              )}
             </td>}
             {isColVisible('customerTier') && <td className={`${dp} px-1 border-r border-gray-100 text-center text-[11px] align-middle ${cellBorderTop}`} rowSpan={row.visibleItemCount || 1}>
-              <EditableCell
-                value={row.customerTier || ""}
-                type="select"
-                selectOptions={["低质量", "中等质量", "高质量", "批发商-低质量", "批发商-高质量", "经销商-低质量", "经销商-高质量"]}
-                onSave={(v) => saveOrderField(row.orderId, "customerTier", v)}
-              />
+              {isFieldReadonly('customerTier') ? (
+                <span className="text-gray-500">{row.customerTier || "-"}</span>
+              ) : (
+                <EditableCell
+                  value={row.customerTier || ""}
+                  type="select"
+                  selectOptions={["低质量", "中等质量", "高质量", "批发商-低质量", "批发商-高质量", "经销商-低质量", "经销商-高质量"]}
+                  onSave={(v) => saveOrderField(row.orderId, "customerTier", v)}
+                />
+              )}
             </td>}
             {isColVisible('orderCategory') && <td className={`${dp} px-1 border-r border-gray-100 text-center text-[11px] align-middle ${cellBorderTop}`} rowSpan={row.visibleItemCount || 1}>
-              <EditableCell
-                value={row.orderCategory || ""}
-                type="multiSelect"
-                selectOptions={ORDER_CATEGORIES}
-                onSave={(v) => saveOrderField(row.orderId, "orderCategory", v)}
-                placeholder="订购类目"
-              />
+              {isFieldReadonly('orderCategory') ? (
+                <span className="text-gray-500">{row.orderCategory || "-"}</span>
+              ) : (
+                <EditableCell
+                  value={row.orderCategory || ""}
+                  type="multiSelect"
+                  selectOptions={ORDER_CATEGORIES}
+                  onSave={(v) => saveOrderField(row.orderId, "orderCategory", v)}
+                  placeholder="订购类目"
+                />
+              )}
             </td>}
             {isColVisible('customerBirthDate') && <td className={`${dp} px-1 border-r border-gray-100 text-center text-[11px] align-middle ${cellBorderTop}`} rowSpan={row.visibleItemCount || 1}>
-              <EditableCell
-                value={row.customerBirthDate || ""}
-                type="date"
-                onSave={(v) => saveOrderField(row.orderId, "customerBirthDate", v)}
-              />
+              {isFieldReadonly('customerBirthDate') ? (
+                <span className="text-gray-500">{row.customerBirthDate || "-"}</span>
+              ) : (
+                <EditableCell
+                  value={row.customerBirthDate || ""}
+                  type="date"
+                  onSave={(v) => saveOrderField(row.orderId, "customerBirthDate", v)}
+                />
+              )}
             </td>}
             {isColVisible('customerEmail') && <td className={`${dp} px-1 border-r border-gray-100 text-center text-[11px] align-middle ${cellBorderTop}`} rowSpan={row.visibleItemCount || 1}>
-              <EditableCell
-                value={row.customerEmail || ""}
-                type="text"
-                onSave={(v) => saveOrderField(row.orderId, "customerEmail", v)}
-                placeholder="客户邮箱"
-              />
+              {isFieldReadonly('customerEmail') ? (
+                <span className="text-gray-500">{row.customerEmail || "-"}</span>
+              ) : (
+                <EditableCell
+                  value={row.customerEmail || ""}
+                  type="text"
+                  onSave={(v) => saveOrderField(row.orderId, "customerEmail", v)}
+                  placeholder="客户邮箱"
+                />
+              )}
             </td>}
             {isColVisible('wpEntryDate') && <td className={`${dp} px-1 border-r border-gray-100 text-center text-[11px] align-middle ${cellBorderTop}`} rowSpan={row.visibleItemCount || 1}>
-              <EditableCell
-                value={row.wpEntryDate || ""}
-                type="date"
-                onSave={(v) => saveOrderField(row.orderId, "wpEntryDate", v)}
-                placeholder="进入WP日期"
-              />
+              {isFieldReadonly('wpEntryDate') ? (
+                <span className="text-gray-500">{row.wpEntryDate || "-"}</span>
+              ) : (
+                <EditableCell
+                  value={row.wpEntryDate || ""}
+                  type="date"
+                  onSave={(v) => saveOrderField(row.orderId, "wpEntryDate", v)}
+                  placeholder="进入WP日期"
+                />
+              )}
             </td>}
             {isColVisible('completionStatus') && <td className={`${dp} px-1 border-r border-gray-100 text-center text-[11px] align-middle ${cellBorderTop}`} rowSpan={row.visibleItemCount || 1}>
-              <EditableCell
-                value={row.completionStatus || "未完成"}
-                type="select"
-                selectOptions={["已完成", "未完成"]}
-                onSave={(v) => completionStatusMutation.mutate({ orderId: row.orderId, completionStatus: v })}
-              />
+              {isFieldReadonly('completionStatus') ? (
+                <span className="text-gray-500">{row.completionStatus || "未完成"}</span>
+              ) : (
+                <EditableCell
+                  value={row.completionStatus || "未完成"}
+                  type="select"
+                  selectOptions={["已完成", "未完成"]}
+                  onSave={(v) => completionStatusMutation.mutate({ orderId: row.orderId, completionStatus: v })}
+                />
+              )}
             </td>}
           </>
         )}

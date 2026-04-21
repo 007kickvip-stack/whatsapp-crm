@@ -122,6 +122,16 @@ vi.mock("./db", () => ({
     tables: { users: [{ id: 1 }] }, exportedAt: '2026-04-17T00:00:00Z', tableCount: 22, totalRows: 100,
   }),
   restoreAllData: vi.fn().mockResolvedValue({ restoredTables: 22, totalRows: 100 }),
+  getFieldPermissions: vi.fn().mockResolvedValue([
+    { id: 1, role: "user", fieldKey: "productCost", permission: "hidden", updatedById: 1, updatedByName: "Admin", createdAt: new Date(), updatedAt: new Date() },
+    { id: 2, role: "user", fieldKey: "shippingActual", permission: "readonly", updatedById: 1, updatedByName: "Admin", createdAt: new Date(), updatedAt: new Date() },
+  ]),
+  getAllFieldPermissions: vi.fn().mockResolvedValue([
+    { id: 1, role: "user", fieldKey: "productCost", permission: "hidden", updatedById: 1, updatedByName: "Admin", createdAt: new Date(), updatedAt: new Date() },
+    { id: 2, role: "user", fieldKey: "shippingActual", permission: "readonly", updatedById: 1, updatedByName: "Admin", createdAt: new Date(), updatedAt: new Date() },
+    { id: 3, role: "admin", fieldKey: "productCost", permission: "editable", updatedById: 1, updatedByName: "Admin", createdAt: new Date(), updatedAt: new Date() },
+  ]),
+  upsertFieldPermissions: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock("./storage", () => ({
@@ -1802,5 +1812,58 @@ describe("Data Backup", () => {
     const result = await caller.backup.download({ key: "backups/test.json" });
     expect(result).toBeDefined();
     expect(result.url).toBeDefined();
+  });
+});
+
+describe("Field Permissions", () => {
+  it("admin can get all field permissions", async () => {
+    const caller = appRouter.createCaller(createAdminContext());
+    const result = await caller.fieldPermissions.getAll();
+    expect(result).toBeDefined();
+    expect(Array.isArray(result)).toBe(true);
+    expect(result.length).toBe(3);
+    expect(result[0].fieldKey).toBe("productCost");
+  });
+
+  it("non-admin cannot get all field permissions", async () => {
+    const caller = appRouter.createCaller(createStaffContext());
+    await expect(caller.fieldPermissions.getAll()).rejects.toThrow();
+  });
+
+  it("authenticated user can get their own permissions", async () => {
+    const caller = appRouter.createCaller(createStaffContext());
+    const result = await caller.fieldPermissions.getMine();
+    expect(result).toBeDefined();
+    expect(Array.isArray(result)).toBe(true);
+    expect(result.length).toBe(2);
+    expect(result[0].role).toBe("user");
+  });
+
+  it("unauthenticated user cannot get permissions", async () => {
+    const caller = appRouter.createCaller(createUnauthContext());
+    await expect(caller.fieldPermissions.getMine()).rejects.toThrow();
+  });
+
+  it("admin can update field permissions", async () => {
+    const caller = appRouter.createCaller(createAdminContext());
+    const result = await caller.fieldPermissions.update({
+      role: "user",
+      permissions: [
+        { fieldKey: "productCost", permission: "hidden" },
+        { fieldKey: "shippingActual", permission: "readonly" },
+        { fieldKey: "sellingPrice", permission: "editable" },
+      ],
+    });
+    expect(result).toEqual({ success: true });
+  });
+
+  it("non-admin cannot update field permissions", async () => {
+    const caller = appRouter.createCaller(createStaffContext());
+    await expect(
+      caller.fieldPermissions.update({
+        role: "user",
+        permissions: [{ fieldKey: "productCost", permission: "hidden" }],
+      })
+    ).rejects.toThrow();
   });
 });

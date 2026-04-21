@@ -538,3 +538,21 @@ export const annualTargets = mysqlTable("annual_targets", {
 });
 export type AnnualTarget = typeof annualTargets.$inferSelect;
 export type InsertAnnualTarget = typeof annualTargets.$inferInsert;
+
+/**
+ * 字段权限配置表 - 控制不同角色对订单字段的读写权限
+ * permission: hidden(隐藏) | readonly(只读) | editable(可编辑)
+ */
+export const fieldPermissions = mysqlTable("field_permissions", {
+  id: int("id").autoincrement().primaryKey(),
+  role: varchar("role", { length: 32 }).notNull(), // "admin" | "user"
+  fieldKey: varchar("fieldKey", { length: 64 }).notNull(), // 字段key，对应columns中的key
+  permission: varchar("permission", { length: 32 }).notNull().default("editable"), // hidden | readonly | editable
+  updatedById: int("updatedById"),
+  updatedByName: varchar("updatedByName", { length: 128 }),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type FieldPermission = typeof fieldPermissions.$inferSelect;
+export type InsertFieldPermission = typeof fieldPermissions.$inferInsert;

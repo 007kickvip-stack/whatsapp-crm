@@ -53,6 +53,7 @@ import {
   upsertUser,
   getRepurchaseOverview, getCustomerValueList, getRepurchaseTrend,
   exportAllData, restoreAllData,
+  getFieldPermissions, getAllFieldPermissions, upsertFieldPermissions,
 } from "./db";
 import type { SQL } from "drizzle-orm";
 import { sdk } from "./_core/sdk";
@@ -2508,6 +2509,52 @@ export const appRouter = router({
         const { url } = await storageGet(input.key);
         return { url };
       }),
+  }),
+
+  // ==================== Field Permissions ====================
+  fieldPermissions: router({
+    /** 获取所有角色的字段权限配置 */
+    getAll: adminProcedure.query(async () => {
+      return getAllFieldPermissions();
+    }),
+
+    /** 获取指定角色的字段权限 */
+    getByRole: protectedProcedure.input(z.object({
+      role: z.string(),
+    })).query(async ({ input }) => {
+      return getFieldPermissions(input.role);
+    }),
+
+    /** 获取当前用户角色的字段权限（供前端订单页面使用） */
+    getMine: protectedProcedure.query(async ({ ctx }) => {
+      return getFieldPermissions(ctx.user.role);
+    }),
+
+    /** 批量更新指定角色的字段权限 */
+    update: adminProcedure.input(z.object({
+      role: z.string(),
+      permissions: z.array(z.object({
+        fieldKey: z.string(),
+        permission: z.enum(["hidden", "readonly", "editable"]),
+      })),
+    })).mutation(async ({ input, ctx }) => {
+      await upsertFieldPermissions(
+        input.role,
+        input.permissions,
+        ctx.user.id,
+        ctx.user.name || "未知"
+      );
+      await createAuditLog({
+        userId: ctx.user.id,
+        userName: ctx.user.name || "未知",
+        userRole: ctx.user.role,
+        action: "更新字段权限",
+        targetType: "field_permissions",
+        targetName: input.role,
+        details: `更新角色 ${input.role} 的 ${input.permissions.length} 个字段权限`,
+      });
+      return { success: true };
+    }),
   }),
 });
 

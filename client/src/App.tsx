@@ -27,6 +27,7 @@ const ReshipmentsPage = lazy(() => import("./pages/Reshipments"));
 const SalaryReportPage = lazy(() => import("./pages/SalaryReport"));
 const CustomerAnalysisPage = lazy(() => import("./pages/CustomerAnalysis"));
 const DataBackupPage = lazy(() => import("./pages/DataBackup"));
+const FieldPermissionsPage = lazy(() => import("./pages/FieldPermissions"));
 
 function PageLoading() {
   return (
@@ -64,6 +65,7 @@ function Router() {
                 <Route path="/salary-report" component={SalaryReportPage} />
                 <Route path="/customer-analysis" component={CustomerAnalysisPage} />
                 <Route path="/data-backup" component={DataBackupPage} />
+                <Route path="/field-permissions" component={FieldPermissionsPage} />
                 <Route path="/404" component={NotFound} />
                 <Route component={NotFound} />
               </Switch>
