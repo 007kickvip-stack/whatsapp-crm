@@ -2003,15 +2003,14 @@ describe("Weekly Report", () => {
 describe("Refund Order Sync", () => {
   it("updating order status to 已退款 triggers daily data sync", async () => {
     const { getOrderById, listDailyData, syncOrderDataToDailyData } = await import("./db");
-    (getOrderById as any).mockResolvedValueOnce({
-      id: 1,
-      staffId: 1,
-      staffName: "Admin User",
-      account: "+123",
-      orderDate: new Date("2026-04-09"),
-      customerWhatsapp: "+456",
-      orderStatus: "已退款",
-    });
+    const orderData = {
+      id: 1, staffId: 1, staffName: "Admin User", account: "+123",
+      orderDate: new Date("2026-04-09"), customerWhatsapp: "+456", orderStatus: "已退款",
+    };
+    // First call: getOrderById for oldOrder (before update)
+    (getOrderById as any).mockResolvedValueOnce({ ...orderData, orderStatus: "待发货" });
+    // Second call: getOrderById for updatedOrder (after update)
+    (getOrderById as any).mockResolvedValueOnce(orderData);
     (listDailyData as any).mockResolvedValueOnce([
       { id: 10, reportDate: "2026-04-09", staffId: 1, staffName: "Admin User", whatsAccount: "+123" },
     ]);
@@ -2025,15 +2024,14 @@ describe("Refund Order Sync", () => {
 
   it("updating order status to non-refund does not trigger sync when no matching daily data", async () => {
     const { getOrderById, listDailyData, syncOrderDataToDailyData } = await import("./db");
-    (getOrderById as any).mockResolvedValueOnce({
-      id: 2,
-      staffId: 1,
-      staffName: "Admin User",
-      account: "+123",
-      orderDate: new Date("2026-04-10"),
-      customerWhatsapp: "+456",
-      orderStatus: "已发货",
-    });
+    const orderData = {
+      id: 2, staffId: 1, staffName: "Admin User", account: "+123",
+      orderDate: new Date("2026-04-10"), customerWhatsapp: "+456", orderStatus: "已发货",
+    };
+    // First call: getOrderById for oldOrder
+    (getOrderById as any).mockResolvedValueOnce(orderData);
+    // Second call: getOrderById for updatedOrder
+    (getOrderById as any).mockResolvedValueOnce(orderData);
     (listDailyData as any).mockResolvedValueOnce([]);
     (syncOrderDataToDailyData as any).mockClear();
 
@@ -2048,10 +2046,14 @@ describe("Refund Order Sync", () => {
 describe("Refunded order customer deletion", () => {
   it("calls checkAndDeleteRefundedCustomer when order status changes to 已退款", async () => {
     const { getOrderById, checkAndDeleteRefundedCustomer, listDailyData } = await import("./db");
-    (getOrderById as any).mockResolvedValueOnce({
+    const orderData = {
       id: 1, orderDate: new Date("2026-04-09"), account: "+123", customerWhatsapp: "+8613800138000",
       orderStatus: "已退款",
-    });
+    };
+    // First call: getOrderById for oldOrder (before update)
+    (getOrderById as any).mockResolvedValueOnce({ ...orderData, orderStatus: "待发货" });
+    // Second call: getOrderById for updatedOrder (after update)
+    (getOrderById as any).mockResolvedValueOnce(orderData);
     (listDailyData as any).mockResolvedValueOnce([]);
 
     const caller = appRouter.createCaller(createAdminContext());
@@ -2063,10 +2065,14 @@ describe("Refunded order customer deletion", () => {
   it("does NOT call checkAndDeleteRefundedCustomer when order status is not 已退款", async () => {
     const { getOrderById, checkAndDeleteRefundedCustomer, listDailyData } = await import("./db");
     (checkAndDeleteRefundedCustomer as any).mockClear();
-    (getOrderById as any).mockResolvedValueOnce({
+    const orderData = {
       id: 1, orderDate: new Date("2026-04-09"), account: "+123", customerWhatsapp: "+8613800138000",
       orderStatus: "已发货",
-    });
+    };
+    // First call: getOrderById for oldOrder
+    (getOrderById as any).mockResolvedValueOnce(orderData);
+    // Second call: getOrderById for updatedOrder
+    (getOrderById as any).mockResolvedValueOnce(orderData);
     (listDailyData as any).mockResolvedValueOnce([]);
 
     const caller = appRouter.createCaller(createAdminContext());
@@ -2079,10 +2085,14 @@ describe("Refunded order customer deletion", () => {
 describe("Customer birth date format", () => {
   it("accepts MM-DD format for customerBirthDate", async () => {
     const { getOrderById } = await import("./db");
-    (getOrderById as any).mockResolvedValueOnce({
+    const orderData = {
       id: 1, orderDate: new Date("2026-04-09"), account: "+123", customerWhatsapp: null,
       orderStatus: "待处理", customerBirthDate: "03-15",
-    });
+    };
+    // First call: getOrderById for oldOrder
+    (getOrderById as any).mockResolvedValueOnce(orderData);
+    // Second call: getOrderById for updatedOrder
+    (getOrderById as any).mockResolvedValueOnce(orderData);
 
     const caller = appRouter.createCaller(createAdminContext());
     const result = await caller.orders.update({ id: 1, customerBirthDate: "03-15" });
@@ -2091,10 +2101,14 @@ describe("Customer birth date format", () => {
 
   it("accepts YYYY-MM-DD format for customerBirthDate", async () => {
     const { getOrderById } = await import("./db");
-    (getOrderById as any).mockResolvedValueOnce({
+    const orderData = {
       id: 1, orderDate: new Date("2026-04-09"), account: "+123", customerWhatsapp: null,
       orderStatus: "待处理", customerBirthDate: "1990-03-15",
-    });
+    };
+    // First call: getOrderById for oldOrder
+    (getOrderById as any).mockResolvedValueOnce(orderData);
+    // Second call: getOrderById for updatedOrder
+    (getOrderById as any).mockResolvedValueOnce(orderData);
 
     const caller = appRouter.createCaller(createAdminContext());
     const result = await caller.orders.update({ id: 1, customerBirthDate: "1990-03-15" });

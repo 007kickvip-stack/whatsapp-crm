@@ -431,6 +431,9 @@ export const appRouter = router({
         }
       }
       const { id, orderDate, customerBirthDate, ...data } = input;
+      // 获取更新前的订单状态，用于判断是否从“已退款”恢复
+      const oldOrder = await getOrderById(id);
+      const oldOrderStatus = oldOrder?.orderStatus;
       await updateOrder(id, {
         ...data,
         ...(orderDate !== undefined ? { orderDate: orderDate ? new Date(orderDate) : null } : {}),
@@ -489,11 +492,33 @@ export const appRouter = router({
             console.log('[Refund Sync] No matching daily_data found for date:', orderDateStr, 'account:', account);
           }
         }
-        // 当订单状态改为"已退款"时，检查该客户所有订单是否全部退款，如是则删除客户信息
+        // 当订单状态改为“已退款”时，检查该客户所有订单是否全部退款，如是则删除客户信息
         if (input.orderStatus === '已退款' && updatedOrder.customerWhatsapp) {
           console.log('[Refund Sync] Checking if all orders refunded for customer:', updatedOrder.customerWhatsapp);
           const result = await checkAndDeleteRefundedCustomer(updatedOrder.customerWhatsapp);
           console.log('[Refund Sync] Customer delete result:', result);
+        }
+        // 当订单状态从“已退款”改为其他状态时，恢复/创建客户信息并更新统计
+        if (oldOrderStatus === '已退款' && input.orderStatus !== '已退款' && updatedOrder.customerWhatsapp) {
+          console.log('[Refund Restore] Order status changed from 已退款 to:', input.orderStatus, '| restoring customer info');
+          await syncCustomerFromOrder({
+            customerWhatsapp: updatedOrder.customerWhatsapp,
+            customerName: updatedOrder.customerName || undefined,
+            staffName: updatedOrder.staffName || undefined,
+            account: updatedOrder.account || undefined,
+            customerType: updatedOrder.customerType || undefined,
+            customerCountry: updatedOrder.customerCountry || undefined,
+            customerTier: updatedOrder.customerTier || undefined,
+            orderCategory: updatedOrder.orderCategory || undefined,
+            customerBirthDate: updatedOrder.customerBirthDate ? String(updatedOrder.customerBirthDate) : undefined,
+            customerEmail: updatedOrder.customerEmail || undefined,
+            staffId: updatedOrder.staffId,
+          });
+          // 更新客户统计数据
+          const customer = await getCustomerByWhatsapp(updatedOrder.customerWhatsapp);
+          if (customer) {
+            await syncCustomerStats(customer.id);
+          }
         }
       }
 
@@ -849,13 +874,59 @@ export const appRouter = router({
               await syncOrderDataToDailyData(matchingDaily.id, account, orderDateStr);
             }
           }
-          // 检查该客户所有订单是否全部退款，如是则删除客户信息，否则更新客户统计数据
+           // 检查该客户所有订单是否全部退款，如是则删除客户信息，否则更新客户统计数据
           if (order.customerWhatsapp) {
             await checkAndDeleteRefundedCustomer(order.customerWhatsapp);
           }
         }
       }
-
+      // 如果 itemStatus 从“已退款”改为其他状态，恢复/创建客户信息并更新统计
+      if (currentItem?.itemStatus === '已退款' && input.itemStatus && input.itemStatus !== '已退款') {
+        const order = await getOrderById(orderId);
+        if (order && order.customerWhatsapp) {
+          // 恢复/创建客户信息
+          await syncCustomerFromOrder({
+            customerWhatsapp: order.customerWhatsapp,
+            customerName: order.customerName || undefined,
+            staffName: order.staffName || undefined,
+            account: order.account || undefined,
+            customerType: order.customerType || undefined,
+            customerCountry: order.customerCountry || undefined,
+            customerTier: order.customerTier || undefined,
+            orderCategory: order.orderCategory || undefined,
+            customerBirthDate: order.customerBirthDate ? String(order.customerBirthDate) : undefined,
+            customerEmail: order.customerEmail || undefined,
+            staffId: order.staffId,
+          });
+          // 更新客户统计数据
+          const customer = await getCustomerByWhatsapp(order.customerWhatsapp);
+          if (customer) {
+            await syncCustomerStats(customer.id);
+          }
+          // 同步每日数据
+          const rawDate = order.orderDate;
+          let orderDateStr: string | null = null;
+          if (rawDate) {
+            const s = String(rawDate);
+            const m = s.match(/(\d{4}-\d{2}-\d{2})/);
+            orderDateStr = m ? m[1] : s.split('T')[0];
+          }
+          const account = order.account;
+          if (orderDateStr && account) {
+            const dailyList = await listDailyData({ startDate: orderDateStr, endDate: orderDateStr });
+            const matchingDaily = dailyList.find((d: any) => {
+              if (d.whatsAccount !== account) return false;
+              const dDate = d.reportDate
+                ? String(d.reportDate).match(/(\d{4}-\d{2}-\d{2})/)?.[1] || ''
+                : '';
+              return dDate === orderDateStr;
+            });
+            if (matchingDaily) {
+              await syncOrderDataToDailyData(matchingDaily.id, account, orderDateStr);
+            }
+          }
+        }
+      }
       return { success: true };
     }),
 
