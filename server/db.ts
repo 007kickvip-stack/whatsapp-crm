@@ -345,6 +345,8 @@ export async function syncCustomerStats(customerId?: number) {
       matchConditions.push(eq(orders.customerWhatsapp, customer.whatsapp));
     }
     
+    // 排除已退款订单的统计
+    matchConditions.push(sql`COALESCE(${orders.orderStatus}, '') != '已退款'`);
     const statsResult = await db.select({
       orderCount: sql<number>`COUNT(*)`,
       totalUsd: sql<string>`COALESCE(SUM(totalAmountUsd), 0)`,
@@ -4771,26 +4773,34 @@ export async function upsertFieldPermissions(
  */
 export async function checkAndDeleteRefundedCustomer(customerWhatsapp: string) {
   const db = await getDb();
-  if (!db || !customerWhatsapp) return { deleted: false };
+  if (!db || !customerWhatsapp) return { deleted: false, statsUpdated: false };
 
   // 查询该客户的所有订单
   const [allOrders] = await db.execute(sql`
     SELECT id, orderStatus FROM orders WHERE customerWhatsapp = ${customerWhatsapp}
   `);
   const orderRows = allOrders as unknown as any[];
-  if (!orderRows || orderRows.length === 0) return { deleted: false };
+  if (!orderRows || orderRows.length === 0) return { deleted: false, statsUpdated: false };
 
-  // 检查是否所有订单都是"已退款"状态
+  // 检查是否所有订单都是“已退款”状态
   const allRefunded = orderRows.every((o: any) => o.orderStatus === '已退款');
-  if (!allRefunded) return { deleted: false };
-
-  // 所有订单都已退款，删除客户信息
+  
   const customer = await getCustomerByWhatsapp(customerWhatsapp);
-  if (customer) {
-    await db.delete(customers).where(eq(customers.id, customer.id));
-    return { deleted: true, customerId: customer.id };
+  
+  if (allRefunded) {
+    // 所有订单都已退款，删除客户信息
+    if (customer) {
+      await db.delete(customers).where(eq(customers.id, customer.id));
+      return { deleted: true, customerId: customer.id, statsUpdated: false };
+    }
+  } else {
+    // 部分订单退款，不删除客户信息，但更新客户统计数据（排除退款订单）
+    if (customer) {
+      await syncCustomerStats(customer.id);
+      return { deleted: false, statsUpdated: true, customerId: customer.id };
+    }
   }
-  return { deleted: false };
+  return { deleted: false, statsUpdated: false };
 }
 
 /**

@@ -823,10 +823,17 @@ export const appRouter = router({
         }
       }
 
-      // 如果 itemStatus 改为"已退款"，触发每日数据同步和客户删除检查
+      // 如果 itemStatus 改为“已退款”，触发每日数据同步和客户删除检查
       if (input.itemStatus === '已退款' && currentItem?.itemStatus !== '已退款') {
         const order = await getOrderById(orderId);
         if (order) {
+          // 检查该订单所有子项是否全部退款，如是则自动更新父订单状态为“已退款”
+          const allItems = await getOrderItemsByOrderId(orderId);
+          const allItemsRefunded = allItems.length > 0 && allItems.every((item: any) => item.itemStatus === '已退款');
+          if (allItemsRefunded && order.orderStatus !== '已退款') {
+            await updateOrder(orderId, { orderStatus: '已退款' });
+          }
+
           // 安全提取日期字符串
           const rawDate = order.orderDate;
           let orderDateStr: string | null = null;
@@ -849,7 +856,7 @@ export const appRouter = router({
               await syncOrderDataToDailyData(matchingDaily.id, account, orderDateStr);
             }
           }
-          // 检查该客户所有订单是否全部退款，如是则删除客户信息
+          // 检查该客户所有订单是否全部退款，如是则删除客户信息，否则更新客户统计数据
           if (order.customerWhatsapp) {
             await checkAndDeleteRefundedCustomer(order.customerWhatsapp);
           }
