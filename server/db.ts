@@ -837,7 +837,9 @@ export async function recalculateAllItemProfitRates() {
 export async function getOrderStats(staffId?: number) {
   const db = await getDb();
   if (!db) return { totalOrders: 0, totalRevenueCny: 0, totalRevenueUsd: 0, totalProfit: 0, avgProfitRate: 0 };
-  const whereClause = staffId ? eq(orders.staffId, staffId) : undefined;
+  const conditions: SQL[] = [sql`COALESCE(${orders.orderStatus}, '') != '已退款'`];
+  if (staffId) conditions.push(eq(orders.staffId, staffId));
+  const whereClause = and(...conditions);
   const result = await db.select({
     totalOrders: sql<number>`count(*)`,
     totalRevenueCny: sql<number>`COALESCE(SUM(totalAmountCny), 0)`,
@@ -1093,12 +1095,12 @@ export async function getProfitReport(params: {
   const db = await getDb();
   if (!db) return { summary: null, byStaff: [], dailyTrend: [] };
 
-  // Build WHERE conditions for raw SQL
-  const whereParts: SQL[] = [];
+  // Build WHERE conditions for raw SQL (排除已退款订单)
+  const whereParts: SQL[] = [sql`COALESCE(o.orderStatus, '') != '已退款'`];
   if (params.startDate) whereParts.push(sql`o.orderDate >= ${params.startDate}`);
   if (params.endDate) whereParts.push(sql`o.orderDate <= ${params.endDate}`);
   if (params.staffName) whereParts.push(sql`o.staffName = ${params.staffName}`);
-  const whereSQL = whereParts.length > 0 ? sql`WHERE ${sql.join(whereParts, sql` AND `)}` : sql``;
+  const whereSQL = sql`WHERE ${sql.join(whereParts, sql` AND `)}`;
 
   // Summary totals from orders table
   const summaryResult = await db.execute(sql`
@@ -1574,22 +1576,22 @@ export async function getDailyOrderSummary(account: string, reportDate: string) 
         SELECT SUM(oi.sellingPrice)
         FROM order_items oi
         JOIN orders o2 ON oi.orderId = o2.id
-        WHERE o2.account = ${account} AND DATE(o2.orderDate) = ${normalizedDate}
+        WHERE o2.account = ${account} AND DATE(o2.orderDate) = ${normalizedDate} AND COALESCE(o2.orderStatus, '') != '已退款'
       ), 0) as productSellingPrice,
       COALESCE((
         SELECT SUM(oi.shippingCharged)
         FROM order_items oi
         JOIN orders o2 ON oi.orderId = o2.id
-        WHERE o2.account = ${account} AND DATE(o2.orderDate) = ${normalizedDate}
+        WHERE o2.account = ${account} AND DATE(o2.orderDate) = ${normalizedDate} AND COALESCE(o2.orderStatus, '') != '已退款'
       ), 0) as shippingCharged,
       COALESCE((
         SELECT SUM(oi.productProfit)
         FROM order_items oi
         JOIN orders o2 ON oi.orderId = o2.id
-        WHERE o2.account = ${account} AND DATE(o2.orderDate) = ${normalizedDate}
+        WHERE o2.account = ${account} AND DATE(o2.orderDate) = ${normalizedDate} AND COALESCE(o2.orderStatus, '') != '已退款'
       ), 0) as estimatedProfit
     FROM orders o
-    WHERE o.account = ${account} AND DATE(o.orderDate) = ${normalizedDate}
+    WHERE o.account = ${account} AND DATE(o.orderDate) = ${normalizedDate} AND COALESCE(o.orderStatus, '') != '已退款'
   `);
   const row = (rows as unknown as any[])[0] || {};
   return {
@@ -1901,7 +1903,159 @@ export async function syncOrderDataToDailyData(id: number, whatsAccount: string,
   return { success: true };
 }
 
-// ==================== 账号管理 ====================
+/**
+ * 周报数据 - 管理员按客服维度汇总一周数据
+ */
+export async function getWeeklyReportByStaff(weekStart: string, weekEnd: string, staffName?: string) {
+  const db = await getDb();
+  if (!db) return { rows: [], totals: null, dateRange: { start: weekStart, end: weekEnd } };
+
+  const conditions: SQL[] = [
+    sql`DATE(d.reportDate) >= ${weekStart}`,
+    sql`DATE(d.reportDate) <= ${weekEnd}`,
+  ];
+  if (staffName) conditions.push(sql`d.staffName = ${staffName}`);
+
+  const whereClause = sql`WHERE ${sql.join(conditions, sql` AND `)}`;
+
+  // 按客服维度汇总
+  const [rows] = await db.execute(sql`
+    SELECT
+      d.staffId,
+      d.staffName,
+      SUM(d.messageCount) as messageCount,
+      SUM(d.newCustomerCount) as newCustomerCount,
+      SUM(d.newIntentCount) as newIntentCount,
+      SUM(d.returnVisitCount) as returnVisitCount,
+      SUM(d.newOrderCount) as newOrderCount,
+      SUM(d.oldOrderCount) as oldOrderCount,
+      SUM(d.onlineOrderCount) as onlineOrderCount,
+      SUM(d.itemCount) as itemCount,
+      SUM(d.totalRevenue) as totalRevenue,
+      SUM(d.onlineRevenue) as onlineRevenue,
+      SUM(d.productSellingPrice) as productSellingPrice,
+      SUM(d.shippingCharged) as shippingCharged,
+      SUM(d.estimatedProfit) as estimatedProfit,
+      CASE WHEN SUM(d.totalRevenue) > 0
+        THEN SUM(d.estimatedProfit) / SUM(d.totalRevenue)
+        ELSE 0 END as estimatedProfitRate,
+      SUM(d.telegramPraiseCount) as telegramPraiseCount,
+      SUM(d.referralCount) as referralCount,
+      COUNT(DISTINCT DATE(d.reportDate)) as activeDays
+    FROM daily_data d
+    ${whereClause}
+    GROUP BY d.staffId, d.staffName
+    ORDER BY SUM(d.totalRevenue) DESC
+  `);
+
+  // 计算汇总
+  const [totalsRows] = await db.execute(sql`
+    SELECT
+      COUNT(DISTINCT d.staffId) as staffCount,
+      COUNT(DISTINCT DATE(d.reportDate)) as totalDays,
+      SUM(d.messageCount) as totalMessages,
+      SUM(d.newCustomerCount) as totalNewCustomers,
+      SUM(d.newIntentCount) as totalNewIntents,
+      SUM(d.returnVisitCount) as totalReturnVisits,
+      SUM(d.newOrderCount) as totalNewOrders,
+      SUM(d.oldOrderCount) as totalOldOrders,
+      SUM(d.onlineOrderCount) as totalOnlineOrders,
+      SUM(d.itemCount) as totalItems,
+      SUM(d.totalRevenue) as totalRevenue,
+      SUM(d.onlineRevenue) as totalOnlineRevenue,
+      SUM(d.productSellingPrice) as totalProductSellingPrice,
+      SUM(d.shippingCharged) as totalShippingCharged,
+      SUM(d.estimatedProfit) as totalEstimatedProfit,
+      CASE WHEN SUM(d.totalRevenue) > 0 
+        THEN SUM(d.estimatedProfit) / SUM(d.totalRevenue) 
+        ELSE 0 END as avgProfitRate,
+      SUM(d.telegramPraiseCount) as totalTelegramPraise,
+      SUM(d.referralCount) as totalReferrals
+    FROM daily_data d
+    ${whereClause}
+  `);
+
+  return {
+    rows: rows as unknown as any[],
+    totals: (totalsRows as unknown as any[])[0] || null,
+    dateRange: { start: weekStart, end: weekEnd },
+  };
+}
+
+/**
+ * 周报数据 - 客服按账号维度汇总一周数据
+ */
+export async function getWeeklyReportByAccount(weekStart: string, weekEnd: string, staffName: string) {
+  const db = await getDb();
+  if (!db) return { rows: [], totals: null, dateRange: { start: weekStart, end: weekEnd } };
+
+  const [rows] = await db.execute(sql`
+    SELECT
+      d.whatsAccount,
+      SUM(d.messageCount) as messageCount,
+      SUM(d.newCustomerCount) as newCustomerCount,
+      SUM(d.newIntentCount) as newIntentCount,
+      SUM(d.returnVisitCount) as returnVisitCount,
+      SUM(d.newOrderCount) as newOrderCount,
+      SUM(d.oldOrderCount) as oldOrderCount,
+      SUM(d.onlineOrderCount) as onlineOrderCount,
+      SUM(d.itemCount) as itemCount,
+      SUM(d.totalRevenue) as totalRevenue,
+      SUM(d.onlineRevenue) as onlineRevenue,
+      SUM(d.productSellingPrice) as productSellingPrice,
+      SUM(d.shippingCharged) as shippingCharged,
+      SUM(d.estimatedProfit) as estimatedProfit,
+      CASE WHEN SUM(d.totalRevenue) > 0
+        THEN SUM(d.estimatedProfit) / SUM(d.totalRevenue)
+        ELSE 0 END as estimatedProfitRate,
+      SUM(d.telegramPraiseCount) as telegramPraiseCount,
+      SUM(d.referralCount) as referralCount,
+      COUNT(DISTINCT DATE(d.reportDate)) as activeDays
+    FROM daily_data d
+    WHERE DATE(d.reportDate) >= ${weekStart}
+      AND DATE(d.reportDate) <= ${weekEnd}
+      AND d.staffName = ${staffName}
+    GROUP BY d.whatsAccount
+    ORDER BY SUM(d.totalRevenue) DESC
+  `);
+
+  // 计算汇总
+  const [totalsRows] = await db.execute(sql`
+    SELECT
+      COUNT(DISTINCT d.whatsAccount) as accountCount,
+      COUNT(DISTINCT DATE(d.reportDate)) as totalDays,
+      SUM(d.messageCount) as totalMessages,
+      SUM(d.newCustomerCount) as totalNewCustomers,
+      SUM(d.newIntentCount) as totalNewIntents,
+      SUM(d.returnVisitCount) as totalReturnVisits,
+      SUM(d.newOrderCount) as totalNewOrders,
+      SUM(d.oldOrderCount) as totalOldOrders,
+      SUM(d.onlineOrderCount) as totalOnlineOrders,
+      SUM(d.itemCount) as totalItems,
+      SUM(d.totalRevenue) as totalRevenue,
+      SUM(d.onlineRevenue) as totalOnlineRevenue,
+      SUM(d.productSellingPrice) as totalProductSellingPrice,
+      SUM(d.shippingCharged) as totalShippingCharged,
+      SUM(d.estimatedProfit) as totalEstimatedProfit,
+      CASE WHEN SUM(d.totalRevenue) > 0 
+        THEN SUM(d.estimatedProfit) / SUM(d.totalRevenue) 
+        ELSE 0 END as avgProfitRate,
+      SUM(d.telegramPraiseCount) as totalTelegramPraise,
+      SUM(d.referralCount) as totalReferrals
+    FROM daily_data d
+    WHERE DATE(d.reportDate) >= ${weekStart}
+      AND DATE(d.reportDate) <= ${weekEnd}
+      AND d.staffName = ${staffName}
+  `);
+
+  return {
+    rows: rows as unknown as any[],
+    totals: (totalsRows as unknown as any[])[0] || null,
+    dateRange: { start: weekStart, end: weekEnd },
+  };
+}
+
+// ==================== 账号管理 =====================
 
 /**
  * 获取所有账号列表（按 sortOrder 排序）
@@ -1999,14 +2153,13 @@ export async function getDashboardSummary(filters: DashboardFilters) {
   if (filters.dateTo) conditions.push(sql`o.orderDate <= ${filters.dateTo}`);
   if (filters.staffId) conditions.push(sql`o.staffId = ${filters.staffId}`);
   const whereStr = conditions.length > 0 ? sql.join([sql`WHERE `, sql.join(conditions, sql` AND `)], sql``) : sql``;
-
-  // 总营业额（从order_items汇总）
+  // 总营业额（从 order_items汇总，排除已退款订单）
   const revenueResult = await db.execute(sql`
     SELECT 
       COALESCE(SUM(oi.amountCny), 0) as totalRevenueCny
     FROM order_items oi
     JOIN orders o ON oi.orderId = o.id
-    ${whereStr}
+    ${whereStr} ${conditions.length > 0 ? sql`AND` : sql`WHERE`} COALESCE(o.orderStatus, '') != '已退款'
   `);
   const rev = (revenueResult as any)[0]?.[0] || { totalRevenueCny: 0 };
 
@@ -2030,12 +2183,12 @@ export async function getDashboardSummary(filters: DashboardFilters) {
   `);
   const daily = (dailyResult as any)[0]?.[0] || { totalReturnVisit: 0, totalPraise: 0, totalNewCustomers: 0, newCustomerOrders: 0, oldCustomerOrders: 0, estimatedProfit: 0 };
 
-  // 老客总数：在customers表中有多次订单的客户数
-  const oldCustConditions: SQL[] = [];
+  // 老客总数：在customers表中有多次订单的客户数（排除已退款）
+  const oldCustConditions: SQL[] = [sql`COALESCE(o.orderStatus, '') != '已退款'`];
   if (filters.staffId) oldCustConditions.push(sql`o.staffId = ${filters.staffId}`);
   if (filters.dateFrom) oldCustConditions.push(sql`o.orderDate >= ${filters.dateFrom}`);
   if (filters.dateTo) oldCustConditions.push(sql`o.orderDate <= ${filters.dateTo}`);
-  const oldCustWhere = oldCustConditions.length > 0 ? sql.join([sql`WHERE `, sql.join(oldCustConditions, sql` AND `)], sql``) : sql``;
+  const oldCustWhere = sql.join([sql`WHERE `, sql.join(oldCustConditions, sql` AND `)], sql``);
 
   const oldCustResult = await db.execute(sql`
     SELECT COUNT(*) as cnt FROM (
@@ -2069,12 +2222,15 @@ export async function getStaffRevenueRanking(filters: DashboardFilters) {
   if (filters.staffId) conditions.push(sql`staffId = ${filters.staffId}`);
   const whereStr = conditions.length > 0 ? sql.join([sql`WHERE `, sql.join(conditions, sql` AND `)], sql``) : sql``;
 
+  // 排除已退款订单
+  conditions.push(sql`COALESCE(orderStatus, '') != '已退款'`);
+  const finalWhereStr = sql.join([sql`WHERE `, sql.join(conditions, sql` AND `)], sql``);
   const result = await db.execute(sql`
     SELECT staffName, staffId,
       COUNT(*) as orderCount,
       COALESCE(SUM(totalAmountCny), 0) as totalRevenueCny,
       COALESCE(SUM(totalProfit), 0) as totalProfit
-    FROM orders ${whereStr}
+    FROM orders ${finalWhereStr}
     GROUP BY staffId, staffName
     ORDER BY totalRevenueCny DESC
   `);
@@ -2129,7 +2285,8 @@ export async function getAccountRevenue(filters: DashboardFilters) {
   if (filters.dateFrom) conditions.push(sql`orderDate >= ${filters.dateFrom}`);
   if (filters.dateTo) conditions.push(sql`orderDate <= ${filters.dateTo}`);
   if (filters.staffId) conditions.push(sql`staffId = ${filters.staffId}`);
-  const whereStr = conditions.length > 0 ? sql.join([sql`WHERE `, sql.join(conditions, sql` AND `)], sql``) : sql``;
+  conditions.push(sql`COALESCE(orderStatus, '') != '已退款'`);
+  const whereStr = sql.join([sql`WHERE `, sql.join(conditions, sql` AND `)], sql``);
 
   const result = await db.execute(sql`
     SELECT account,
@@ -2158,7 +2315,8 @@ export async function getMonthlyRevenue(filters: DashboardFilters) {
   if (filters.dateFrom) conditions.push(sql`orderDate >= ${filters.dateFrom}`);
   if (filters.dateTo) conditions.push(sql`orderDate <= ${filters.dateTo}`);
   if (filters.staffId) conditions.push(sql`staffId = ${filters.staffId}`);
-  const whereStr = conditions.length > 0 ? sql.join([sql`WHERE `, sql.join(conditions, sql` AND `)], sql``) : sql``;
+  conditions.push(sql`COALESCE(orderStatus, '') != '已退款'`);
+  const whereStr = sql.join([sql`WHERE `, sql.join(conditions, sql` AND `)], sql``);
 
   const result = await db.execute(sql`
     SELECT 
@@ -2188,7 +2346,8 @@ export async function getStaffMonthlyRevenue(filters: DashboardFilters) {
   if (filters.dateFrom) conditions.push(sql`orderDate >= ${filters.dateFrom}`);
   if (filters.dateTo) conditions.push(sql`orderDate <= ${filters.dateTo}`);
   if (filters.staffId) conditions.push(sql`staffId = ${filters.staffId}`);
-  const whereStr = conditions.length > 0 ? sql.join([sql`WHERE `, sql.join(conditions, sql` AND `)], sql``) : sql``;
+  conditions.push(sql`COALESCE(orderStatus, '') != '已退款'`);
+  const whereStr = sql.join([sql`WHERE `, sql.join(conditions, sql` AND `)], sql``);
 
   const result = await db.execute(sql`
     SELECT 

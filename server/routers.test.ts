@@ -78,6 +78,8 @@ vi.mock("./db", () => ({
   deleteDailyReportNote: vi.fn().mockResolvedValue({ success: true }),
   getDailyReportNoteById: vi.fn().mockResolvedValue({ id: 1, reportDate: "2026-04-09", userId: 1, userName: "Admin User", userRole: "admin", content: "今日总结", createdAt: new Date(), updatedAt: new Date() }),
   syncOrderDataToDailyData: vi.fn().mockResolvedValue({ success: true }),
+  getWeeklyReportByStaff: vi.fn().mockResolvedValue({ rows: [{ staffId: 2, staffName: "Staff User", messageCount: 100, newCustomerCount: 10, newIntentCount: 5, returnVisitCount: 4, newOrderCount: 8, oldOrderCount: 3, onlineOrderCount: 4, itemCount: 15, totalRevenue: "1000", onlineRevenue: "400", productSellingPrice: "800", shippingCharged: "200", estimatedProfit: "300", estimatedProfitRate: "0.3", telegramPraiseCount: 2, referralCount: 1, activeDays: 5 }], totals: { staffCount: 1, totalDays: 5, totalMessages: 100, totalNewCustomers: 10, totalNewIntents: 5, totalReturnVisits: 4, totalNewOrders: 8, totalOldOrders: 3, totalOnlineOrders: 4, totalItems: 15, totalRevenue: "1000", totalOnlineRevenue: "400", totalProductSellingPrice: "800", totalShippingCharged: "200", totalEstimatedProfit: "300", avgProfitRate: "0.3", accountCount: 2 }, dateRange: { start: "2026-04-07", end: "2026-04-13" } }),
+  getWeeklyReportByAccount: vi.fn().mockResolvedValue({ rows: [{ whatsAccount: "+123", messageCount: 50, newCustomerCount: 5, activeDays: 3, totalRevenue: "500" }], totals: { accountCount: 1, totalDays: 3, totalMessages: 50, totalNewCustomers: 5, totalRevenue: "500", totalEstimatedProfit: "150", avgProfitRate: "0.3" }, dateRange: { start: "2026-04-07", end: "2026-04-13" } }),
   listAccounts: vi.fn().mockResolvedValue([{ id: 1, name: "M1 BUY-4254", color: "#f87171", sortOrder: 0 }, { id: 2, name: "K-ONE-1718", color: "#fb923c", sortOrder: 1 }]),
   createAccount: vi.fn().mockResolvedValue({ id: 3 }),
   updateAccount: vi.fn().mockResolvedValue({ success: true }),
@@ -1948,5 +1950,85 @@ describe("Warehouse role - order access", () => {
     (createAuditLog as any).mockResolvedValue(undefined);
     await caller.export.orders({});
     expect(exportOrders).toHaveBeenCalledWith(expect.objectContaining({ staffId: undefined }));
+  });
+});
+
+describe("Weekly Report", () => {
+  it("admin can query weekly report by staff", async () => {
+    const ctx = createAdminContext();
+    const caller = appRouter.createCaller(ctx);
+    const result = await caller.dailyData.weeklyReport({
+      weekStart: "2026-04-07",
+      weekEnd: "2026-04-13",
+    });
+    expect(result.rows.length).toBeGreaterThan(0);
+    expect(result.totals).toBeTruthy();
+    expect(result.dateRange.start).toBe("2026-04-07");
+  });
+
+  it("admin can filter weekly report by staffName", async () => {
+    const ctx = createAdminContext();
+    const caller = appRouter.createCaller(ctx);
+    const result = await caller.dailyData.weeklyReport({
+      weekStart: "2026-04-07",
+      weekEnd: "2026-04-13",
+      staffName: "Staff User",
+    });
+    expect(result.rows.length).toBeGreaterThan(0);
+  });
+
+  it("staff sees weekly report by account", async () => {
+    const ctx = createStaffContext();
+    const caller = appRouter.createCaller(ctx);
+    const result = await caller.dailyData.weeklyReport({
+      weekStart: "2026-04-07",
+      weekEnd: "2026-04-13",
+    });
+    expect(result.rows.length).toBeGreaterThan(0);
+  });
+});
+
+describe("Refund Order Sync", () => {
+  it("updating order status to 已退款 triggers daily data sync", async () => {
+    const { getOrderById, listDailyData, syncOrderDataToDailyData } = await import("./db");
+    (getOrderById as any).mockResolvedValueOnce({
+      id: 1,
+      staffId: 1,
+      staffName: "Admin User",
+      account: "+123",
+      orderDate: new Date("2026-04-09"),
+      customerWhatsapp: "+456",
+      orderStatus: "已退款",
+    });
+    (listDailyData as any).mockResolvedValueOnce([
+      { id: 10, reportDate: "2026-04-09", staffId: 1, staffName: "Admin User", whatsAccount: "+123" },
+    ]);
+
+    const ctx = createAdminContext();
+    const caller = appRouter.createCaller(ctx);
+    await caller.orders.update({ id: 1, orderStatus: "已退款" });
+
+    expect(syncOrderDataToDailyData).toHaveBeenCalledWith(10, "+123", "2026-04-09");
+  });
+
+  it("updating order status to non-refund does not trigger sync when no matching daily data", async () => {
+    const { getOrderById, listDailyData, syncOrderDataToDailyData } = await import("./db");
+    (getOrderById as any).mockResolvedValueOnce({
+      id: 2,
+      staffId: 1,
+      staffName: "Admin User",
+      account: "+123",
+      orderDate: new Date("2026-04-10"),
+      customerWhatsapp: "+456",
+      orderStatus: "已发货",
+    });
+    (listDailyData as any).mockResolvedValueOnce([]);
+    (syncOrderDataToDailyData as any).mockClear();
+
+    const ctx = createAdminContext();
+    const caller = appRouter.createCaller(ctx);
+    await caller.orders.update({ id: 2, orderStatus: "已发货" });
+
+    expect(syncOrderDataToDailyData).not.toHaveBeenCalled();
   });
 });

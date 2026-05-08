@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { toast } from "sonner";
 import {
   CalendarDays, Plus, Trash2, RefreshCw, FileText,
@@ -148,9 +149,28 @@ export default function DailyData() {
   const [endDate, setEndDate] = useState(today);
   const [staffFilter, setStaffFilter] = useState("__all__");
   const [reportDialogOpen, setReportDialogOpen] = useState(false);
+  const [reportTab, setReportTab] = useState<"daily" | "weekly">("daily");
   const [reportDate, setReportDate] = useState(today);
   const [exporting, setExporting] = useState(false);
   const reportContentRef = useRef<HTMLDivElement>(null);
+
+  // 周报日期状态（当前周的周一到周日）
+  const [weekStart, setWeekStart] = useState(() => {
+    const d = new Date();
+    const day = d.getDay();
+    const diff = d.getDate() - day + (day === 0 ? -6 : 1); // 周一
+    const monday = new Date(d);
+    monday.setDate(diff);
+    return monday.toISOString().split("T")[0];
+  });
+  const [weekEnd, setWeekEnd] = useState(() => {
+    const d = new Date();
+    const day = d.getDay();
+    const diff = d.getDate() - day + (day === 0 ? 0 : 7); // 周日
+    const sunday = new Date(d);
+    sunday.setDate(diff);
+    return sunday.toISOString().split("T")[0];
+  });
 
   // New record creation state
   const [showNewRow, setShowNewRow] = useState(false);
@@ -180,7 +200,13 @@ export default function DailyData() {
 
   const reportQuery = trpc.dailyData.report.useQuery(
     { reportDate, staffName: staffFilter === "__all__" ? undefined : staffFilter },
-    { enabled: reportDialogOpen }
+    { enabled: reportDialogOpen && reportTab === "daily" }
+  );
+
+  // 周报查询
+  const weeklyReportQuery = trpc.dailyData.weeklyReport.useQuery(
+    { weekStart, weekEnd, staffName: staffFilter === "__all__" ? undefined : staffFilter },
+    { enabled: reportDialogOpen && reportTab === "weekly" }
   );
 
   // 备注查询
@@ -1010,12 +1036,18 @@ export default function DailyData() {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <CalendarDays className="w-5 h-5" />
-              {isAdmin ? "团队日报表" : "个人日报表"}
+              {isAdmin ? "团队报表" : "个人报表"}
             </DialogTitle>
-            <p className="text-xs text-muted-foreground mt-1">
-              {isAdmin ? "按客服维度汇总（每行显示一个客服的总数据）" : "按账号维度展示（每行显示一个账号的数据）"}
-            </p>
           </DialogHeader>
+
+          <Tabs value={reportTab} onValueChange={(v) => setReportTab(v as "daily" | "weekly")}>
+            <TabsList className="mb-4">
+              <TabsTrigger value="daily">日报</TabsTrigger>
+              <TabsTrigger value="weekly">周报</TabsTrigger>
+            </TabsList>
+
+            {/* ===== 日报 Tab ===== */}
+            <TabsContent value="daily">
           <div className="flex items-end gap-4 mb-4">
             <div>
               <Label className="text-xs mb-1 block">报表日期</Label>
@@ -1275,6 +1307,146 @@ export default function DailyData() {
               </div>
             </div>
           )}
+            </TabsContent>
+
+            {/* ===== 周报 Tab ===== */}
+            <TabsContent value="weekly">
+              <div className="flex items-end gap-4 mb-4">
+                <div>
+                  <Label className="text-xs mb-1 block">周开始日期</Label>
+                  <Input type="date" value={weekStart} onChange={(e) => {
+                    setWeekStart(e.target.value);
+                    // 自动设置周结束日期为+6天
+                    const d = new Date(e.target.value);
+                    d.setDate(d.getDate() + 6);
+                    setWeekEnd(d.toISOString().split("T")[0]);
+                  }} className="w-40" />
+                </div>
+                <div>
+                  <Label className="text-xs mb-1 block">周结束日期</Label>
+                  <Input type="date" value={weekEnd} onChange={(e) => setWeekEnd(e.target.value)} className="w-40" />
+                </div>
+                {isAdmin && (
+                  <div>
+                    <Label className="text-xs mb-1 block">客服</Label>
+                    <Select value={staffFilter} onValueChange={setStaffFilter}>
+                      <SelectTrigger className="w-40"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__all__">全部客服</SelectItem>
+                        {staffList.map((s: any, idx: number) => (
+                          <SelectItem key={s.staffId || `staff-${idx}`} value={s.staffName}>{s.staffName}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
+              </div>
+
+              {weeklyReportQuery.isLoading ? (
+                <div className="p-8 text-center text-muted-foreground">加载中...</div>
+              ) : !weeklyReportQuery.data || weeklyReportQuery.data.rows.length === 0 ? (
+                <div className="p-8 text-center text-muted-foreground">该周暂无数据</div>
+              ) : (
+                <div className="space-y-4">
+                  {/* 周报汇总卡片 */}
+                  {weeklyReportQuery.data.totals && (
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                      <Card className="bg-emerald-50 dark:bg-emerald-950/30">
+                        <CardContent className="p-3">
+                          <p className="text-xs text-muted-foreground">周总营业额</p>
+                          <p className="text-xl font-bold text-emerald-600">¥{formatMoney(weeklyReportQuery.data.totals.totalRevenue)}</p>
+                        </CardContent>
+                      </Card>
+                      <Card className="bg-blue-50 dark:bg-blue-950/30">
+                        <CardContent className="p-3">
+                          <p className="text-xs text-muted-foreground">周预估毛利润</p>
+                          <p className="text-xl font-bold text-blue-600">¥{formatMoney(weeklyReportQuery.data.totals.totalEstimatedProfit)}</p>
+                        </CardContent>
+                      </Card>
+                      <Card>
+                        <CardContent className="p-3">
+                          <p className="text-xs text-muted-foreground">平均利润率</p>
+                          <p className="text-xl font-bold">{formatPercent(weeklyReportQuery.data.totals.avgProfitRate)}</p>
+                        </CardContent>
+                      </Card>
+                      <Card>
+                        <CardContent className="p-3">
+                          <p className="text-xs text-muted-foreground">{isAdmin ? "客服人数" : "账号数"} / 活跃天数</p>
+                          <p className="text-xl font-bold">
+                            {isAdmin ? weeklyReportQuery.data.totals.staffCount : weeklyReportQuery.data.totals.accountCount}
+                            <span className="text-sm text-muted-foreground ml-1">/ {weeklyReportQuery.data.totals.totalDays}天</span>
+                          </p>
+                        </CardContent>
+                      </Card>
+                    </div>
+                  )}
+
+                  {/* 周报详细表格 */}
+                  <div className="overflow-x-auto border rounded-lg">
+                    <table className="w-full text-[11px]">
+                      <thead>
+                        <tr className="border-b bg-indigo-50">
+                          <th className={thClass}>{isAdmin ? "客服名字" : "账号"}</th>
+                          <th className={thClass}>活跃天</th>
+                          <th className={thClass}>消息数</th>
+                          <th className={thClass}>新客人数</th>
+                          <th className={thClass}>新增意向</th>
+                          <th className={thClass}>回访人数</th>
+                          <th className={thClass}>新客单数</th>
+                          <th className={thClass}>老客单数</th>
+                          <th className={thClass}>件数</th>
+                          <th className={thClass}>总营业额</th>
+                          <th className={thClass}>产品售价</th>
+                          <th className={thClass}>收取运费</th>
+                          <th className={thClass}>预估毛利润</th>
+                          <th className="py-1.5 px-1 text-center font-medium whitespace-nowrap text-[11px]">利润率</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {weeklyReportQuery.data.rows.map((row: any, idx: number) => (
+                          <tr key={row.staffId || row.whatsAccount || idx} className="border-b hover:bg-muted/30">
+                            <td className={`${tdClass} font-medium`}>{isAdmin ? row.staffName : (row.whatsAccount || "-")}</td>
+                            <td className={tdClass}>{row.activeDays || 0}</td>
+                            <td className={tdClass}>{row.messageCount || 0}</td>
+                            <td className={tdClass}>{row.newCustomerCount || 0}</td>
+                            <td className={tdClass}>{row.newIntentCount || 0}</td>
+                            <td className={tdClass}>{row.returnVisitCount || 0}</td>
+                            <td className={tdClass}>{row.newOrderCount || 0}</td>
+                            <td className={tdClass}>{row.oldOrderCount || 0}</td>
+                            <td className={tdClass}>{row.itemCount || 0}</td>
+                            <td className={`${tdClass} font-medium text-emerald-600`}>¥{formatMoney(row.totalRevenue)}</td>
+                            <td className={tdClass}>¥{formatMoney(row.productSellingPrice)}</td>
+                            <td className={tdClass}>¥{formatMoney(row.shippingCharged)}</td>
+                            <td className={`${tdClass} font-medium text-blue-600`}>¥{formatMoney(row.estimatedProfit)}</td>
+                            <td className="py-1 px-1 text-center whitespace-nowrap text-[11px]">{formatPercent(row.estimatedProfitRate)}</td>
+                          </tr>
+                        ))}
+                        {/* 汇总行 */}
+                        {weeklyReportQuery.data.totals && (
+                          <tr className="border-t-2 bg-amber-50/50 font-bold">
+                            <td className={`${tdClass} font-bold`}>合计</td>
+                            <td className={`${tdClass} font-bold`}>{weeklyReportQuery.data.totals.totalDays}天</td>
+                            <td className={`${tdClass} font-bold`}>{weeklyReportQuery.data.totals.totalMessages}</td>
+                            <td className={`${tdClass} font-bold`}>{weeklyReportQuery.data.totals.totalNewCustomers}</td>
+                            <td className={`${tdClass} font-bold`}>{weeklyReportQuery.data.totals.totalNewIntents}</td>
+                            <td className={`${tdClass} font-bold`}>{weeklyReportQuery.data.totals.totalReturnVisits}</td>
+                            <td className={`${tdClass} font-bold`}>{weeklyReportQuery.data.totals.totalNewOrders}</td>
+                            <td className={`${tdClass} font-bold`}>{weeklyReportQuery.data.totals.totalOldOrders}</td>
+                            <td className={`${tdClass} font-bold`}>{weeklyReportQuery.data.totals.totalItems}</td>
+                            <td className={`${tdClass} font-bold text-emerald-600`}>¥{formatMoney(weeklyReportQuery.data.totals.totalRevenue)}</td>
+                            <td className={`${tdClass} font-bold`}>¥{formatMoney(weeklyReportQuery.data.totals.totalProductSellingPrice)}</td>
+                            <td className={`${tdClass} font-bold`}>¥{formatMoney(weeklyReportQuery.data.totals.totalShippingCharged)}</td>
+                            <td className={`${tdClass} font-bold text-blue-600`}>¥{formatMoney(weeklyReportQuery.data.totals.totalEstimatedProfit)}</td>
+                            <td className="py-1 px-1 text-center whitespace-nowrap text-[11px] font-bold">{formatPercent(weeklyReportQuery.data.totals.avgProfitRate)}</td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+            </TabsContent>
+          </Tabs>
         </DialogContent>
       </Dialog>
     </div>

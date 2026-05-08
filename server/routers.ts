@@ -54,6 +54,7 @@ import {
   getRepurchaseOverview, getCustomerValueList, getRepurchaseTrend,
   exportAllData, restoreAllData,
   getFieldPermissions, getAllFieldPermissions, upsertFieldPermissions,
+  getWeeklyReportByStaff, getWeeklyReportByAccount,
 } from "./db";
 import type { SQL } from "drizzle-orm";
 import { sdk } from "./_core/sdk";
@@ -455,6 +456,23 @@ export const appRouter = router({
       }
       // 订单更新时同步更新对应的PayPal收入记录
       await updatePaypalIncomeFromOrder(id);
+
+      // 当订单状态变为"已退款"或从"已退款"改回时，同步更新对应的每日数据
+      if (input.orderStatus !== undefined && updatedOrder) {
+        const orderDateStr = updatedOrder.orderDate
+          ? new Date(updatedOrder.orderDate).toISOString().split("T")[0]
+          : null;
+        const account = updatedOrder.account;
+        if (orderDateStr && account) {
+          // 查找对应的daily_data记录并同步
+          const dailyList = await listDailyData({ startDate: orderDateStr, endDate: orderDateStr });
+          const matchingDaily = dailyList.find((d: any) => d.whatsAccount === account && (d.reportDate ? new Date(d.reportDate).toISOString().split("T")[0] : "") === orderDateStr);
+          if (matchingDaily) {
+            await syncOrderDataToDailyData(matchingDaily.id, account, orderDateStr);
+          }
+        }
+      }
+
       await logAction(ctx, "update", "order", id, undefined, JSON.stringify(data));
       return { success: true };
     }),
@@ -1642,6 +1660,22 @@ export const appRouter = router({
       staffName: z.string(),
     })).query(async ({ input }) => {
       return await getDailyReportDrillDown(input.reportDate, input.staffName);
+    }),
+
+    // 周报 - 管理员按客服维度，客服按账号维度
+    weeklyReport: protectedProcedure.input(z.object({
+      weekStart: z.string(),
+      weekEnd: z.string(),
+      staffName: z.string().optional(),
+    })).query(async ({ input, ctx }) => {
+      const isAdmin = ctx.user.role === "admin";
+      if (isAdmin) {
+        const staffFilter = input.staffName || undefined;
+        return await getWeeklyReportByStaff(input.weekStart, input.weekEnd, staffFilter);
+      } else {
+        const staffName = ctx.user.name || "";
+        return await getWeeklyReportByAccount(input.weekStart, input.weekEnd, staffName);
+      }
     }),
 
     // 获取客服列表（仅管理员）

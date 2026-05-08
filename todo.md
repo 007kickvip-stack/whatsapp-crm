@@ -944,3 +944,16 @@
 - [x] 前端：侧边栏根据warehouse角色显示有限菜单（仅订单管理相关）
 - [x] 前端：用户管理页面支持创建warehouse角色账号
 - [x] 测试：warehouse角色权限测试
+
+## 周报功能
+
+- [x] 后端：添加周报数据查询接口（按周汇总每日数据，管理员按客服维度，客服按账号维度）
+- [x] 前端：日报表弹窗添加周报Tab，展示周汇总数据表格
+- [ ] 前端：周报支持导出为图片
+
+## 已退款订单数据扣减
+
+- [x] 后端：订单状态改为“已退款”时，自动触发syncOrderDataToDailyData同步扣减每日数据
+- [x] 后端：仪表盘统计数据排除已退款订单（getOrderStats/getDashboardSummary/getStaffRevenueRanking/getAccountRevenue/getMonthlyRevenue/getStaffMonthlyRevenue/getProfitReport）
+- [x] 后端：getDailyOrderSummary排除已退款订单
+- [x] 前端：订单状态下拉已有“已退款”选项
