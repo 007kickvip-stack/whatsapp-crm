@@ -738,13 +738,13 @@ export default function OrdersPage() {
 
   const toggleAllCollapse = useCallback(() => {
     if (!data?.data) return;
-    const multiItemOrders = data.data.filter((o: any) => (o.items?.length || 0) > 1);
-    if (collapsedOrders.size >= multiItemOrders.length && multiItemOrders.length > 0) {
+    const allOrders = data.data;
+    if (collapsedOrders.size >= allOrders.length && allOrders.length > 0) {
       // All collapsed -> expand all
       setCollapsedOrders(new Set());
     } else {
-      // Collapse all multi-item orders
-      setCollapsedOrders(new Set(multiItemOrders.map((o: any) => o.id)));
+      // Collapse all orders
+      setCollapsedOrders(new Set(allOrders.map((o: any) => o.id)));
     }
   }, [data, collapsedOrders]);
 
@@ -1089,6 +1089,16 @@ export default function OrdersPage() {
         });
       }
     }
+    // 默认折叠所有订单（包括多子项和单子项）
+    setCollapsedOrders((prev) => {
+      const allOrderIds = data.data.map((o: any) => o.id);
+      if (allOrderIds.length === 0) return prev;
+      const next = new Set(prev);
+      for (const id of allOrderIds) {
+        next.add(id);
+      }
+      return next;
+    });
   }, [data]);
 
   const flatRows: FlatRow[] = useMemo(() => {
@@ -1263,8 +1273,8 @@ export default function OrdersPage() {
         <td className={`${dp} px-1 text-center border-r border-gray-100 sticky left-[36px] bg-inherit z-[5] ${cellBorderTop}`}>
           {row.isFirstRow ? (
             <div className="flex items-center justify-center gap-0.5">
-              {/* Collapse/expand toggle for multi-item orders */}
-              {row.totalItemCount > 1 && (
+              {/* Collapse/expand toggle for all orders */}
+              {row.totalItemCount >= 1 && (
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <Button
