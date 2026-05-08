@@ -123,7 +123,7 @@ export const appRouter = router({
 
     updateRole: adminProcedure.input(z.object({
       userId: z.number(),
-      role: z.enum(["user", "admin"]),
+      role: z.enum(["user", "admin", "warehouse"]),
     })).mutation(({ input }) => updateUserRole(input.userId, input.role)),
 
     delete: adminProcedure.input(z.object({ userId: z.number() })).mutation(({ input }) => deleteUser(input.userId)),
@@ -146,7 +146,7 @@ export const appRouter = router({
       email: z.string().optional(),
       username: z.string().min(2).optional(),
       password: z.string().min(4).optional(),
-      role: z.enum(["user", "admin"]).default("user"),
+      role: z.enum(["user", "admin", "warehouse"]).default("user"),
       hireDate: z.string().optional(),
       baseSalary: z.string().optional(),
     })).mutation(async ({ input }) => {
@@ -322,18 +322,19 @@ export const appRouter = router({
       dateTo: z.string().optional(),
       customerCountry: z.string().optional(),
     })).query(({ input, ctx }) => {
-      const isAdmin = ctx.user.role === "admin";
+      const canViewAll = ctx.user.role === "admin" || ctx.user.role === "warehouse";
       return listOrders({
         ...input,
-        staffId: isAdmin ? undefined : ctx.user.id,
+        staffId: canViewAll ? undefined : ctx.user.id,
       });
     }),
 
     getById: protectedProcedure.input(z.object({ id: z.number() })).query(async ({ input, ctx }) => {
       const order = await getOrderWithItems(input.id);
       if (!order) return undefined;
-      // 客服只能查看自己的订单
-      if (ctx.user.role !== 'admin' && order.staffId !== ctx.user.id) {
+      // 客服只能查看自己的订单，管理员和仓库管理员可查看全部
+      const canViewAll = ctx.user.role === 'admin' || ctx.user.role === 'warehouse';
+      if (!canViewAll && order.staffId !== ctx.user.id) {
         throw new TRPCError({ code: 'FORBIDDEN', message: '您只能查看自己的订单' });
       }
       return order;
@@ -421,8 +422,9 @@ export const appRouter = router({
       customerEmail: z.string().optional(),
       wpEntryDate: z.string().optional(),
     })).mutation(async ({ input, ctx }) => {
-      // 客服只能编辑自己的订单
-      if (ctx.user.role !== 'admin') {
+      // 客服只能编辑自己的订单，管理员和仓库管理员可编辑全部
+      const canEditAll = ctx.user.role === 'admin' || ctx.user.role === 'warehouse';
+      if (!canEditAll) {
         const order = await getOrderById(input.id);
         if (!order || order.staffId !== ctx.user.id) {
           throw new TRPCError({ code: 'FORBIDDEN', message: '您只能编辑自己的订单' });
@@ -458,8 +460,9 @@ export const appRouter = router({
     }),
 
     delete: protectedProcedure.input(z.object({ id: z.number() })).mutation(async ({ input, ctx }) => {
-      // 客服只能删除自己的订单
-      if (ctx.user.role !== 'admin') {
+      // 客服只能删除自己的订单，管理员和仓库管理员可删除全部
+      const canDeleteAll = ctx.user.role === 'admin' || ctx.user.role === 'warehouse';
+      if (!canDeleteAll) {
         const order = await getOrderById(input.id);
         if (!order || order.staffId !== ctx.user.id) {
           throw new TRPCError({ code: 'FORBIDDEN', message: '您只能删除自己的订单' });
@@ -962,10 +965,10 @@ export const appRouter = router({
       dateFrom: z.string().optional(),
       dateTo: z.string().optional(),
     })).mutation(async ({ input, ctx }) => {
-      const isAdmin = ctx.user.role === "admin";
+      const canViewAll = ctx.user.role === "admin" || ctx.user.role === "warehouse";
       const data = await exportOrders({
         ...input,
-        staffId: isAdmin ? undefined : ctx.user.id,
+        staffId: canViewAll ? undefined : ctx.user.id,
       });
       // Log the export action
       await createAuditLog({

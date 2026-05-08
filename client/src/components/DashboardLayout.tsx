@@ -151,10 +151,18 @@ function DashboardLayoutContent({
   const sidebarRef = useRef<HTMLDivElement>(null);
   const isMobile = useIsMobile();
   const isAdmin = user?.role === "admin";
+  const isWarehouse = user?.role === "warehouse";
 
   const allMenuItems = useMemo(() => {
+    if (isWarehouse) {
+      // 仓库管理员只能看到订单管理和补发表
+      return [
+        { icon: ShoppingCart, label: "订单管理", path: "/orders" },
+        { icon: RefreshCw, label: "补发表", path: "/reshipments" },
+      ] as MenuItem[];
+    }
     return [...mainMenuItems, ...dataMenuItems, ...(isAdmin ? [salaryMenuItem, ...adminMenuItems] : [])];
-  }, [isAdmin]);
+  }, [isAdmin, isWarehouse]);
 
   const activeMenuItem = allMenuItems.find((item) => {
     if (item.path === "/") return location === "/";
@@ -223,6 +231,34 @@ function DashboardLayoutContent({
           </SidebarHeader>
 
           <SidebarContent className="gap-0">
+            {isWarehouse ? (
+              <SidebarGroup>
+                <SidebarGroupLabel className="text-xs text-muted-foreground/70 uppercase tracking-wider">
+                  仓库管理
+                </SidebarGroupLabel>
+                <SidebarMenu className="px-2 py-1">
+                  {allMenuItems.map((item) => {
+                    const isActive = location.startsWith(item.path);
+                    return (
+                      <SidebarMenuItem key={item.path}>
+                        <SidebarMenuButton
+                          isActive={isActive}
+                          onClick={() => setLocation(item.path)}
+                          tooltip={item.label}
+                          className="h-10 transition-all font-normal"
+                        >
+                          <item.icon
+                            className={`h-4 w-4 ${isActive ? "text-primary" : ""}`}
+                          />
+                          <span>{item.label}</span>
+                        </SidebarMenuButton>
+                      </SidebarMenuItem>
+                    );
+                  })}
+                </SidebarMenu>
+              </SidebarGroup>
+            ) : (
+            <>
             <SidebarGroup>
               <SidebarGroupLabel className="text-xs text-muted-foreground/70 uppercase tracking-wider">
                 主要功能
@@ -323,6 +359,8 @@ function DashboardLayoutContent({
                 </SidebarMenu>
               </SidebarGroup>
             )}
+            </>
+            )}
           </SidebarContent>
 
           <SidebarFooter className="p-3">
@@ -343,7 +381,7 @@ function DashboardLayoutContent({
                         variant={isAdmin ? "default" : "secondary"}
                         className="text-[10px] px-1.5 py-0 h-4"
                       >
-                        {isAdmin ? "管理员" : "客服"}
+                        {isAdmin ? "管理员" : isWarehouse ? "仓库管理员" : "客服"}
                       </Badge>
                     </div>
                     <p className="text-xs text-muted-foreground truncate mt-1.5">
@@ -357,7 +395,7 @@ function DashboardLayoutContent({
                   <p className="text-sm font-medium">{user?.name}</p>
                   <p className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
                     <Shield className="h-3 w-3" />
-                    {isAdmin ? "管理员" : "客服"}
+                    {isAdmin ? "管理员" : isWarehouse ? "仓库管理员" : "客服"}
                   </p>
                 </div>
                 <DropdownMenuSeparator />

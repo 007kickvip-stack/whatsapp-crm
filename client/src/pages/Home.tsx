@@ -1,5 +1,6 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useAuth } from "@/_core/hooks/useAuth";
+import { useLocation } from "wouter";
 import { trpc } from "@/lib/trpc";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -122,6 +123,14 @@ function SimplePie({ data, title }: { data: { name: string; value: number }[]; t
 export default function Home() {
   const { user } = useAuth();
   const isAdmin = user?.role === "admin";
+  const [, setLocation] = useLocation();
+
+  // 仓库管理员登录后自动跳转到订单页面
+  useEffect(() => {
+    if (user?.role === "warehouse") {
+      setLocation("/orders");
+    }
+  }, [user?.role, setLocation]);
 
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");

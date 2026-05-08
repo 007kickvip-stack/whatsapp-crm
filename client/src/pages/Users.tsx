@@ -48,6 +48,7 @@ import {
   Pencil,
   Ban,
   RotateCcw,
+  Package,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useLocation } from "wouter";
@@ -81,7 +82,7 @@ export default function UsersPage() {
     email: "",
     username: "",
     password: "",
-    role: "user" as "user" | "admin",
+    role: "user" as "user" | "admin" | "warehouse",
     hireDate: "",
     baseSalary: "",
   });
@@ -379,7 +380,7 @@ export default function UsersPage() {
                           <td className="py-3 px-4">
                             <Select
                               value={u.role}
-                              onValueChange={(v: "user" | "admin") => {
+                              onValueChange={(v: "user" | "admin" | "warehouse") => {
                                 if (isSelf) {
                                   toast.error("不能修改自己的角色");
                                   return;
@@ -402,6 +403,12 @@ export default function UsersPage() {
                                   <div className="flex items-center gap-1.5">
                                     <UserCog className="h-3 w-3" />
                                     客服
+                                  </div>
+                                </SelectItem>
+                                <SelectItem value="warehouse">
+                                  <div className="flex items-center gap-1.5">
+                                    <Package className="h-3 w-3" />
+                                    仓库管理员
                                   </div>
                                 </SelectItem>
                               </SelectContent>
@@ -583,8 +590,7 @@ export default function UsersPage() {
                 <Label>角色</Label>
                 <Select
                   value={addForm.role}
-                  onValueChange={(v: "user" | "admin") => setAddForm((f) => ({ ...f, role: v }))}
-                >
+                               onValueChange={(v: "user" | "admin" | "warehouse") => setAddForm((f) => ({ ...f, role: v }))}>
                   <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
@@ -599,6 +605,12 @@ export default function UsersPage() {
                       <div className="flex items-center gap-1.5">
                         <Shield className="h-3.5 w-3.5" />
                         管理员
+                      </div>
+                    </SelectItem>
+                    <SelectItem value="warehouse">
+                      <div className="flex items-center gap-1.5">
+                        <Package className="h-3.5 w-3.5" />
+                        仓库管理员
                       </div>
                     </SelectItem>
                   </SelectContent>

@@ -12,7 +12,7 @@ export const users = mysqlTable("users", {
   username: varchar("username", { length: 64 }).unique(),
   password: varchar("password", { length: 255 }),
   loginMethod: varchar("loginMethod", { length: 64 }),
-  role: mysqlEnum("role", ["user", "admin"]).default("user").notNull(),
+  role: mysqlEnum("role", ["user", "admin", "warehouse"]).default("user").notNull(),
   hireDate: date("hireDate"),
   baseSalary: decimal("baseSalary", { precision: 12, scale: 2 }).default("0"), // 底薪（兼容保留）
   employmentStatus: mysqlEnum("employmentStatus", ["probation", "regular"]).default("regular").notNull(), // 试用期/正式

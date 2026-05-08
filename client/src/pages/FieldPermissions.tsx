@@ -88,7 +88,7 @@ export default function FieldPermissionsPage() {
   // 保存权限
   const updateMutation = trpc.fieldPermissions.update.useMutation({
     onSuccess: () => {
-      toast.success(`已更新 ${selectedRole === "admin" ? "管理员" : "客服"} 角色的字段权限`);
+      toast.success(`已更新 ${selectedRole === "admin" ? "管理员" : selectedRole === "warehouse" ? "仓库管理员" : "客服"} 角色的字段权限`);
       setHasChanges(false);
       refetch();
     },
@@ -216,6 +216,7 @@ export default function FieldPermissionsPage() {
               <SelectContent>
                 <SelectItem value="user">客服（普通用户）</SelectItem>
                 <SelectItem value="admin">管理员</SelectItem>
+                <SelectItem value="warehouse">仓库管理员</SelectItem>
               </SelectContent>
             </Select>
           </div>

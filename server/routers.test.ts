@@ -1867,3 +1867,86 @@ describe("Field Permissions", () => {
     ).rejects.toThrow();
   });
 });
+
+// ==================== Warehouse Role Tests ====================
+
+function createWarehouseContext(): TrpcContext {
+  const user: AuthenticatedUser = {
+    id: 3,
+    openId: "warehouse-user",
+    email: "warehouse@example.com",
+    name: "Warehouse User",
+    loginMethod: "password",
+    role: "warehouse",
+    createdAt: new Date(),
+    updatedAt: new Date(),
+    lastSignedIn: new Date(),
+  };
+  return {
+    user,
+    req: { protocol: "https", headers: {} } as TrpcContext["req"],
+    res: { clearCookie: vi.fn() } as unknown as TrpcContext["res"],
+  };
+}
+
+describe("Warehouse role - order access", () => {
+  it("warehouse can list all orders (no staffId filter)", async () => {
+    const ctx = createWarehouseContext();
+    const caller = appRouter.createCaller(ctx);
+    const { listOrders } = await import("./db");
+    (listOrders as any).mockResolvedValue({ data: [], total: 0 });
+    await caller.orders.list({ page: 1, pageSize: 20 });
+    expect(listOrders).toHaveBeenCalledWith(expect.objectContaining({ staffId: undefined }));
+  });
+
+  it("warehouse can view any order by id", async () => {
+    const ctx = createWarehouseContext();
+    const caller = appRouter.createCaller(ctx);
+    const { getOrderWithItems } = await import("./db");
+    (getOrderWithItems as any).mockResolvedValue({ id: 1, staffId: 99, items: [] });
+    const result = await caller.orders.getById({ id: 1 });
+    expect(result).toBeDefined();
+    expect(result!.id).toBe(1);
+  });
+
+  it("warehouse can update any order", async () => {
+    const ctx = createWarehouseContext();
+    const caller = appRouter.createCaller(ctx);
+    const { getOrderById, updateOrder, syncCustomerFromOrder, updatePaypalIncomeFromOrder, createAuditLog } = await import("./db");
+    (getOrderById as any).mockResolvedValue({ id: 1, staffId: 99, customerWhatsapp: "123" });
+    (updateOrder as any).mockResolvedValue(undefined);
+    (syncCustomerFromOrder as any).mockResolvedValue(undefined);
+    (updatePaypalIncomeFromOrder as any).mockResolvedValue(undefined);
+    (createAuditLog as any).mockResolvedValue(undefined);
+    const result = await caller.orders.update({ id: 1, orderStatus: "已发货" });
+    expect(result.success).toBe(true);
+  });
+
+  it("warehouse can delete any order", async () => {
+    const ctx = createWarehouseContext();
+    const caller = appRouter.createCaller(ctx);
+    const { getOrderById, deleteOrder, deletePaypalIncomeByOrderId, createAuditLog } = await import("./db");
+    (getOrderById as any).mockResolvedValue({ id: 1, staffId: 99 });
+    (deleteOrder as any).mockResolvedValue(undefined);
+    (deletePaypalIncomeByOrderId as any).mockResolvedValue(undefined);
+    (createAuditLog as any).mockResolvedValue(undefined);
+    const result = await caller.orders.delete({ id: 1 });
+    expect(result.success).toBe(true);
+  });
+
+  it("warehouse cannot access admin-only routes (users.list)", async () => {
+    const ctx = createWarehouseContext();
+    const caller = appRouter.createCaller(ctx);
+    await expect(caller.users.list({ page: 1, pageSize: 20, includeDisabled: true })).rejects.toThrow();
+  });
+
+  it("warehouse can export all orders", async () => {
+    const ctx = createWarehouseContext();
+    const caller = appRouter.createCaller(ctx);
+    const { exportOrders, createAuditLog } = await import("./db");
+    (exportOrders as any).mockResolvedValue([]);
+    (createAuditLog as any).mockResolvedValue(undefined);
+    await caller.export.orders({});
+    expect(exportOrders).toHaveBeenCalledWith(expect.objectContaining({ staffId: undefined }));
+  });
+});

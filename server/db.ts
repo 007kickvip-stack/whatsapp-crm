@@ -98,7 +98,7 @@ export async function listUsers(page: number = 1, pageSize: number = 20, include
   return { data, total: countResult[0]?.count ?? 0 };
 }
 
-export async function updateUserRole(userId: number, role: "user" | "admin") {
+export async function updateUserRole(userId: number, role: "user" | "admin" | "warehouse") {
   const db = await getDb();
   if (!db) return;
   await db.update(users).set({ role }).where(eq(users.id, userId));
@@ -152,7 +152,7 @@ export function verifyPassword(password: string, storedHash: string): boolean {
   return computed === hash;
 }
 
-export async function createUser(data: { name: string; email?: string; role?: "user" | "admin"; username?: string; password?: string; hireDate?: string; baseSalary?: string }) {
+export async function createUser(data: { name: string; email?: string; role?: "user" | "admin" | "warehouse"; username?: string; password?: string; hireDate?: string; baseSalary?: string }) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
   const openId = `manual-${nanoid()}`;

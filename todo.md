@@ -934,3 +934,13 @@
 - [x] 所有可编辑字段（30+）添加 readonly 权限判断
 - [x] 替代硬编码的 admin 权限判断（productCost / shippingActual）为动态权限
 - [x] 单元测试：6个测试覆盖 getAll / getMine / update 的权限控制（共339条测试全部通过）
+
+## 仓库管理员角色
+
+- [x] 数据库：users表role字段扩展支持warehouse值
+- [x] 后端：listOrders对warehouse角色返回全部订单（不做客服过滤）
+- [x] 后端：warehouse角色可编辑订单
+- [x] 后端：warehouse角色不能访问管理功能（用户管理、利润报表、目标管理、PayPal等）
+- [x] 前端：侧边栏根据warehouse角色显示有限菜单（仅订单管理相关）
+- [x] 前端：用户管理页面支持创建warehouse角色账号
+- [x] 测试：warehouse角色权限测试
