@@ -158,6 +158,7 @@ export default function Home() {
   const customerTierDist = data?.customerTierDist || [];
   const orderCategoryDist = data?.orderCategoryDist || [];
   const countryDist = data?.countryDist || [];
+  const refundStats = data?.refundStats;
 
   // 个人预估营业额：按客服分组，每个客服一条折线
   const staffMonthlyChartData = useMemo(() => {
@@ -282,6 +283,35 @@ export default function Home() {
           value={isLoading ? "..." : fmt(summary?.oldCustomerOrders || 0)}
           icon={ShoppingCart}
           color="bg-rose-500"
+        />
+      </div>
+
+      {/* Refund Stats Cards - Row 3 */}
+      <div className="grid gap-3 grid-cols-2 lg:grid-cols-4">
+        <StatCard
+          title="退款订单数"
+          value={isLoading ? "..." : fmt(refundStats?.refundOrderCount || 0)}
+          icon={RotateCcw}
+          color="bg-red-500"
+        />
+        <StatCard
+          title="退款金额"
+          value={isLoading ? "..." : fmtMoney(refundStats?.refundAmountCny || 0)}
+          icon={DollarSign}
+          color="bg-red-400"
+        />
+        <StatCard
+          title="退款子项数"
+          value={isLoading ? "..." : fmt(refundStats?.refundItemCount || 0)}
+          icon={ShoppingCart}
+          color="bg-orange-500"
+        />
+        <StatCard
+          title="退款率"
+          value={isLoading ? "..." : `${refundStats?.refundRate || 0}%`}
+          icon={TrendingUp}
+          color="bg-orange-400"
+          sub={`${fmt(refundStats?.refundOrderCount || 0)} / ${fmt(refundStats?.totalOrderCount || 0)} 订单`}
         />
       </div>
 

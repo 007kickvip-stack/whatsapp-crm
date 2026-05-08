@@ -135,6 +135,17 @@ vi.mock("./db", () => ({
     { id: 3, role: "admin", fieldKey: "productCost", permission: "editable", updatedById: 1, updatedByName: "Admin", createdAt: new Date(), updatedAt: new Date() },
   ]),
   upsertFieldPermissions: vi.fn().mockResolvedValue(undefined),
+  getDashboardSummary: vi.fn().mockResolvedValue({ totalRevenueCny: 5000, estimatedProfit: 1500, totalReturnVisit: 10, totalPraise: 8, totalNewCustomers: 15, newCustomerOrders: 12, totalOldCustomers: 5, oldCustomerOrders: 7 }),
+  getStaffRevenueRanking: vi.fn().mockResolvedValue([{ staffName: "Staff User", staffId: 2, orderCount: 5, totalRevenueCny: 3000 }]),
+  getMonthlyNewOldCustomerRate: vi.fn().mockResolvedValue([]),
+  getAccountRevenue: vi.fn().mockResolvedValue([]),
+  getMonthlyRevenue: vi.fn().mockResolvedValue([]),
+  getStaffMonthlyRevenue: vi.fn().mockResolvedValue([]),
+  getCustomerTypeDistribution: vi.fn().mockResolvedValue([]),
+  getCustomerTierDistribution: vi.fn().mockResolvedValue([]),
+  getOrderCategoryDistribution: vi.fn().mockResolvedValue([]),
+  getCountryDistribution: vi.fn().mockResolvedValue([]),
+  getRefundStats: vi.fn().mockResolvedValue({ refundOrderCount: 3, refundItemCount: 5, refundAmountCny: 1200, totalOrderCount: 50, refundRate: 6 }),
 }));
 
 vi.mock("./storage", () => ({
@@ -2088,5 +2099,44 @@ describe("Customer birth date format", () => {
     const caller = appRouter.createCaller(createAdminContext());
     const result = await caller.orders.update({ id: 1, customerBirthDate: "1990-03-15" });
     expect(result.success).toBe(true);
+  });
+});
+
+describe("Dashboard Refund Stats", () => {
+  it("dashboardV2 returns refundStats data for admin", async () => {
+    const ctx = createAdminContext();
+    const caller = appRouter.createCaller(ctx);
+    const result = await caller.stats.dashboardV2({});
+    expect(result.refundStats).toBeDefined();
+    expect(result.refundStats.refundOrderCount).toBe(3);
+    expect(result.refundStats.refundItemCount).toBe(5);
+    expect(result.refundStats.refundAmountCny).toBe(1200);
+    expect(result.refundStats.totalOrderCount).toBe(50);
+    expect(result.refundStats.refundRate).toBe(6);
+  });
+
+  it("dashboardV2 returns refundStats data for staff user", async () => {
+    const ctx = createStaffContext();
+    const caller = appRouter.createCaller(ctx);
+    const result = await caller.stats.dashboardV2({});
+    expect(result.refundStats).toBeDefined();
+    expect(result.refundStats.refundOrderCount).toBe(3);
+  });
+
+  it("dashboardV2 returns all expected fields including refundStats", async () => {
+    const ctx = createAdminContext();
+    const caller = appRouter.createCaller(ctx);
+    const result = await caller.stats.dashboardV2({});
+    expect(result).toHaveProperty("summary");
+    expect(result).toHaveProperty("staffRanking");
+    expect(result).toHaveProperty("monthlyNewOld");
+    expect(result).toHaveProperty("accountRevenue");
+    expect(result).toHaveProperty("monthlyRevenue");
+    expect(result).toHaveProperty("staffMonthlyRevenue");
+    expect(result).toHaveProperty("customerTypeDist");
+    expect(result).toHaveProperty("customerTierDist");
+    expect(result).toHaveProperty("orderCategoryDist");
+    expect(result).toHaveProperty("countryDist");
+    expect(result).toHaveProperty("refundStats");
   });
 });

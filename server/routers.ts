@@ -27,7 +27,7 @@ import {
   getDashboardSummary, getStaffRevenueRanking, getMonthlyNewOldCustomerRate,
   getAccountRevenue, getMonthlyRevenue, getStaffMonthlyRevenue,
   getCustomerTypeDistribution, getCustomerTierDistribution,
-  getOrderCategoryDistribution, getCountryDistribution,
+  getOrderCategoryDistribution, getCountryDistribution, getRefundStats,
   createQuotation, updateQuotation, deleteQuotation, getQuotationById, getQuotationWithItems, listQuotations, recalculateQuotationTotals,
   createQuotationItem, updateQuotationItem, deleteQuotationItem, getQuotationItemsByQuotationId,
   getCurrentExchangeRate as getExchangeRateForQuotation,
@@ -990,7 +990,7 @@ export const appRouter = router({
       // 管理员可选择查看某个客服的数据，客服只能看自己的
       const staffId = isAdmin ? (input?.staffId || undefined) : ctx.user.id;
       const filters = { dateFrom: input?.dateFrom, dateTo: input?.dateTo, staffId };
-      const [summary, staffRanking, monthlyNewOld, accountRevenue, monthlyRevenue, staffMonthlyRevenue, customerTypeDist, customerTierDist, orderCategoryDist, countryDist] = await Promise.all([
+      const [summary, staffRanking, monthlyNewOld, accountRevenue, monthlyRevenue, staffMonthlyRevenue, customerTypeDist, customerTierDist, orderCategoryDist, countryDist, refundStats] = await Promise.all([
         getDashboardSummary(filters),
         getStaffRevenueRanking(filters),
         getMonthlyNewOldCustomerRate(filters),
@@ -1001,8 +1001,9 @@ export const appRouter = router({
         getCustomerTierDistribution(filters),
         getOrderCategoryDistribution(filters),
         getCountryDistribution(filters),
+        getRefundStats(filters),
       ]);
-      return { summary, staffRanking, monthlyNewOld, accountRevenue, monthlyRevenue, staffMonthlyRevenue, customerTypeDist, customerTierDist, orderCategoryDist, countryDist };
+      return { summary, staffRanking, monthlyNewOld, accountRevenue, monthlyRevenue, staffMonthlyRevenue, customerTypeDist, customerTierDist, orderCategoryDist, countryDist, refundStats };
     }),
   }),
 

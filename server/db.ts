@@ -4792,3 +4792,61 @@ export async function checkAndDeleteRefundedCustomer(customerWhatsapp: string) {
   }
   return { deleted: false };
 }
+
+/**
+ * 退款统计数据（仪表盘用）
+ * 返回：退款订单数、退款子项数、退款总金额、退款率
+ */
+export async function getRefundStats(filters: DashboardFilters) {
+  const db = await getDb();
+  if (!db) return {
+    refundOrderCount: 0,
+    refundItemCount: 0,
+    refundAmountCny: 0,
+    totalOrderCount: 0,
+    refundRate: 0,
+  };
+
+  const conditions: SQL[] = [];
+  if (filters.dateFrom) conditions.push(sql`o.orderDate >= ${filters.dateFrom}`);
+  if (filters.dateTo) conditions.push(sql`o.orderDate <= ${filters.dateTo}`);
+  if (filters.staffId) conditions.push(sql`o.staffId = ${filters.staffId}`);
+  const whereStr = conditions.length > 0 ? sql.join([sql`WHERE `, sql.join(conditions, sql` AND `)], sql``) : sql``;
+
+  // 退款订单数（orderStatus = '已退款' 的订单）
+  const refundOrderResult = await db.execute(sql`
+    SELECT COUNT(DISTINCT o.id) as refundOrderCount
+    FROM orders o
+    ${whereStr} ${conditions.length > 0 ? sql`AND` : sql`WHERE`} o.orderStatus = '已退款'
+  `);
+  const refundOrderCount = Number((refundOrderResult as any)[0]?.[0]?.refundOrderCount || 0);
+
+  // 退款子项数和退款金额（itemStatus = '已退款' 的子项 或 orderStatus = '已退款' 的订单子项）
+  const refundItemResult = await db.execute(sql`
+    SELECT 
+      COUNT(*) as refundItemCount,
+      COALESCE(SUM(oi.amountCny), 0) as refundAmountCny
+    FROM order_items oi
+    JOIN orders o ON oi.orderId = o.id
+    ${whereStr} ${conditions.length > 0 ? sql`AND` : sql`WHERE`} (o.orderStatus = '已退款' OR oi.itemStatus = '已退款')
+  `);
+  const refundItem = (refundItemResult as any)[0]?.[0] || { refundItemCount: 0, refundAmountCny: 0 };
+
+  // 总订单数（用于计算退款率）
+  const totalOrderResult = await db.execute(sql`
+    SELECT COUNT(DISTINCT o.id) as totalOrderCount
+    FROM orders o
+    ${whereStr}
+  `);
+  const totalOrderCount = Number((totalOrderResult as any)[0]?.[0]?.totalOrderCount || 0);
+
+  const refundRate = totalOrderCount > 0 ? (refundOrderCount / totalOrderCount) * 100 : 0;
+
+  return {
+    refundOrderCount,
+    refundItemCount: Number(refundItem.refundItemCount),
+    refundAmountCny: Number(refundItem.refundAmountCny),
+    totalOrderCount,
+    refundRate: Math.round(refundRate * 100) / 100,
+  };
+}
