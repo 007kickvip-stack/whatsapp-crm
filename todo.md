@@ -1009,3 +1009,5 @@
 - [x] 修复：多笔订单部分退款时只更新客户统计数据（排除退款订单），不删除客户信息
 - [x] 增强：syncCustomerStats排除已退款订单的统计
 - [x] 移除：子项全部退款时不再自动更新父订单状态（用户要求）
+- [x] 修复：checkAndDeleteRefundedCustomer同时检查子项级别退款状态（所有子项已退款=订单实质退款）
+- [x] 修复：syncCustomerStats排除所有子项已退款的订单

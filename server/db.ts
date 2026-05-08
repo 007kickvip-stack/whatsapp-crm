@@ -345,8 +345,13 @@ export async function syncCustomerStats(customerId?: number) {
       matchConditions.push(eq(orders.customerWhatsapp, customer.whatsapp));
     }
     
-    // 排除已退款订单的统计
+    // 排除已退款订单的统计（父订单状态为已退款，或所有子项状态为已退款）
     matchConditions.push(sql`COALESCE(${orders.orderStatus}, '') != '已退款'`);
+    matchConditions.push(sql`${orders.id} NOT IN (
+      SELECT oi_sub.orderId FROM order_items oi_sub 
+      GROUP BY oi_sub.orderId 
+      HAVING COUNT(*) > 0 AND COUNT(*) = SUM(CASE WHEN oi_sub.itemStatus = '已退款' THEN 1 ELSE 0 END)
+    )`);
     const statsResult = await db.select({
       orderCount: sql<number>`COUNT(*)`,
       totalUsd: sql<string>`COALESCE(SUM(totalAmountUsd), 0)`,
@@ -4782,13 +4787,30 @@ export async function checkAndDeleteRefundedCustomer(customerWhatsapp: string) {
   const orderRows = allOrders as unknown as any[];
   if (!orderRows || orderRows.length === 0) return { deleted: false, statsUpdated: false };
 
-  // 检查是否所有订单都是“已退款”状态
-  const allRefunded = orderRows.every((o: any) => o.orderStatus === '已退款');
+  // 检查每个订单是否“实质退款”：父订单orderStatus='已退款' 或 该订单所有子项itemStatus='已退款'
+  let allEffectivelyRefunded = true;
+  for (const o of orderRows) {
+    if (o.orderStatus === '已退款') continue; // 父订单已标记退款
+    // 检查该订单的所有子项是否都是已退款
+    const [items] = await db.execute(sql`
+      SELECT id, itemStatus FROM order_items WHERE orderId = ${o.id}
+    `);
+    const itemRows = items as unknown as any[];
+    if (!itemRows || itemRows.length === 0) {
+      allEffectivelyRefunded = false;
+      break;
+    }
+    const allItemsRefunded = itemRows.every((item: any) => item.itemStatus === '已退款');
+    if (!allItemsRefunded) {
+      allEffectivelyRefunded = false;
+      break;
+    }
+  }
   
   const customer = await getCustomerByWhatsapp(customerWhatsapp);
   
-  if (allRefunded) {
-    // 所有订单都已退款，删除客户信息
+  if (allEffectivelyRefunded) {
+    // 所有订单都已退款（父订单状态或所有子项状态），删除客户信息
     if (customer) {
       await db.delete(customers).where(eq(customers.id, customer.id));
       return { deleted: true, customerId: customer.id, statsUpdated: false };

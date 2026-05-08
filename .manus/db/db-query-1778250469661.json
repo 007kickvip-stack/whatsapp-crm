@@ -1,0 +1,16 @@
+{
+  "query": "SELECT id, customerName, customerWhatsapp, orderStatus FROM orders WHERE customerWhatsapp = '+39 388 244 6400' OR customerName = 'OLIMPIA CAPORIZZI';",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway02.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 2NqweF4FqFCY55U.889166f571c3 --database hH98Jc4UqfszP4NHNhbnYX --execute SELECT id, customerName, customerWhatsapp, orderStatus FROM orders WHERE customerWhatsapp = '+39 388 244 6400' OR customerName = 'OLIMPIA CAPORIZZI';",
+  "rows": [
+    {
+      "id": "720001",
+      "customerName": "OLIMPIA CAPORIZZI ",
+      "customerWhatsapp": "+39 388 244 6400",
+      "orderStatus": "已报货，待发货"
+    }
+  ],
+  "messages": [],
+  "stdout": "id\tcustomerName\tcustomerWhatsapp\torderStatus\n720001\tOLIMPIA CAPORIZZI \t+39 388 244 6400\t已报货，待发货\n",
+  "stderr": "",
+  "execution_time_ms": 136
+}
