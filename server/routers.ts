@@ -1705,6 +1705,7 @@ export const appRouter = router({
       onlineRevenue: z.string().optional(),
       telegramPraiseCount: z.number().optional(),
       referralCount: z.number().optional(),
+      estimatedProfit: z.string().optional(),
     })).mutation(async ({ input, ctx }) => {
       const existing = await getDailyDataById(input.id);
       if (!existing) throw new TRPCError({ code: "NOT_FOUND", message: "记录不存在" });
@@ -1715,6 +1716,13 @@ export const appRouter = router({
       }
 
       const { id, ...updateData } = input;
+      // 如果手动修改了estimatedProfit，自动重新计算estimatedProfitRate
+      if (updateData.estimatedProfit !== undefined) {
+        const totalRevenue = parseFloat(existing.totalRevenue as string) || 0;
+        const profit = parseFloat(updateData.estimatedProfit) || 0;
+        const profitRate = totalRevenue > 0 ? profit / totalRevenue : 0;
+        (updateData as any).estimatedProfitRate = profitRate.toFixed(6);
+      }
       await updateDailyData(id, updateData);
       await logAction(ctx, "update", "dailyData", id);
       return { success: true };

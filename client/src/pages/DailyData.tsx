@@ -294,7 +294,7 @@ export default function DailyData() {
         "newOrderCount", "oldOrderCount", "onlineOrderCount", "itemCount",
         "telegramPraiseCount", "referralCount"
       ];
-      const decimalFields = ["onlineRevenue"];
+      const decimalFields = ["onlineRevenue", "estimatedProfit"];
 
       let parsed: any = value;
       if (numFields.includes(field)) {
@@ -940,12 +940,12 @@ export default function DailyData() {
                             disabled
                           />
                         </td>
-                        {/* 预估毛利润 - 自动汇总，不可编辑 */}
+                        {/* 预估毛利润 - 可手动填写 */}
                         <td className={`${tdClass} font-medium text-blue-600`}>
                           <EditableCell
-                            value={`¥${formatMoney(row.estimatedProfit)}`}
-                            onSave={() => {}}
-                            disabled
+                            value={String(parseFloat(row.estimatedProfit) || 0)}
+                            onSave={(v) => saveFieldAndSync(row.id, "estimatedProfit", v)}
+                            type="number"
                             className="text-blue-600 font-medium"
                           />
                         </td>
