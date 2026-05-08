@@ -455,23 +455,45 @@ export const appRouter = router({
       }
       // PayPal收入改为人工核实，不再自动同步订单信息
 
-      // 当订单状态变为“已退款”或从“已退款”改回时，同步更新对应的每日数据
+      // 当订单状态变化时，同步更新对应的每日数据
       if (input.orderStatus !== undefined && updatedOrder) {
-        const orderDateStr = updatedOrder.orderDate
-          ? new Date(updatedOrder.orderDate).toISOString().split("T")[0]
-          : null;
+        // 安全提取日期字符串，避免时区问题
+        const rawDate = updatedOrder.orderDate;
+        let orderDateStr: string | null = null;
+        if (rawDate) {
+          if (rawDate instanceof Date) {
+            orderDateStr = rawDate.toISOString().split('T')[0];
+          } else {
+            const s = String(rawDate);
+            const m = s.match(/(\d{4}-\d{2}-\d{2})/);
+            orderDateStr = m ? m[1] : s.split('T')[0];
+          }
+        }
         const account = updatedOrder.account;
+        console.log('[Refund Sync] orderStatus changed to:', input.orderStatus, '| orderDate:', orderDateStr, '| account:', account);
         if (orderDateStr && account) {
           // 查找对应的daily_data记录并同步
           const dailyList = await listDailyData({ startDate: orderDateStr, endDate: orderDateStr });
-          const matchingDaily = dailyList.find((d: any) => d.whatsAccount === account && (d.reportDate ? new Date(d.reportDate).toISOString().split("T")[0] : "") === orderDateStr);
+          console.log('[Refund Sync] dailyList count:', dailyList.length, '| looking for account:', account);
+          const matchingDaily = dailyList.find((d: any) => {
+            if (d.whatsAccount !== account) return false;
+            const dDate = d.reportDate
+              ? String(d.reportDate).match(/(\d{4}-\d{2}-\d{2})/)?.[1] || ''
+              : '';
+            return dDate === orderDateStr;
+          });
           if (matchingDaily) {
+            console.log('[Refund Sync] Found matching daily_data id:', matchingDaily.id, '| syncing...');
             await syncOrderDataToDailyData(matchingDaily.id, account, orderDateStr);
+          } else {
+            console.log('[Refund Sync] No matching daily_data found for date:', orderDateStr, 'account:', account);
           }
         }
-        // 当订单状态改为“已退款”时，检查该客户所有订单是否全部退款，如是则删除客户信息
+        // 当订单状态改为"已退款"时，检查该客户所有订单是否全部退款，如是则删除客户信息
         if (input.orderStatus === '已退款' && updatedOrder.customerWhatsapp) {
-          await checkAndDeleteRefundedCustomer(updatedOrder.customerWhatsapp);
+          console.log('[Refund Sync] Checking if all orders refunded for customer:', updatedOrder.customerWhatsapp);
+          const result = await checkAndDeleteRefundedCustomer(updatedOrder.customerWhatsapp);
+          console.log('[Refund Sync] Customer delete result:', result);
         }
       }
 
@@ -798,6 +820,39 @@ export const appRouter = router({
             customerName: order.customerName || undefined,
             contactInfo: data.contactInfo,
           });
+        }
+      }
+
+      // 如果 itemStatus 改为"已退款"，触发每日数据同步和客户删除检查
+      if (input.itemStatus === '已退款' && currentItem?.itemStatus !== '已退款') {
+        const order = await getOrderById(orderId);
+        if (order) {
+          // 安全提取日期字符串
+          const rawDate = order.orderDate;
+          let orderDateStr: string | null = null;
+          if (rawDate) {
+            const s = String(rawDate);
+            const m = s.match(/(\d{4}-\d{2}-\d{2})/);
+            orderDateStr = m ? m[1] : s.split('T')[0];
+          }
+          const account = order.account;
+          if (orderDateStr && account) {
+            const dailyList = await listDailyData({ startDate: orderDateStr, endDate: orderDateStr });
+            const matchingDaily = dailyList.find((d: any) => {
+              if (d.whatsAccount !== account) return false;
+              const dDate = d.reportDate
+                ? String(d.reportDate).match(/(\d{4}-\d{2}-\d{2})/)?.[1] || ''
+                : '';
+              return dDate === orderDateStr;
+            });
+            if (matchingDaily) {
+              await syncOrderDataToDailyData(matchingDaily.id, account, orderDateStr);
+            }
+          }
+          // 检查该客户所有订单是否全部退款，如是则删除客户信息
+          if (order.customerWhatsapp) {
+            await checkAndDeleteRefundedCustomer(order.customerWhatsapp);
+          }
         }
       }
 

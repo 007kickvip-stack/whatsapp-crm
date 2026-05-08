@@ -1,0 +1,9 @@
+{
+  "query": "SELECT id, orderDate, account, customerWhatsapp, orderStatus, totalAmountCny FROM orders WHERE orderStatus = '已退款' LIMIT 5;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway02.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 2NqweF4FqFCY55U.889166f571c3 --database hH98Jc4UqfszP4NHNhbnYX --execute SELECT id, orderDate, account, customerWhatsapp, orderStatus, totalAmountCny FROM orders WHERE orderStatus = '已退款' LIMIT 5;",
+  "rows": [],
+  "messages": [],
+  "stdout": "",
+  "stderr": "",
+  "execution_time_ms": 56
+}

@@ -1127,7 +1127,7 @@ export async function getProfitReport(params: {
       COALESCE(SUM(i.totalProfit), 0) as totalItemProfit
     FROM order_items i
     JOIN orders o ON i.orderId = o.id
-    ${whereSQL}
+    ${whereSQL} AND COALESCE(i.itemStatus, '') != '已退款'
   `);
   const breakdown = (breakdownResult as any)[0]?.[0] || {};
 
@@ -1487,10 +1487,13 @@ export async function getStaffTargetProgress(yearMonth: string) {
         INNER JOIN orders o2 ON i.orderId = o2.id
         WHERE DATE_FORMAT(o2.orderDate, '%Y-%m') = ${yearMonth}
           AND o2.staffId = o.staffId
+          AND COALESCE(o2.orderStatus, '') != '已退款'
+          AND COALESCE(i.itemStatus, '') != '已退款'
       ), 0) as actualProfit
     FROM orders o
     WHERE DATE_FORMAT(o.orderDate, '%Y-%m') = ${yearMonth}
       AND o.staffId IS NOT NULL
+      AND COALESCE(o.orderStatus, '') != '已退款'
     GROUP BY o.staffId, o.staffName
   `);
 
@@ -1576,19 +1579,19 @@ export async function getDailyOrderSummary(account: string, reportDate: string) 
         SELECT SUM(oi.sellingPrice)
         FROM order_items oi
         JOIN orders o2 ON oi.orderId = o2.id
-        WHERE o2.account = ${account} AND DATE(o2.orderDate) = ${normalizedDate} AND COALESCE(o2.orderStatus, '') != '已退款'
+        WHERE o2.account = ${account} AND DATE(o2.orderDate) = ${normalizedDate} AND COALESCE(o2.orderStatus, '') != '已退款' AND COALESCE(oi.itemStatus, '') != '已退款'
       ), 0) as productSellingPrice,
       COALESCE((
         SELECT SUM(oi.shippingCharged)
         FROM order_items oi
         JOIN orders o2 ON oi.orderId = o2.id
-        WHERE o2.account = ${account} AND DATE(o2.orderDate) = ${normalizedDate} AND COALESCE(o2.orderStatus, '') != '已退款'
+        WHERE o2.account = ${account} AND DATE(o2.orderDate) = ${normalizedDate} AND COALESCE(o2.orderStatus, '') != '已退款' AND COALESCE(oi.itemStatus, '') != '已退款'
       ), 0) as shippingCharged,
       COALESCE((
         SELECT SUM(oi.productProfit)
         FROM order_items oi
         JOIN orders o2 ON oi.orderId = o2.id
-        WHERE o2.account = ${account} AND DATE(o2.orderDate) = ${normalizedDate} AND COALESCE(o2.orderStatus, '') != '已退款'
+        WHERE o2.account = ${account} AND DATE(o2.orderDate) = ${normalizedDate} AND COALESCE(o2.orderStatus, '') != '已退款' AND COALESCE(oi.itemStatus, '') != '已退款'
       ), 0) as estimatedProfit
     FROM orders o
     WHERE o.account = ${account} AND DATE(o.orderDate) = ${normalizedDate} AND COALESCE(o.orderStatus, '') != '已退款'
@@ -2155,7 +2158,7 @@ export async function getDashboardSummary(filters: DashboardFilters) {
       COALESCE(SUM(oi.amountCny), 0) as totalRevenueCny
     FROM order_items oi
     JOIN orders o ON oi.orderId = o.id
-    ${whereStr} ${conditions.length > 0 ? sql`AND` : sql`WHERE`} COALESCE(o.orderStatus, '') != '已退款'
+    ${whereStr} ${conditions.length > 0 ? sql`AND` : sql`WHERE`} COALESCE(o.orderStatus, '') != '已退款' AND COALESCE(oi.itemStatus, '') != '已退款'
   `);
   const rev = (revenueResult as any)[0]?.[0] || { totalRevenueCny: 0 };
 
@@ -3502,6 +3505,8 @@ export async function getSalaryReport(yearMonth: string) {
       WHERE o.orderDate >= ${ms.regularDate} AND o.orderDate < ${endDate}
         AND o.staffId = ${ms.id}
         AND (o.completionStatus = '已完成' OR o.completionStatus IS NULL)
+        AND COALESCE(o.orderStatus, '') != '已退款'
+        AND COALESCE(oi.itemStatus, '') != '已退款'
     `);
     const postProfRows = (postProfResult as any)[0] || [];
     if (postProfRows.length > 0) {
@@ -3519,6 +3524,8 @@ export async function getSalaryReport(yearMonth: string) {
       WHERE o.orderDate >= ${ms.regularDate} AND o.orderDate < ${endDate}
         AND o.staffId = ${ms.id}
         AND (o.completionStatus = '已完成' OR o.completionStatus IS NULL)
+        AND COALESCE(o.orderStatus, '') != '已退款'
+        AND COALESCE(oi.itemStatus, '') != '已退款'
       GROUP BY o.id
     `);
     const postOrderProfRows = (postOrderProfResult as any)[0] || [];
@@ -3539,6 +3546,8 @@ export async function getSalaryReport(yearMonth: string) {
     WHERE o.orderDate >= ${startDate} AND o.orderDate < ${endDate}
       AND o.staffId IS NOT NULL
       AND (o.completionStatus = '已完成' OR o.completionStatus IS NULL)
+      AND COALESCE(o.orderStatus, '') != '已退款'
+      AND COALESCE(oi.itemStatus, '') != '已退款'
     GROUP BY o.staffId
   `);
 
@@ -3554,6 +3563,8 @@ export async function getSalaryReport(yearMonth: string) {
     WHERE o.orderDate >= ${startDate} AND o.orderDate < ${endDate}
       AND o.staffId IS NOT NULL
       AND (o.completionStatus = '已完成' OR o.completionStatus IS NULL)
+      AND COALESCE(o.orderStatus, '') != '已退款'
+      AND COALESCE(oi.itemStatus, '') != '已退款'
     GROUP BY o.staffId, o.id, o.orderNumber, o.customerName, o.orderDate, o.totalAmountCny
   `);
   const orderProfitRows = (orderProfitResult as any)[0] || [];

@@ -983,3 +983,11 @@
 
 - [x] 报价表填写客户WhatsApp时自动查询客户管理中的联系方式
 - [x] 如果客户存在则自动填充联系方式字段
+
+## Bug修复：已退款订单数据未正确扣减
+
+- [x] 修复：已退款订单仪表盘数据未扣减（getDashboardSummary 排除 itemStatus='已退款'）
+- [x] 修复：已退款订单每日数据未扣减（getDailyOrderSummary 排除 itemStatus='已退款'）
+- [x] 修复：已退款订单客户信息未从客户管理中删除（orderItems.update 添加退款处理逻辑）
+- [x] 修复：利润报表和目标管理统计排除 itemStatus='已退款' 的子项
+- [x] 修复：orders.update 日期提取逻辑支持 Date 对象（之前只支持字符串）

@@ -1,0 +1,45 @@
+{
+  "query": "SELECT id, reportDate, whatsAccount, staffName, totalRevenue FROM daily_data ORDER BY reportDate DESC LIMIT 5;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway02.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 2NqweF4FqFCY55U.889166f571c3 --database hH98Jc4UqfszP4NHNhbnYX --execute SELECT id, reportDate, whatsAccount, staffName, totalRevenue FROM daily_data ORDER BY reportDate DESC LIMIT 5;",
+  "rows": [
+    {
+      "id": "120002",
+      "reportDate": "2026-05-02",
+      "whatsAccount": "K-ONE-1718",
+      "staffName": "花芳",
+      "totalRevenue": "1660.49"
+    },
+    {
+      "id": "120003",
+      "reportDate": "2026-05-02",
+      "whatsAccount": "See.U",
+      "staffName": "花芳",
+      "totalRevenue": "0.00"
+    },
+    {
+      "id": "150001",
+      "reportDate": "2026-05-01",
+      "whatsAccount": "fashion",
+      "staffName": "曾晶",
+      "totalRevenue": "6242.25"
+    },
+    {
+      "id": "30001",
+      "reportDate": "2026-04-10",
+      "whatsAccount": "BEST-BUY-1152",
+      "staffName": "Abe Abe",
+      "totalRevenue": "2297.60"
+    },
+    {
+      "id": "1",
+      "reportDate": "2026-04-09",
+      "whatsAccount": "M1 BUY-4254",
+      "staffName": "Grany Marza",
+      "totalRevenue": "0.00"
+    }
+  ],
+  "messages": [],
+  "stdout": "id\treportDate\twhatsAccount\tstaffName\ttotalRevenue\n120002\t2026-05-02\tK-ONE-1718\t花芳\t1660.49\n120003\t2026-05-02\tSee.U\t花芳\t0.00\n150001\t2026-05-01\tfashion\t曾晶\t6242.25\n30001\t2026-04-10\tBEST-BUY-1152\tAbe Abe\t2297.60\n1\t2026-04-09\tM1 BUY-4254\tGrany Marza\t0.00\n",
+  "stderr": "",
+  "execution_time_ms": 118
+}

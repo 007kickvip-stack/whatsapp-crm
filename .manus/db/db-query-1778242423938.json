@@ -1,0 +1,14 @@
+{
+  "query": "SELECT DISTINCT orderStatus, COUNT(*) as cnt FROM orders GROUP BY orderStatus;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway02.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 2NqweF4FqFCY55U.889166f571c3 --database hH98Jc4UqfszP4NHNhbnYX --execute SELECT DISTINCT orderStatus, COUNT(*) as cnt FROM orders GROUP BY orderStatus;",
+  "rows": [
+    {
+      "orderStatus": "已报货，待发货",
+      "cnt": "3"
+    }
+  ],
+  "messages": [],
+  "stdout": "orderStatus\tcnt\n已报货，待发货\t3\n",
+  "stderr": "",
+  "execution_time_ms": 62
+}

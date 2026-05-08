@@ -1,0 +1,37 @@
+{
+  "query": "SELECT id, orderDate, account, customerWhatsapp, staffName, orderStatus, totalAmountCny FROM orders;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway02.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 2NqweF4FqFCY55U.889166f571c3 --database hH98Jc4UqfszP4NHNhbnYX --execute SELECT id, orderDate, account, customerWhatsapp, staffName, orderStatus, totalAmountCny FROM orders;",
+  "rows": [
+    {
+      "id": "720001",
+      "orderDate": "2026-05-02",
+      "account": "K-ONE-1718",
+      "customerWhatsapp": "+39 388 244 6400",
+      "staffName": "花芳",
+      "orderStatus": "已报货，待发货",
+      "totalAmountCny": "738.00"
+    },
+    {
+      "id": "720003",
+      "orderDate": "2026-05-02",
+      "account": "K-ONE-1718",
+      "customerWhatsapp": "+49 178 3015623",
+      "staffName": "花芳",
+      "orderStatus": "已报货，待发货",
+      "totalAmountCny": "922.49"
+    },
+    {
+      "id": "810001",
+      "orderDate": "2026-05-01",
+      "account": "fashion",
+      "customerWhatsapp": "+31 6 84580389",
+      "staffName": "曾晶",
+      "orderStatus": "已报货，待发货",
+      "totalAmountCny": "6242.25"
+    }
+  ],
+  "messages": [],
+  "stdout": "id\torderDate\taccount\tcustomerWhatsapp\tstaffName\torderStatus\ttotalAmountCny\n720001\t2026-05-02\tK-ONE-1718\t+39 388 244 6400\t花芳\t已报货，待发货\t738.00\n720003\t2026-05-02\tK-ONE-1718\t+49 178 3015623\t花芳\t已报货，待发货\t922.49\n810001\t2026-05-01\tfashion\t+31 6 84580389\t曾晶\t已报货，待发货\t6242.25\n",
+  "stderr": "",
+  "execution_time_ms": 53
+}
