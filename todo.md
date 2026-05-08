@@ -957,3 +957,29 @@
 - [x] 后端：仪表盘统计数据排除已退款订单（getOrderStats/getDashboardSummary/getStaffRevenueRanking/getAccountRevenue/getMonthlyRevenue/getStaffMonthlyRevenue/getProfitReport）
 - [x] 后端：getDailyOrderSummary排除已退款订单
 - [x] 前端：订单状态下拉已有“已退款”选项
+
+## PayPal收支同步改造
+
+- [x] 去掉订单自动同步PayPal付款状态逻辑，改为人工核实
+- [x] PayPal收支表保留付款记录同步（截图、金额、时间）
+
+## 每日数据预估毛利润手动填写
+
+- [x] 去掉每日数据中预估毛利润的自动汇总逻辑（syncOrderDataToDailyData不再覆盖estimatedProfit）
+- [x] 预估毛利润保持为可手动编辑的字段
+
+## 已退款订单同步删除客户
+
+- [x] 订单状态改为“已退款”时检查该客户所有订单是否全部退款
+- [x] 如果全部退款则删除客户信息
+- [x] 如果有未退款订单则保留客户信息
+
+## 出生日期年份非必填
+
+- [x] 订单管理中出生日期改为varchar类型，支持MM-DD或YYYY-MM-DD格式
+- [x] 前端输入框改为text类型，提示MM-DD或YYYY-MM-DD格式
+
+## 报价表自动同步客户联系方式
+
+- [x] 报价表填写客户WhatsApp时自动查询客户管理中的联系方式
+- [x] 如果客户存在则自动填充联系方式字段

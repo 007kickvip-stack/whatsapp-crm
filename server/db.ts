@@ -1887,18 +1887,14 @@ export async function getDailyReportNoteById(id: number) {
 export async function syncOrderDataToDailyData(id: number, whatsAccount: string, reportDate: string) {
   if (!whatsAccount) return { success: false, message: "请先选择whats账号" };
   const summary = await getDailyOrderSummary(whatsAccount, reportDate);
-  const totalRev = parseFloat(summary.totalRevenue) || 0;
-  const estProfit = parseFloat(summary.estimatedProfit) || 0;
-  const profitRate = totalRev > 0 ? (estProfit / totalRev).toFixed(6) : "0";
 
   const db = await getDb();
   if (!db) throw new Error("Database not available");
+  // 预估毛利润改为手动填写，不再自动覆盖
   await db.update(dailyData).set({
     totalRevenue: summary.totalRevenue,
     productSellingPrice: summary.productSellingPrice,
     shippingCharged: summary.shippingCharged,
-    estimatedProfit: summary.estimatedProfit,
-    estimatedProfitRate: profitRate,
   }).where(eq(dailyData.id, id));
   return { success: true };
 }
@@ -4755,4 +4751,33 @@ export async function upsertFieldPermissions(
       }))
     );
   }
+}
+
+
+/**
+ * 检查指定客户WhatsApp的所有订单是否全部已退款
+ * 如果全部退款则删除客户信息
+ */
+export async function checkAndDeleteRefundedCustomer(customerWhatsapp: string) {
+  const db = await getDb();
+  if (!db || !customerWhatsapp) return { deleted: false };
+
+  // 查询该客户的所有订单
+  const [allOrders] = await db.execute(sql`
+    SELECT id, orderStatus FROM orders WHERE customerWhatsapp = ${customerWhatsapp}
+  `);
+  const orderRows = allOrders as unknown as any[];
+  if (!orderRows || orderRows.length === 0) return { deleted: false };
+
+  // 检查是否所有订单都是"已退款"状态
+  const allRefunded = orderRows.every((o: any) => o.orderStatus === '已退款');
+  if (!allRefunded) return { deleted: false };
+
+  // 所有订单都已退款，删除客户信息
+  const customer = await getCustomerByWhatsapp(customerWhatsapp);
+  if (customer) {
+    await db.delete(customers).where(eq(customers.id, customer.id));
+    return { deleted: true, customerId: customer.id };
+  }
+  return { deleted: false };
 }

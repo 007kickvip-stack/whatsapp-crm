@@ -55,6 +55,7 @@ import {
   exportAllData, restoreAllData,
   getFieldPermissions, getAllFieldPermissions, upsertFieldPermissions,
   getWeeklyReportByStaff, getWeeklyReportByAccount,
+  checkAndDeleteRefundedCustomer,
 } from "./db";
 import type { SQL } from "drizzle-orm";
 import { sdk } from "./_core/sdk";
@@ -365,7 +366,7 @@ export const appRouter = router({
       const id = await createOrder({
         ...rest,
         orderDate: orderDate ? new Date(orderDate) : null,
-        customerBirthDate: rest.customerBirthDate ? new Date(rest.customerBirthDate) : null,
+        customerBirthDate: rest.customerBirthDate || null,
         staffId: ctx.user.id,
         staffName,
       } as any);
@@ -396,8 +397,6 @@ export const appRouter = router({
         customerEmail: rest.customerEmail,
         staffId: ctx.user.id,
       });
-      // 自动同步到PayPal收入表
-      await syncOrderToPaypalIncome(id, ctx.user.id);
       await logAction(ctx, "create", "order", id, rest.orderNumber, JSON.stringify(input));
       return { id };
     }),
@@ -435,7 +434,7 @@ export const appRouter = router({
       await updateOrder(id, {
         ...data,
         ...(orderDate !== undefined ? { orderDate: orderDate ? new Date(orderDate) : null } : {}),
-        ...(customerBirthDate !== undefined ? { customerBirthDate: customerBirthDate ? new Date(customerBirthDate) : null } : {}),
+        ...(customerBirthDate !== undefined ? { customerBirthDate: customerBirthDate || null } : {}),
       } as any);
       // 订单更新后自动同步客户数据
       const updatedOrder = await getOrderById(id);
@@ -454,10 +453,9 @@ export const appRouter = router({
           staffId: updatedOrder.staffId,
         });
       }
-      // 订单更新时同步更新对应的PayPal收入记录
-      await updatePaypalIncomeFromOrder(id);
+      // PayPal收入改为人工核实，不再自动同步订单信息
 
-      // 当订单状态变为"已退款"或从"已退款"改回时，同步更新对应的每日数据
+      // 当订单状态变为“已退款”或从“已退款”改回时，同步更新对应的每日数据
       if (input.orderStatus !== undefined && updatedOrder) {
         const orderDateStr = updatedOrder.orderDate
           ? new Date(updatedOrder.orderDate).toISOString().split("T")[0]
@@ -470,6 +468,10 @@ export const appRouter = router({
           if (matchingDaily) {
             await syncOrderDataToDailyData(matchingDaily.id, account, orderDateStr);
           }
+        }
+        // 当订单状态改为“已退款”时，检查该客户所有订单是否全部退款，如是则删除客户信息
+        if (input.orderStatus === '已退款' && updatedOrder.customerWhatsapp) {
+          await checkAndDeleteRefundedCustomer(updatedOrder.customerWhatsapp);
         }
       }
 
@@ -486,8 +488,6 @@ export const appRouter = router({
           throw new TRPCError({ code: 'FORBIDDEN', message: '您只能删除自己的订单' });
         }
       }
-      // 删除订单时清理对应的PayPal收入记录
-      await deletePaypalIncomeByOrderId(input.id);
       await deleteOrder(input.id);
       await logAction(ctx, "delete", "order", input.id);
       return { success: true };
@@ -499,7 +499,6 @@ export const appRouter = router({
     })).mutation(async ({ input, ctx }) => {
       let deleted = 0;
       for (const id of input.orderIds) {
-        await deletePaypalIncomeByOrderId(id);
         await deleteOrder(id);
         await logAction(ctx, "delete", "order", id);
         deleted++;
@@ -621,8 +620,6 @@ export const appRouter = router({
         }
 
         await recalculateOrderTotals(orderId);
-        // 自动同步到PayPal收入表
-        await syncOrderToPaypalIncome(orderId, ctx.user.id);
         results.push({ orderId, orderNumber: first.orderNumber });
       }
 
@@ -1876,8 +1873,6 @@ export const appRouter = router({
       }
       // Recalculate order totals
       await recalculateOrderTotals(orderId);
-      // 自动同步到PayPal收入表
-      await syncOrderToPaypalIncome(orderId, ctx.user.id);
       // Mark quotation as synced
       await updateQuotation(input.quotationId, { status: "已同步" } as any);
       await logAction(ctx, "create", "order", orderId, `从报价表#${input.quotationId}同步`, JSON.stringify({ quotationId: input.quotationId }));

@@ -87,7 +87,7 @@ export const orders = mysqlTable("orders", {
   customerTier: varchar("customerTier", { length: 32 }),
   customerLevel: varchar("customerLevel", { length: 32 }),
   orderCategory: varchar("orderCategory", { length: 255 }),
-  customerBirthDate: date("customerBirthDate"),
+  customerBirthDate: varchar("customerBirthDate", { length: 16 }), // 支持 MM-DD 或 YYYY-MM-DD 格式
   customerEmail: varchar("customerEmail", { length: 320 }),
   wpEntryDate: date("wpEntryDate"), // 进入WP日期
   paymentAmount: decimal("paymentAmount", { precision: 12, scale: 2 }).default("0"), // 付款金额 $

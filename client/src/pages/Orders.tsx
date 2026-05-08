@@ -1149,7 +1149,7 @@ export default function OrdersPage() {
           customerCountry: (order as any).customerCountry || null,
           customerTier: (order as any).customerTier || null,
           orderCategory: (order as any).orderCategory || null,
-          customerBirthDate: (order as any).customerBirthDate ? new Date((order as any).customerBirthDate).toISOString().split('T')[0] : null,
+          customerBirthDate: (order as any).customerBirthDate || null,
           customerEmail: (order as any).customerEmail || null,
           wpEntryDate: (order as any).wpEntryDate ? new Date((order as any).wpEntryDate).toISOString().split('T')[0] : null,
           completionStatus: (order as any).completionStatus || '未完成',
@@ -1208,7 +1208,7 @@ export default function OrdersPage() {
             customerCountry: idx === 0 ? ((order as any).customerCountry || null) : null,
             customerTier: idx === 0 ? ((order as any).customerTier || null) : null,
             orderCategory: idx === 0 ? ((order as any).orderCategory || null) : null,
-            customerBirthDate: idx === 0 ? ((order as any).customerBirthDate ? new Date((order as any).customerBirthDate).toISOString().split('T')[0] : null) : null,
+            customerBirthDate: idx === 0 ? ((order as any).customerBirthDate || null) : null,
             customerEmail: idx === 0 ? ((order as any).customerEmail || null) : null,
             wpEntryDate: idx === 0 ? ((order as any).wpEntryDate ? new Date((order as any).wpEntryDate).toISOString().split('T')[0] : null) : null,
             completionStatus: idx === 0 ? ((order as any).completionStatus || '未完成') : null,
@@ -1962,7 +1962,8 @@ export default function OrdersPage() {
               ) : (
                 <EditableCell
                   value={row.customerBirthDate || ""}
-                  type="date"
+                  type="text"
+                  placeholder="MM-DD 或 YYYY-MM-DD"
                   onSave={(v) => saveOrderField(row.orderId, "customerBirthDate", v)}
                 />
               )}

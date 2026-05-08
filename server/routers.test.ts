@@ -78,6 +78,7 @@ vi.mock("./db", () => ({
   deleteDailyReportNote: vi.fn().mockResolvedValue({ success: true }),
   getDailyReportNoteById: vi.fn().mockResolvedValue({ id: 1, reportDate: "2026-04-09", userId: 1, userName: "Admin User", userRole: "admin", content: "今日总结", createdAt: new Date(), updatedAt: new Date() }),
   syncOrderDataToDailyData: vi.fn().mockResolvedValue({ success: true }),
+  checkAndDeleteRefundedCustomer: vi.fn().mockResolvedValue({ deleted: false }),
   getWeeklyReportByStaff: vi.fn().mockResolvedValue({ rows: [{ staffId: 2, staffName: "Staff User", messageCount: 100, newCustomerCount: 10, newIntentCount: 5, returnVisitCount: 4, newOrderCount: 8, oldOrderCount: 3, onlineOrderCount: 4, itemCount: 15, totalRevenue: "1000", onlineRevenue: "400", productSellingPrice: "800", shippingCharged: "200", estimatedProfit: "300", estimatedProfitRate: "0.3", telegramPraiseCount: 2, referralCount: 1, activeDays: 5 }], totals: { staffCount: 1, totalDays: 5, totalMessages: 100, totalNewCustomers: 10, totalNewIntents: 5, totalReturnVisits: 4, totalNewOrders: 8, totalOldOrders: 3, totalOnlineOrders: 4, totalItems: 15, totalRevenue: "1000", totalOnlineRevenue: "400", totalProductSellingPrice: "800", totalShippingCharged: "200", totalEstimatedProfit: "300", avgProfitRate: "0.3", accountCount: 2 }, dateRange: { start: "2026-04-07", end: "2026-04-13" } }),
   getWeeklyReportByAccount: vi.fn().mockResolvedValue({ rows: [{ whatsAccount: "+123", messageCount: 50, newCustomerCount: 5, activeDays: 3, totalRevenue: "500" }], totals: { accountCount: 1, totalDays: 3, totalMessages: 50, totalNewCustomers: 5, totalRevenue: "500", totalEstimatedProfit: "150", avgProfitRate: "0.3" }, dateRange: { start: "2026-04-07", end: "2026-04-13" } }),
   listAccounts: vi.fn().mockResolvedValue([{ id: 1, name: "M1 BUY-4254", color: "#f87171", sortOrder: 0 }, { id: 2, name: "K-ONE-1718", color: "#fb923c", sortOrder: 1 }]),
@@ -2030,5 +2031,62 @@ describe("Refund Order Sync", () => {
     await caller.orders.update({ id: 2, orderStatus: "已发货" });
 
     expect(syncOrderDataToDailyData).not.toHaveBeenCalled();
+  });
+});
+
+describe("Refunded order customer deletion", () => {
+  it("calls checkAndDeleteRefundedCustomer when order status changes to 已退款", async () => {
+    const { getOrderById, checkAndDeleteRefundedCustomer, listDailyData } = await import("./db");
+    (getOrderById as any).mockResolvedValueOnce({
+      id: 1, orderDate: new Date("2026-04-09"), account: "+123", customerWhatsapp: "+8613800138000",
+      orderStatus: "已退款",
+    });
+    (listDailyData as any).mockResolvedValueOnce([]);
+
+    const caller = appRouter.createCaller(createAdminContext());
+    await caller.orders.update({ id: 1, orderStatus: "已退款" });
+
+    expect(checkAndDeleteRefundedCustomer).toHaveBeenCalledWith("+8613800138000");
+  });
+
+  it("does NOT call checkAndDeleteRefundedCustomer when order status is not 已退款", async () => {
+    const { getOrderById, checkAndDeleteRefundedCustomer, listDailyData } = await import("./db");
+    (checkAndDeleteRefundedCustomer as any).mockClear();
+    (getOrderById as any).mockResolvedValueOnce({
+      id: 1, orderDate: new Date("2026-04-09"), account: "+123", customerWhatsapp: "+8613800138000",
+      orderStatus: "已发货",
+    });
+    (listDailyData as any).mockResolvedValueOnce([]);
+
+    const caller = appRouter.createCaller(createAdminContext());
+    await caller.orders.update({ id: 1, orderStatus: "已发货" });
+
+    expect(checkAndDeleteRefundedCustomer).not.toHaveBeenCalled();
+  });
+});
+
+describe("Customer birth date format", () => {
+  it("accepts MM-DD format for customerBirthDate", async () => {
+    const { getOrderById } = await import("./db");
+    (getOrderById as any).mockResolvedValueOnce({
+      id: 1, orderDate: new Date("2026-04-09"), account: "+123", customerWhatsapp: null,
+      orderStatus: "待处理", customerBirthDate: "03-15",
+    });
+
+    const caller = appRouter.createCaller(createAdminContext());
+    const result = await caller.orders.update({ id: 1, customerBirthDate: "03-15" });
+    expect(result.success).toBe(true);
+  });
+
+  it("accepts YYYY-MM-DD format for customerBirthDate", async () => {
+    const { getOrderById } = await import("./db");
+    (getOrderById as any).mockResolvedValueOnce({
+      id: 1, orderDate: new Date("2026-04-09"), account: "+123", customerWhatsapp: null,
+      orderStatus: "待处理", customerBirthDate: "1990-03-15",
+    });
+
+    const caller = appRouter.createCaller(createAdminContext());
+    const result = await caller.orders.update({ id: 1, customerBirthDate: "1990-03-15" });
+    expect(result.success).toBe(true);
   });
 });

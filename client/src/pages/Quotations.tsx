@@ -306,8 +306,20 @@ export default function QuotationsPage() {
   };
 
   // Save quotation field
-  const saveQuotationField = (id: number, field: string, value: string) => {
+  const saveQuotationField = async (id: number, field: string, value: string) => {
     updateMutation.mutate({ id, [field]: value } as any);
+    // 当填写客户WhatsApp时，自动查找客户管理中的联系方式并同步
+    if (field === 'customerWhatsapp' && value.trim()) {
+      try {
+        const customer = await utils.client.customers.getByWhatsapp.query({ whatsapp: value.trim() });
+        if (customer && customer.contactInfo) {
+          updateMutation.mutate({ id, contactInfo: customer.contactInfo } as any);
+          toast.success('已自动同步客户联系方式');
+        }
+      } catch {
+        // 客户不存在，不做处理
+      }
+    }
   };
 
   // Save item field
