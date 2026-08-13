@@ -102,6 +102,24 @@ sudo mysql -e "SHOW DATABASES;"
 
 若现有应用连接的是本机数据库，CRM 仅在**同一个数据库**增加带 `crm_` 前缀的新表。若数据库未在本机运行，应先确认现有 `DATABASE_URL` 指向何处；不要在不知道现有数据源的情况下安装或切换数据库。数据库账户应仅允许 `127.0.0.1` 或 Unix Socket 本地连接，不应向公网开放 3306 端口。
 
+## 步骤 3A：核对并复用生产环境配置
+
+CRM 源码迁移包**刻意不包含** `.env` 或 `.env.example`，以避免传输密码和密钥。因此，目标项目现有的生产环境文件是唯一应被保留和复用的配置来源；不要复制 CRM 原项目的任何环境变量值，也不要把密钥写进 Git、发布包或前端代码。
+
+| 参数类别 | 参数名 | 整合处理方式 |
+|---|---|---|
+| 数据库与会话 | `DATABASE_URL`、`JWT_SECRET`、`NODE_ENV` | 继续使用目标微店系统现有值。CRM 仅使用同一个 `DATABASE_URL` 新建 `crm_` 表，不能换库或重置 `JWT_SECRET`。 |
+| 自托管模式 | `SELF_HOSTED` | 腾讯云部署应保留目标系统当前的自托管设置；不要因导入 CRM 改回 Manus 托管认证逻辑。 |
+| 文件存储 | `S3_ENDPOINT`、`S3_REGION`、`S3_BUCKET`、`S3_ACCESS_KEY_ID`、`S3_SECRET_ACCESS_KEY` | 目标项目已经支持腾讯云 COS 的 S3 兼容存储。CRM 图片和付款凭证必须复用目标项目的 `server/storage.ts`，不得复制 CRM 原有依赖 Manus 存储代理的 `server/storage.ts`。 |
+| 微店与前台登录 | `WEIDIAN_OAUTH_REDIRECT_URI`、`SHOP_GOOGLE_CLIENT_ID`、`SHOP_GOOGLE_CLIENT_SECRET`、`SHOP_DISCORD_CLIENT_ID`、`SHOP_DISCORD_CLIENT_SECRET`、`SHOP_JWT_SECRET` | 完整保留现有值与用途；CRM 不应修改这些前台或微店登录配置。 |
+| 既有后台认证 | `VITE_APP_ID`、`OAUTH_SERVER_URL`、`OWNER_OPEN_ID` | 仅当目标项目当前已经使用时保留；CRM 页面必须接入目标项目认证，不得替换为 CRM 原项目的 Manus OAuth 配置。 |
+| CRM 物流跟踪（可选） | `KUAIDI100_KEY`、`KUAIDI100_CUSTOMER` | 仅在需要快递 100 查询/订阅时配置。未启用物流功能时，可先不填，但相应接口应显示“未配置”而不是使整个应用启动失败。 |
+| CRM 物流回调基地址（新增） | `PUBLIC_APP_URL` | 新增为目标后台正式 HTTPS 地址，例如 `https://admin.example.com`，不带结尾 `/`。仅用于拼接公开回调地址，不能包含密钥。 |
+
+> 当前 CRM 源码中有 4 处对原 Manus 域名 `whatsappcrm-hh98jc4u.manus.space` 的物流回调引用，位于 `server/routers.ts` 与 `server/trackingProxy.ts`。整合时必须全部替换为基于 `PUBLIC_APP_URL` 的 `${PUBLIC_APP_URL}/api/kuaidi100/callback`，并在快递 100管理后台同步更新回调地址。未完成此项前，不得启用物流订阅。
+
+生产环境文件应位于服务器的共享配置目录（例如 `/srv/weidian-publish/shared/.env`），由运行账户以最小权限读取。发布前只检查变量**是否存在**，不要在终端、日志或聊天中打印变量值。
+
 ---
 
 # 阶段二：准备目标项目的合并工作区
